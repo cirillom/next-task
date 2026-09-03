@@ -92,7 +92,7 @@ def score_variables(task: Task, now: datetime | None = None) -> dict[str, float]
     now = now or datetime.now(UTC)
     created_at = _utc(task.created_at)
     last_worked_at = _utc(task.last_worked_at) if task.last_worked_at else created_at
-    due_offset = float((now.date() - task.due_date).days) if task.due_date else 0.0
+    due_offset = float((now.astimezone().date() - task.due_date).days) if task.due_date else 0.0
     return {
         "priority": float(task.priority),
         "ageDays": max(0.0, (now - created_at).total_seconds() / DAY_SECONDS),

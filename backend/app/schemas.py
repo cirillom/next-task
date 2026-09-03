@@ -5,6 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models import WorkspaceRole
 
 
+def clean_required(value: str, tag: bool = False) -> str:
+    cleaned = value.strip().removeprefix("#").lower() if tag else value.strip()
+    if not cleaned:
+        raise ValueError("Value cannot be blank")
+    return cleaned
+
+
 class ApiModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,7 +43,7 @@ class WorkspaceCreate(ApiModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str) -> str:
-        return value.strip()
+        return clean_required(value)
 
 
 class WorkspaceUpdate(ApiModel):
@@ -46,7 +53,7 @@ class WorkspaceUpdate(ApiModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+        return clean_required(value) if value is not None else None
 
 
 class WorkspaceRead(ApiModel):
@@ -75,22 +82,22 @@ class MemberRead(ApiModel):
 
 class StatusCreate(ApiModel):
     name: str = Field(min_length=1, max_length=80)
-    score_value: float = 0
+    score_value: float = Field(default=0, allow_inf_nan=False)
 
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str) -> str:
-        return value.strip()
+        return clean_required(value)
 
 
 class StatusUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
-    score_value: float | None = None
+    score_value: float | None = Field(default=None, allow_inf_nan=False)
 
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+        return clean_required(value) if value is not None else None
 
 
 class StatusRead(ApiModel):
@@ -134,7 +141,7 @@ class TaskCreate(ApiModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str) -> str:
-        return value.strip()
+        return clean_required(value)
 
 
 class TaskUpdate(ApiModel):
@@ -151,7 +158,7 @@ class TaskUpdate(ApiModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+        return clean_required(value) if value is not None else None
 
 
 class TaskRead(ApiModel):
@@ -184,7 +191,7 @@ class BlockCreate(ApiModel):
     @field_validator("reason")
     @classmethod
     def clean_reason(cls, value: str) -> str:
-        return value.strip()
+        return clean_required(value)
 
 
 class TagCreate(ApiModel):
@@ -195,7 +202,7 @@ class TagCreate(ApiModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str) -> str:
-        return value.strip().removeprefix("#").lower()
+        return clean_required(value, tag=True)
 
 
 class TagUpdate(ApiModel):
@@ -206,7 +213,7 @@ class TagUpdate(ApiModel):
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str | None) -> str | None:
-        return value.strip().removeprefix("#").lower() if value is not None else None
+        return clean_required(value, tag=True) if value is not None else None
 
 
 class TagRead(TagSummary):
