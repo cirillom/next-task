@@ -5,7 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user, normalize_email
 from app.database import get_db
-from app.models import TaskStatus, User, Workspace, WorkspaceMember, WorkspaceRole
+from app.models import (
+    Task,
+    TaskAssignee,
+    TaskStatus,
+    User,
+    Workspace,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 from app.schemas import (
     MemberCreate,
     MemberRead,
@@ -17,6 +25,7 @@ from app.schemas import (
     WorkspaceRead,
     WorkspaceUpdate,
 )
+from app.services.scoring import DEFAULT_SCORING_FORMULA, FormulaError, validate_formula
 from app.services.workspaces import (
     ensure_owner_remains,
     get_membership,
@@ -25,11 +34,6 @@ from app.services.workspaces import (
 )
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
-
-DEFAULT_SCORING_FORMULA = (
-    "priority * 20 + idleDays * 1.5 + statusValue * 10 + "
-    "(dueOffsetDays * 50 if dueOffsetDays > 0 else 0)"
-)
 
 
 def workspace_read(workspace: Workspace, role: WorkspaceRole) -> WorkspaceRead:
@@ -94,6 +98,11 @@ def update_workspace(
 ) -> WorkspaceRead:
     membership = require_owner(db, workspace_id, user)
     values = payload.model_dump(exclude_unset=True)
+    if values.get("scoring_formula") is not None:
+        try:
+            validate_formula(values["scoring_formula"])
+        except FormulaError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
     for key, value in values.items():
         setattr(membership.workspace, key, value)
     db.commit()
@@ -183,6 +192,20 @@ def remove_member(
     require_owner(db, workspace_id, user)
     membership = get_membership(db, workspace_id, member_user_id)
     ensure_owner_remains(db, workspace_id, membership, None)
+    assigned_task = db.scalar(
+        select(TaskAssignee.task_id)
+        .join(Task, Task.id == TaskAssignee.task_id)
+        .where(
+            Task.workspace_id == workspace_id,
+            TaskAssignee.user_id == member_user_id,
+        )
+        .limit(1)
+    )
+    if assigned_task is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Remove this member from assigned tasks before removing membership",
+        )
     db.delete(membership)
     db.commit()
     return Response(status_code=204)
