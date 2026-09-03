@@ -10,56 +10,64 @@ and built Svelte PWA, while SQLite stores application data in a mounted `/data`
 directory. There is no offline synchronization; the service worker caches only the
 application shell and an offline explanation page.
 
-## Docker deployment
+## Docker development
 
-Prepare the persistent directory once. The image runs as UID/GID `10001`:
-
-```bash
-sudo mkdir -p /mnt/hdd/next-task/data
-sudo chown 10001:10001 /mnt/hdd/next-task/data
-```
-
-Build and start the single application container:
+The repository's `docker-compose.yml` builds the current checkout, publishes port
+`8000`, and stores disposable development data in `./data-dev`:
 
 ```bash
-cd ~/services/next-task
 docker compose up --build
 ```
 
-Add `-d` to run it in the background.
-
-The application is available on port `8000`. `docker-compose.yml` deliberately
-does not alter a reverse proxy, DNS, or an external Docker network. Once HTTPS is
-in front of the application, enable the cookie `Secure` attribute when starting
-or recreating it:
-
-```bash
-NEXT_TASK_COOKIE_SECURE=true docker compose up -d --build
-```
-
-The production-shaped reference is also available as
-`docker-compose.example.yml`. Both mount persistent SQLite state from
-`/mnt/hdd/next-task/data` and never expose SQLite itself.
-
-Database migrations run automatically before the web server starts. To create the
-first account after startup:
+Database migrations run automatically before the web server starts. Create a
+development user from another terminal with:
 
 ```bash
 docker compose exec next-task uv run python -m app.cli create-user
 ```
 
-The command prompts for email, display name, password, and confirmation. Sign in,
-then create the first workspace in the UI; its creator becomes owner and the
-`todo` and `doing` statuses plus a default scoring formula are created together.
+## Releases and homeserver deployment
+
+CI runs backend lint/tests, Svelte checks/build, and a production image build on
+pushes to `main` and pull requests. A semantic version tag publishes both that tag
+and `latest` to `ghcr.io/cirillom/next-task`, then creates a GitHub Release with
+`docker-compose.example.yml` attached.
+
+The tag must match the version in both `pyproject.toml` and
+`frontend/package.json`:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The homeserver keeps only deployment configuration in `~/services/next-task`.
+Its Compose file pulls the published image, joins the existing `proxy` network,
+and mounts persistent state from `/mnt/hdd/next-task/data`. It does not alter
+proxy, DNS, or TLS configuration.
+
+```bash
+cd ~/services/next-task
+docker compose --env-file ../.env pull
+docker compose --env-file ../.env up -d
+docker compose --env-file ../.env exec next-task uv run python -m app.cli create-user
+```
+
+The image runs as UID/GID `10001`, so prepare the persistent directory first as
+documented in the deployment README. Secure cookies are enabled in the homeserver
+Compose file.
 
 Reset a password with direct server access:
 
 ```bash
-docker compose exec next-task uv run python -m app.cli reset-password user@example.com
+docker compose --env-file ../.env exec next-task uv run python -m app.cli reset-password user@example.com
 ```
 
-Existing sessions for that user are revoked. For controlled automation, both CLI
-commands also accept `--password-stdin`, avoiding a password in process arguments.
+Existing sessions for that user are revoked. Both CLI commands accept
+`--password-stdin` for controlled automation without putting a password in process
+arguments. After signing in, create the first workspace in the UI; its creator
+becomes owner and the `todo` and `doing` statuses plus a default scoring formula
+are created together.
 
 ## Local development
 
