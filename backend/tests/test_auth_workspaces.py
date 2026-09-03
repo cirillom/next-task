@@ -1,0 +1,95 @@
+from collections.abc import Callable
+
+from app.database import SessionLocal
+from app.main import app
+from app.models import User
+from fastapi.testclient import TestClient
+
+
+def test_password_is_hashed_and_login_sets_http_only_cookie(
+    client: TestClient, create_user: Callable[[str, str, str], User]
+) -> None:
+    created = create_user("person@example.com")
+    assert created.password_hash.startswith("$argon2id$")
+    assert "correct horse" not in created.password_hash
+
+    denied = client.post(
+        "/api/auth/login", json={"email": "Person@Example.com", "password": "wrong password"}
+    )
+    assert denied.status_code == 401
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "person@example.com", "password": "correct horse"},
+    )
+    assert response.status_code == 200
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert response.json()["email"] == "person@example.com"
+    assert client.get("/api/auth/me").status_code == 200
+
+
+def test_password_change_revokes_other_sessions(
+    create_user: Callable[[str, str, str], User],
+) -> None:
+    create_user("person@example.com")
+    first = TestClient(app)
+    second = TestClient(app)
+    for test_client in (first, second):
+        assert (
+            test_client.post(
+                "/api/auth/login",
+                json={"email": "person@example.com", "password": "correct horse"},
+            ).status_code
+            == 200
+        )
+
+    changed = first.post(
+        "/api/auth/change-password",
+        json={"current_password": "correct horse", "new_password": "a new secure password"},
+    )
+    assert changed.status_code == 200
+    assert first.get("/api/auth/me").status_code == 200
+    assert second.get("/api/auth/me").status_code == 401
+
+
+def test_workspace_access_is_isolated_and_viewer_is_read_only(
+    logged_in_client: Callable[[str], TestClient],
+    create_user: Callable[[str, str, str], User],
+) -> None:
+    owner_client = logged_in_client("owner@example.com")
+    other_client = logged_in_client("other@example.com")
+    viewer = create_user("viewer@example.com")
+
+    workspace = owner_client.post("/api/workspaces", json={"name": "Private"}).json()
+    other_workspace = other_client.post("/api/workspaces", json={"name": "Other"}).json()
+    assert owner_client.get(f"/api/workspaces/{other_workspace['id']}").status_code == 404
+
+    added = owner_client.post(
+        f"/api/workspaces/{workspace['id']}/members",
+        json={"email": viewer.email, "role": "viewer"},
+    )
+    assert added.status_code == 201
+
+    viewer_client = TestClient(app)
+    viewer_client.post("/api/auth/login", json={"email": viewer.email, "password": "correct horse"})
+    assert viewer_client.get(f"/api/workspaces/{workspace['id']}/statuses").status_code == 200
+    denied = viewer_client.post(
+        f"/api/workspaces/{workspace['id']}/statuses",
+        json={"name": "review", "score_value": 2},
+    )
+    assert denied.status_code == 403
+
+    with SessionLocal() as db:
+        assert db.get(User, viewer.id) is not None
+
+
+def test_last_owner_cannot_be_demoted(logged_in_client: Callable[[str], TestClient]) -> None:
+    owner_client = logged_in_client("owner@example.com")
+    workspace = owner_client.post("/api/workspaces", json={"name": "Only owner"}).json()
+    me = owner_client.get("/api/auth/me").json()
+
+    response = owner_client.patch(
+        f"/api/workspaces/{workspace['id']}/members/{me['id']}",
+        json={"role": "editor"},
+    )
+    assert response.status_code == 409

@@ -40,4 +40,3 @@ SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 def get_db() -> Generator[Session]:
     with SessionLocal() as session:
         yield session
-

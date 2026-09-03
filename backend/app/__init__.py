@@ -1,2 +1,1 @@
 """Next Task application package."""
-
