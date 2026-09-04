@@ -275,3 +275,26 @@ def reblock_task(
         raise HTTPException(status_code=409, detail="Task is already blocked") from error
     db.refresh(task)
     return task_read(db, task)
+
+
+@router.delete("/{task_id}/blocks/{block_id}", response_model=TaskRead)
+def delete_block_history_entry(
+    task_id: int,
+    block_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    task = get_task_for_user(db, task_id, user)
+    require_editor(db, task.workspace_id, user)
+    block = db.scalar(
+        select(TaskBlock).where(TaskBlock.id == block_id, TaskBlock.task_id == task.id)
+    )
+    if block is None:
+        raise HTTPException(status_code=404, detail="Blocking history entry not found")
+    if block.unblocked_at is None:
+        raise HTTPException(status_code=409, detail="Active block must be unblocked before deletion")
+
+    db.delete(block)
+    db.commit()
+    db.refresh(task)
+    return task_read(db, task)
