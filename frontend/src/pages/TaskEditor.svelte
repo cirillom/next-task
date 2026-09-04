@@ -14,7 +14,6 @@
   let tags: Tag[] = [];
   let members: Member[] = [];
   let parentTasks: Task[] = [];
-  let filteredParentTasks: Task[] = [];
   let title = '';
   let description = '';
   let statusId = 0;
@@ -32,20 +31,23 @@
   let blockModalOpen = false;
   let error = '';
 
-  $: {
-    const needle = parentSearch.trim().toLowerCase();
-    filteredParentTasks = parentTasks.filter(
-      (item) =>
-        item.id !== taskId &&
-        (item.id === parentTaskId || !needle || item.title.toLowerCase().includes(needle))
-    );
-  }
-
   function datetimeLocal(value: string | null): string {
     if (!value) return '';
     const date = new Date(value);
     const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
     return local.toISOString().slice(0, 16);
+  }
+
+  function parentOptionLabel(item: Task): string {
+    return `${item.title} (#${item.id})`;
+  }
+
+  function handleParentSearch(value: string) {
+    parentSearch = value;
+    const selected = parentTasks.find(
+      (item) => item.id !== taskId && parentOptionLabel(item) === value
+    );
+    parentTaskId = selected?.id || 0;
   }
 
   onMount(async () => {
@@ -66,6 +68,8 @@
         dueDate = task.due_date || '';
         lastWorked = datetimeLocal(task.last_worked_at);
         parentTaskId = task.parent_task_id || 0;
+        const parent = parentTasks.find((item) => item.id === parentTaskId);
+        parentSearch = parent ? parentOptionLabel(parent) : '';
         assigneeIds = task.assignees.map((item) => item.id);
         tagIds = task.direct_tags.map((item) => item.id);
       }
@@ -246,14 +250,22 @@
           <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
           <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
           <label>Last worked<input type="datetime-local" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
-          <label class="wide parent-picker">
+          <label class="wide">
             Parent task
-            <input type="search" bind:value={parentSearch} placeholder="Search unfinished tasks…" disabled={workspace.role === 'viewer'} />
-            <select bind:value={parentTaskId} disabled={workspace.role === 'viewer'}>
-              <option value={0}>No parent</option>
-              {#each filteredParentTasks as item}<option value={item.id}>{item.title}</option>{/each}
-            </select>
-            <span class="help">Only unfinished tasks are available as parents.</span>
+            <input
+              type="text"
+              list="parent-task-options"
+              value={parentSearch}
+              placeholder="No parent"
+              autocomplete="off"
+              disabled={workspace.role === 'viewer'}
+              on:input={(event) => handleParentSearch(event.currentTarget.value)}
+            />
+            <datalist id="parent-task-options">
+              {#each parentTasks.filter((item) => item.id !== taskId) as item}
+                <option value={parentOptionLabel(item)}></option>
+              {/each}
+            </datalist>
           </label>
         </div>
 
@@ -348,10 +360,6 @@
   .block-action.active {
     border-color: #d8b5a6;
     background: #fff4ee;
-  }
-
-  .parent-picker > input {
-    margin-bottom: .45rem;
   }
 
   .new-tags {
