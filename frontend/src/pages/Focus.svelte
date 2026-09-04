@@ -15,27 +15,22 @@
   let statuses: Status[] = [];
   let currentTask: Task | null = null;
   let phase: Phase = 'focus';
+  let running = false;
   let remainingSeconds = 0;
   let deadline = 0;
   let focusStartedAt = 0;
   let shortBreaksTaken = 0;
-  let breakComplete = false;
   let loading = true;
   let selecting = false;
   let error = '';
   let timer: number;
   let seenTaskVersion = taskVersion;
 
-  function durationSeconds(): number {
+  function durationSeconds(targetPhase: Phase = phase): number {
     if (!settings) return 0;
-    if (phase === 'focus') return settings.focus_minutes * 60;
-    if (phase === 'short-break') return settings.short_break_minutes * 60;
+    if (targetPhase === 'focus') return settings.focus_minutes * 60;
+    if (targetPhase === 'short-break') return settings.short_break_minutes * 60;
     return settings.long_break_minutes * 60;
-  }
-
-  function startTimer(minutes: number) {
-    deadline = Date.now() + minutes * 60_000;
-    remainingSeconds = minutes * 60;
   }
 
   function formatTime(total: number): string {
@@ -48,6 +43,12 @@
     if (phase === 'focus') return 'FOCUS';
     if (phase === 'long-break') return 'LONG BREAK';
     return 'SHORT BREAK';
+  }
+
+  function startLabel(): string {
+    if (phase === 'focus') return 'Start focus';
+    if (phase === 'long-break') return 'Start long break';
+    return 'Start short break';
   }
 
   async function selectNextTask() {
@@ -63,82 +64,111 @@
     }
   }
 
-  async function startFocusInterval() {
+  async function prepareFocus() {
     if (!settings) return;
-    breakComplete = false;
+    const completedLongBreak = phase === 'long-break';
     phase = 'focus';
-    currentTask = null;
-    await selectNextTask();
-    focusStartedAt = Date.now();
-    startTimer(settings.focus_minutes);
+    running = false;
+    deadline = 0;
+    focusStartedAt = 0;
+    remainingSeconds = durationSeconds('focus');
+    if (completedLongBreak) shortBreaksTaken = 0;
+    if (!currentTask) await selectNextTask();
   }
 
-  function startBreak() {
+  function prepareBreak() {
     if (!settings || phase !== 'focus') return;
-    currentTask = null;
-    breakComplete = false;
+    running = false;
+    deadline = 0;
+    focusStartedAt = 0;
 
     if (shortBreaksTaken >= settings.short_breaks_before_long) {
       phase = 'long-break';
-      shortBreaksTaken = 0;
-      startTimer(settings.long_break_minutes);
     } else {
       phase = 'short-break';
       shortBreaksTaken += 1;
-      startTimer(settings.short_break_minutes);
+    }
+    remainingSeconds = durationSeconds();
+  }
+
+  async function startCurrentPeriod() {
+    if (!settings || running) return;
+    if (phase === 'focus' && !currentTask) await selectNextTask();
+    running = true;
+    deadline = Date.now() + durationSeconds() * 1000;
+    remainingSeconds = durationSeconds();
+    if (phase === 'focus') focusStartedAt = Date.now();
+  }
+
+  async function advancePeriod() {
+    if (phase === 'focus') {
+      prepareBreak();
+    } else {
+      await prepareFocus();
     }
   }
 
+  function cutPeriodShort() {
+    if (!running) return;
+    running = false;
+    deadline = 0;
+    void advancePeriod();
+  }
+
   function tick() {
-    if (!deadline || breakComplete) return;
+    if (!running || !deadline) return;
     remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
     if (remainingSeconds > 0) return;
 
-    if (phase === 'focus') {
-      startBreak();
-    } else {
-      breakComplete = true;
-    }
+    running = false;
+    deadline = 0;
+    void advancePeriod();
   }
 
   async function handleTaskChanged(updated: Task) {
     if (!currentTask || updated.id !== currentTask.id || !settings) return;
 
+    if (updated.current_block) {
+      currentTask = null;
+      await selectNextTask();
+      return;
+    }
+
     if (updated.finished_at) {
-      const elapsed = Date.now() - focusStartedAt;
-      if (elapsed > settings.focus_minutes * 60_000 / 2) {
-        startBreak();
-      } else {
+      currentTask = null;
+      const elapsed = focusStartedAt ? Date.now() - focusStartedAt : 0;
+      if (running && phase === 'focus' && elapsed > settings.focus_minutes * 60_000 / 2) {
+        prepareBreak();
+      } else if (phase === 'focus') {
         await selectNextTask();
       }
       return;
     }
 
-    if (updated.current_block) {
-      await selectNextTask();
-      return;
-    }
-
-    // Keep the same selected task even if its score-affecting fields changed.
+    // Score-affecting edits may change future ranking, but never replace the pinned task.
     currentTask = updated;
   }
 
   async function reconcileExternalTaskChange() {
-    if (phase !== 'focus') return;
     if (!currentTask) {
-      await selectNextTask();
+      if (phase === 'focus') await selectNextTask();
       return;
     }
 
     try {
       const refreshed = await api.task(currentTask.id);
       if (refreshed.finished_at || refreshed.current_block) {
-        await selectNextTask();
+        if (phase === 'focus') {
+          await handleTaskChanged(refreshed);
+        } else {
+          currentTask = null;
+        }
       } else {
         currentTask = refreshed;
       }
     } catch {
-      await selectNextTask();
+      currentTask = null;
+      if (phase === 'focus') await selectNextTask();
     }
   }
 
@@ -155,7 +185,7 @@
           api.pomodoroSettings(),
           api.statuses(workspace.id)
         ]);
-        await startFocusInterval();
+        await prepareFocus();
       } catch (reason) {
         error = reason instanceof Error ? reason.message : 'Could not start focus mode';
       } finally {
@@ -182,6 +212,19 @@
     <div class="phase-chip">{phaseLabel()}</div>
     <div class="timer" aria-live="polite">{formatTime(remainingSeconds)}</div>
 
+    <div class="period-controls">
+      {#if running}
+        <span class="running-label">Running</span>
+        <button class="quiet-button period-button" on:click={cutPeriodShort}>
+          {phase === 'focus' ? 'End focus early' : 'End break early'}
+        </button>
+      {:else}
+        <button class="primary period-button" disabled={loading || selecting} on:click={startCurrentPeriod}>
+          {startLabel()}
+        </button>
+      {/if}
+    </div>
+
     {#if settings}
       <div class="cycle-dots" aria-label={`${shortBreaksTaken} short breaks before the next long break`}>
         {#each Array(settings.short_breaks_before_long) as _, index}
@@ -194,15 +237,15 @@
     {#if error}<p class="error" role="alert">{error}</p>{/if}
 
     {#if loading}
-      <section class="focus-placeholder">Preparing your focus session…</section>
+      <section class="focus-placeholder">Preparing your Pomodoro session…</section>
     {:else if phase === 'focus'}
       <section class="focus-task-area">
         <div class="focus-task-heading">
           <div>
-            <p class="eyebrow">Your task for this interval</p>
+            <p class="eyebrow">Your task for this session</p>
             <h1>{currentTask ? 'Focus on this' : 'Nothing actionable right now'}</h1>
           </div>
-          {#if currentTask}<span class="locked-task">Pinned for this interval</span>{/if}
+          {#if currentTask}<span class="locked-task">Pinned until finished or blocked</span>{/if}
         </div>
 
         {#if selecting}
@@ -217,7 +260,7 @@
             on:error={(event) => (error = event.detail)}
           />
           <p class="session-rule">
-            Finishing this task after halfway moves you to break. Before halfway—or when you block it—Focus picks the next highest-scoring task without resetting the timer.
+            This task stays pinned across focus and break periods. Blocking it always picks the next ranked task. Finishing it after more than half of a running focus period prepares the next break; otherwise Focus picks the next task and keeps the current focus period going.
           </p>
         {:else}
           <div class="empty-focus">
@@ -231,11 +274,19 @@
     {:else}
       <section class="break-card">
         <div class="break-icon" aria-hidden="true">☕</div>
-        <h1>{breakComplete ? 'Break complete' : phase === 'long-break' ? 'Take a proper break' : 'Take a short break'}</h1>
-        <p>{breakComplete ? 'Start the next focus interval when you are ready.' : 'Step away from the task. Your next focus interval will re-rank the queue.'}</p>
-        <button class="primary" on:click={startFocusInterval}>
-          {breakComplete ? 'Start next focus' : 'Skip break and focus'}
-        </button>
+        <h1>{running ? 'Take your break' : 'Break ready when you are'}</h1>
+        <p>
+          {#if running}
+            Step away until the timer ends, or end the break early when you are ready to move on.
+          {:else}
+            The break timer will not start until you start it explicitly.
+          {/if}
+        </p>
+        {#if currentTask}
+          <p class="pinned-note"><strong>{currentTask.title}</strong> remains pinned for the next focus period.</p>
+        {:else}
+          <p class="pinned-note">Your next task will be ranked when the next focus period is prepared.</p>
+        {/if}
       </section>
     {/if}
   </main>
@@ -263,7 +314,8 @@
   }
 
   .focus-brand,
-  .focus-header-actions {
+  .focus-header-actions,
+  .period-controls {
     display: flex;
     align-items: center;
     gap: .65rem;
@@ -322,6 +374,29 @@
     letter-spacing: -.06em;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+  }
+
+  .period-controls {
+    justify-content: center;
+    margin-top: 1rem;
+  }
+
+  .period-button {
+    min-width: 9rem;
+  }
+
+  .running-label {
+    border-radius: 999px;
+    background: rgba(166, 80, 56, .1);
+    color: #8e4b37;
+    padding: .34rem .58rem;
+    font-size: .72rem;
+    font-weight: 800;
+  }
+
+  .break-mode .running-label {
+    background: rgba(55, 95, 75, .1);
+    color: var(--forest-2);
   }
 
   .cycle-dots {
@@ -418,6 +493,13 @@
     margin: 0 auto 1rem;
     color: var(--muted);
     line-height: 1.5;
+  }
+
+  .break-card .pinned-note {
+    margin-top: 1.2rem;
+    border-top: 1px solid rgba(100, 95, 80, .12);
+    padding-top: 1rem;
+    font-size: .82rem;
   }
 
   @media (max-width: 640px) {
