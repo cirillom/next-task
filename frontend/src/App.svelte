@@ -6,6 +6,7 @@
   import Next from './pages/Next.svelte';
   import Settings from './pages/Settings.svelte';
   import Tags from './pages/Tags.svelte';
+  import TextToTask from './lib/components/TextToTask.svelte';
   import TaskEditor from './pages/TaskEditor.svelte';
   import Tasks from './pages/Tasks.svelte';
   import Workspaces from './pages/Workspaces.svelte';
@@ -27,6 +28,7 @@
   let loading = true;
   let error = '';
   let editorTaskId: number | null = null;
+  let textToTaskOpen = false;
   let refreshKey = 0;
   let firstWorkspaceName = '';
 
@@ -75,7 +77,12 @@
   <div class="app-shell">
     <header class="topbar">
       <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>Next Task</strong></button>
-      {#if workspace}<label class="workspace-switcher"><span>Workspace</span><select value={workspace.id} on:change={(event) => selectWorkspace(Number(event.currentTarget.value))}>{#each workspaces as item}<option value={item.id}>{item.name}</option>{/each}</select></label>{/if}
+      {#if workspace}
+        <div class="workspace-tools">
+          <label class="workspace-switcher"><span>Workspace</span><select value={workspace.id} on:change={(event) => selectWorkspace(Number(event.currentTarget.value))}>{#each workspaces as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
+          {#if workspace.role !== 'viewer'}<button class="primary ai-task-button" on:click={() => (textToTaskOpen = true)}>✨ <span>Text to task</span></button>{/if}
+        </div>
+      {/if}
       <div class="account"><span>{user.display_name}</span><button on:click={logout}>Sign out</button></div>
     </header>
     <aside class="sidebar"><nav aria-label="Primary navigation">{#each nav as item}<button class:active={view === item.id} on:click={() => navigate(item.id)}><span>{item.icon}</span>{item.label}</button>{/each}</nav>{#if workspace}<div class="role-badge">{workspace.role}</div>{/if}</aside>
@@ -96,4 +103,16 @@
     <nav class="mobile-nav" aria-label="Primary navigation">{#each nav as item}<button class:active={view === item.id} on:click={() => navigate(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>{/each}</nav>
   </div>
   {#if workspace && editorTaskId !== null}<TaskEditor {workspace} taskId={editorTaskId} on:close={() => (editorTaskId = null)} on:saved={() => { editorTaskId = null; refreshKey += 1; }} on:deleted={() => { editorTaskId = null; refreshKey += 1; }} />{/if}
+  {#if workspace && textToTaskOpen}<TextToTask {workspace} on:close={() => (textToTaskOpen = false)} on:saved={() => { textToTaskOpen = false; refreshKey += 1; }} />{/if}
 {/if}
+
+<style>
+  .workspace-tools { min-width: 0; display: flex; align-items: center; gap: .7rem; }
+  .workspace-tools .workspace-switcher { flex: 1; }
+  .ai-task-button { flex: 0 0 auto; white-space: nowrap; padding: .55rem .75rem; }
+  @media (max-width: 760px) {
+    .workspace-tools { min-width: 0; }
+    .ai-task-button span { display: none; }
+    .ai-task-button { padding: .5rem .6rem; }
+  }
+</style>

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +13,8 @@ class Settings(BaseSettings):
     session_cookie_name: str = "next_task_session"
     session_ttl_days: int = 30
     cookie_secure: bool = False
+    credential_secret: SecretStr = SecretStr("")
+    gemini_model: str = "gemini-3.8-flash"
 
 
 @lru_cache

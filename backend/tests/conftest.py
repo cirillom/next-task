@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 os.environ["NEXT_TASK_DATABASE_URL"] = "sqlite:///./data/test-next-task.sqlite3"
 os.environ["NEXT_TASK_COOKIE_SECURE"] = "false"
+os.environ["NEXT_TASK_CREDENTIAL_SECRET"] = "test-credential-secret-at-least-thirty-two-characters"
 
 from app.auth.security import hash_password  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402

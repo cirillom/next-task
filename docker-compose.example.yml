@@ -9,6 +9,7 @@ services:
     environment:
       TZ: America/Sao_Paulo
       NEXT_TASK_COOKIE_SECURE: "true"
+      NEXT_TASK_CREDENTIAL_SECRET: "${NEXT_TASK_CREDENTIAL_SECRET:?set NEXT_TASK_CREDENTIAL_SECRET in services/.env}"
 
     volumes:
       - /mnt/hdd/next-task/data:/data

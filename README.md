@@ -37,8 +37,8 @@ The tag must match the version in both `pyproject.toml` and
 `frontend/package.json`:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The homeserver keeps only deployment configuration in `~/services/next-task`.
@@ -124,6 +124,27 @@ uv run alembic check
 
 Rollback one revision during development with `uv run alembic downgrade -1`.
 Never replace migrations with `Base.metadata.create_all()` in production.
+
+## Gemini text to task
+
+Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
+After selecting a workspace, editors and owners can use **Text to task** in the top
+bar, describe one task naturally, and review an editable draft before anything is
+created. The review includes title, Markdown description, status, priority, due date,
+assignees, existing tags, and suggested new tags.
+
+Drafting sends the entered text plus the selected workspace statuses, members, and tag
+names to Gemini. The personal API key is encrypted in SQLite and is never returned to
+the browser after it is saved. Server-side encryption requires a stable value of at
+least 32 characters:
+
+```dotenv
+NEXT_TASK_CREDENTIAL_SECRET=<random value kept outside Git>
+```
+
+Set it before the first API key is saved and keep it unchanged across deployments. If
+it is lost or replaced, users must save their Gemini keys again.
+`NEXT_TASK_GEMINI_MODEL` optionally overrides the default Flash model.
 
 ## Scoring formulas
 
