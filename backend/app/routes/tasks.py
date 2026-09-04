@@ -242,3 +242,36 @@ def unblock_task(
     db.commit()
     db.refresh(task)
     return task_read(db, task)
+
+
+@router.post("/{task_id}/reblock", response_model=TaskRead)
+def reblock_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    task = get_task_for_user(db, task_id, user)
+    require_editor(db, task.workspace_id, user)
+    active = db.scalar(
+        select(TaskBlock).where(TaskBlock.task_id == task.id, TaskBlock.unblocked_at.is_(None))
+    )
+    if active is not None:
+        raise HTTPException(status_code=409, detail="Task is already blocked")
+
+    previous = db.scalar(
+        select(TaskBlock)
+        .where(TaskBlock.task_id == task.id)
+        .order_by(TaskBlock.blocked_at.desc(), TaskBlock.id.desc())
+        .limit(1)
+    )
+    if previous is None:
+        raise HTTPException(status_code=409, detail="Task has no previous block to restore")
+
+    previous.unblocked_at = None
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Task is already blocked") from error
+    db.refresh(task)
+    return task_read(db, task)
