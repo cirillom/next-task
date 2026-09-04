@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
+  import Markdown from './Markdown.svelte';
 
   export let task: Task;
   export let statuses: Status[] = [];
@@ -9,6 +10,7 @@
 
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string }>();
   let busy = false;
+  let descriptionExpanded = false;
 
   async function act(action: () => Promise<Task>) {
     busy = true;
@@ -32,6 +34,20 @@
     <button class="title-button" on:click={() => dispatch('open', task.id)}>{task.title}</button>
     <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
   </div>
+
+  {#if task.description}
+    <div class:expanded={descriptionExpanded} class="task-description">
+      <Markdown source={task.description} />
+    </div>
+    <button
+      type="button"
+      class="description-toggle"
+      aria-expanded={descriptionExpanded}
+      on:click={() => (descriptionExpanded = !descriptionExpanded)}
+    >
+      {descriptionExpanded ? 'Collapse description' : 'Expand description'}
+    </button>
+  {/if}
 
   <div class="meta-row">
     <span class="priority">P{task.priority}</span>
@@ -78,3 +94,32 @@
   {/if}
 </article>
 
+<style>
+  .task-description {
+    width: 100%;
+    height: 7rem;
+    margin-top: .6rem;
+    overflow-y: auto;
+    padding: .65rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: .55rem;
+    background: #faf8f2;
+  }
+
+  .task-description.expanded {
+    height: auto;
+    overflow-y: visible;
+  }
+
+  .description-toggle {
+    margin-top: .35rem;
+    border: 0;
+    background: transparent;
+    color: var(--forest-2);
+    padding: .15rem 0;
+    font-size: .8rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: .15rem;
+  }
+</style>
