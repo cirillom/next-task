@@ -6,7 +6,12 @@
   export let history: Block[] = [];
   export let busy = false;
 
-  const dispatch = createEventDispatcher<{ close: void; block: string; reblock: void }>();
+  const dispatch = createEventDispatcher<{
+    close: void;
+    block: string;
+    reblock: void;
+    deleteBlock: number;
+  }>();
   let reason = '';
 
   function close() {
@@ -20,6 +25,10 @@
 
   function reblock() {
     if (!busy) dispatch('reblock');
+  }
+
+  function deleteBlock(blockId: number) {
+    if (!busy) dispatch('deleteBlock', blockId);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -69,11 +78,27 @@
               <li class:active={!block.unblocked_at}>
                 <div class="block-history__top">
                   <strong>{block.reason}</strong>
-                  {#if index === 0 && block.unblocked_at}
-                    <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
-                      {busy ? 'Reblocking…' : 'Reblock with this reason'}
-                    </button>
-                  {/if}
+                  <div class="history-actions">
+                    {#if index === 0 && block.unblocked_at}
+                      <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
+                        {busy ? 'Reblocking…' : 'Reblock with this reason'}
+                      </button>
+                    {/if}
+                    {#if block.unblocked_at}
+                      <button
+                        type="button"
+                        class="trash-button"
+                        aria-label="Delete blocking reason"
+                        title="Delete blocking reason"
+                        disabled={busy}
+                        on:click={() => deleteBlock(block.id)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" />
+                        </svg>
+                      </button>
+                    {/if}
+                  </div>
                 </div>
                 <span>Blocked {formatDate(block.blocked_at)}</span>
                 <span>{block.unblocked_at ? `Unblocked ${formatDate(block.unblocked_at)}` : 'Currently active'}</span>
@@ -199,8 +224,14 @@
     font-size: .78rem;
   }
 
-  .reblock-button {
+  .history-actions {
+    display: flex;
     flex: 0 0 auto;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .reblock-button {
     border: 1px solid #bdb7aa;
     border-radius: .45rem;
     background: #fff;
@@ -208,6 +239,34 @@
     padding: .4rem .55rem;
     font-size: .76rem;
     font-weight: 700;
+  }
+
+  .trash-button {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--muted);
+    padding: 0;
+  }
+
+  .trash-button:hover:not(:disabled),
+  .trash-button:focus-visible {
+    background: #fff;
+    color: #9a4f3f;
+  }
+
+  .trash-button svg {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
   }
 
   .history-empty {
@@ -242,8 +301,8 @@
       flex-direction: column;
     }
 
-    .reblock-button {
-      align-self: flex-start;
+    .history-actions {
+      justify-content: space-between;
     }
   }
 </style>
