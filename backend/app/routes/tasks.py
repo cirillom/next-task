@@ -292,7 +292,7 @@ def delete_block_history_entry(
     if block is None:
         raise HTTPException(status_code=404, detail="Blocking history entry not found")
     if block.unblocked_at is None:
-        raise HTTPException(status_code=409, detail="Active block must be unblocked before deletion")
+        raise HTTPException(status_code=409, detail="Active blocks cannot be deleted")
 
     db.delete(block)
     db.commit()
