@@ -8,7 +8,6 @@
 
   const dispatch = createEventDispatcher<{ close: void; block: string }>();
   let reason = '';
-  $: lastBlock = history[0] ?? null;
 
   function close() {
     if (!busy) dispatch('close');
@@ -19,8 +18,8 @@
     if (trimmed && !busy) dispatch('block', trimmed);
   }
 
-  function reblockLastReason() {
-    if (lastBlock && !busy) dispatch('block', lastBlock.reason);
+  function reblock(block: Block) {
+    if (!busy) dispatch('block', block.reason);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -46,23 +45,7 @@
     </header>
 
     <form on:submit|preventDefault={submit}>
-      {#if lastBlock}
-        <section class="previous-blocker" aria-labelledby="previous-blocker-title">
-          <div>
-            <span class="field-label" id="previous-blocker-title">Previous blocker</span>
-            <strong>{lastBlock.reason}</strong>
-            <span class="previous-blocker__time">
-              Last blocked {formatDate(lastBlock.blocked_at)}
-              {#if lastBlock.unblocked_at} · unblocked {formatDate(lastBlock.unblocked_at)}{/if}
-            </span>
-          </div>
-          <button type="button" class="reblock-button" disabled={busy} on:click={reblockLastReason}>
-            {busy ? 'Blocking…' : 'Reblock with this reason'}
-          </button>
-        </section>
-      {/if}
-
-      <label class="reason-field">
+      <label>
         Blocking reason
         <textarea
           bind:value={reason}
@@ -82,9 +65,16 @@
 
         {#if history.length}
           <ol class="block-history">
-            {#each history as block}
+            {#each history as block, index}
               <li class:active={!block.unblocked_at}>
-                <strong>{block.reason}</strong>
+                <div class="block-history__top">
+                  <strong>{block.reason}</strong>
+                  {#if index === 0 && block.unblocked_at}
+                    <button type="button" class="reblock-button" disabled={busy} on:click={() => reblock(block)}>
+                      {busy ? 'Reblocking…' : 'Reblock with this reason'}
+                    </button>
+                  {/if}
+                </div>
                 <span>Blocked {formatDate(block.blocked_at)}</span>
                 <span>{block.unblocked_at ? `Unblocked ${formatDate(block.unblocked_at)}` : 'Currently active'}</span>
               </li>
@@ -137,48 +127,6 @@
     display: grid;
     gap: 0;
     padding: 1.25rem 1.4rem 0;
-  }
-
-  .previous-blocker {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1.1rem;
-    border: 1px solid #d9c9a7;
-    border-radius: .7rem;
-    background: #faf3e3;
-    padding: .85rem .9rem;
-  }
-
-  .previous-blocker > div {
-    min-width: 0;
-    display: grid;
-    gap: .22rem;
-  }
-
-  .previous-blocker strong {
-    overflow-wrap: anywhere;
-  }
-
-  .previous-blocker__time {
-    color: var(--muted);
-    font-size: .76rem;
-  }
-
-  .reblock-button {
-    flex: 0 0 auto;
-    border: 1px solid #b69657;
-    border-radius: .55rem;
-    background: #fffaf0;
-    color: var(--ink);
-    padding: .6rem .75rem;
-    font-weight: 700;
-  }
-
-  .reason-field {
-    border-top: 1px solid var(--line);
-    padding-top: 1.05rem;
   }
 
   textarea {
@@ -234,9 +182,32 @@
     background: #f8e6dc;
   }
 
+  .block-history__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+  }
+
+  .block-history__top strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .block-history span {
     color: var(--muted);
     font-size: .78rem;
+  }
+
+  .reblock-button {
+    flex: 0 0 auto;
+    border: 1px solid #bdb7aa;
+    border-radius: .45rem;
+    background: #fff;
+    color: var(--forest-2);
+    padding: .4rem .55rem;
+    font-size: .76rem;
+    font-weight: 700;
   }
 
   .history-empty {
@@ -266,13 +237,13 @@
   }
 
   @media (max-width: 600px) {
-    .previous-blocker {
+    .block-history__top {
       align-items: stretch;
       flex-direction: column;
     }
 
     .reblock-button {
-      width: 100%;
+      align-self: flex-start;
     }
   }
 </style>
