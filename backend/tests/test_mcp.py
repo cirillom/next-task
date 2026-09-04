@@ -120,11 +120,19 @@ def test_oauth_discovery_supports_chatgpt_and_rfc_paths() -> None:
     with TestClient(create_app(), base_url=MCP_BASE_URL) as client:
         root_metadata = client.get("/.well-known/oauth-protected-resource")
         resource_metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+        authorization_metadata = client.get("/.well-known/oauth-authorization-server")
 
     assert root_metadata.status_code == 200
     assert root_metadata.json() == expected
     assert resource_metadata.status_code == 200
     assert resource_metadata.json() == expected
+    assert authorization_metadata.status_code == 200
+    assert authorization_metadata.json()["registration_endpoint"] == f"{MCP_BASE_URL}/register"
+    assert authorization_metadata.json()["token_endpoint_auth_methods_supported"] == [
+        "none",
+        "client_secret_post",
+        "client_secret_basic",
+    ]
 
 
 def test_rejects_non_chatgpt_oauth_redirect() -> None:

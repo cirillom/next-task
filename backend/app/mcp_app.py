@@ -8,6 +8,8 @@ from mcp.server.auth.settings import (
 )
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from app.config import get_settings
 from app.mcp_oauth import SCOPES, NextTaskOAuthProvider, install_oauth_routes
@@ -51,7 +53,7 @@ def create_app():
     install_tools(server)
     install_oauth_routes(server, provider)
 
-    return server.streamable_http_app(
+    app = server.streamable_http_app(
         streamable_http_path="/mcp",
         stateless_http=True,
         json_response=True,
@@ -67,6 +69,46 @@ def create_app():
             allowed_origins=[public_url, "https://chatgpt.com"],
         ),
     )
+
+    async def oauth_authorization_server_metadata(_request):
+        return JSONResponse(
+            {
+                "issuer": public_url,
+                "authorization_endpoint": f"{public_url}/authorize",
+                "token_endpoint": f"{public_url}/token",
+                "registration_endpoint": f"{public_url}/register",
+                "scopes_supported": SCOPES,
+                "response_types_supported": ["code"],
+                "grant_types_supported": ["authorization_code", "refresh_token"],
+                "token_endpoint_auth_methods_supported": [
+                    "none",
+                    "client_secret_post",
+                    "client_secret_basic",
+                ],
+                "revocation_endpoint": f"{public_url}/revoke",
+                "revocation_endpoint_auth_methods_supported": [
+                    "none",
+                    "client_secret_post",
+                    "client_secret_basic",
+                ],
+                "code_challenge_methods_supported": ["S256"],
+            },
+            headers={
+                "Cache-Control": "public, max-age=300",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+            },
+        )
+
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/oauth-authorization-server",
+            endpoint=oauth_authorization_server_metadata,
+            methods=["GET", "OPTIONS"],
+        ),
+    )
+    return app
 
 
 app = create_app()
