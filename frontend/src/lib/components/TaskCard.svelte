@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
+  import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
   export let task: Task;
@@ -11,6 +12,7 @@
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string }>();
   let busy = false;
   let descriptionExpanded = false;
+  let blockModalOpen = false;
 
   async function act(action: () => Promise<Task>) {
     busy = true;
@@ -23,9 +25,35 @@
     }
   }
 
-  function block() {
-    const reason = window.prompt('Why is this task blocked?');
-    if (reason?.trim()) void act(() => api.blockTask(task.id, reason.trim()));
+  async function runBlockingAction(action: () => Promise<Task>, fallbackMessage: string) {
+    busy = true;
+    try {
+      dispatch('changed', await action());
+      blockModalOpen = false;
+    } catch (error) {
+      dispatch('error', error instanceof Error ? error.message : fallbackMessage);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function block(reason: string) {
+    void runBlockingAction(() => api.blockTask(task.id, reason), 'Could not block task');
+  }
+
+  function reblock() {
+    void runBlockingAction(() => api.reblockTask(task.id), 'Could not reblock task');
+  }
+
+  async function deleteBlock(blockId: number) {
+    busy = true;
+    try {
+      dispatch('changed', await api.deleteBlock(task.id, blockId));
+    } catch (error) {
+      dispatch('error', error instanceof Error ? error.message : 'Could not delete blocking reason');
+    } finally {
+      busy = false;
+    }
   }
 </script>
 
@@ -74,7 +102,7 @@
       <button disabled={busy} on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}>
         {task.finished_at ? 'Reopen' : 'Finish'}
       </button>
-      <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : block()}>
+      <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
         {task.current_block ? 'Unblock' : 'Block'}
       </button>
       <select
@@ -93,6 +121,18 @@
     </div>
   {/if}
 </article>
+
+{#if blockModalOpen}
+  <BlockTaskModal
+    taskTitle={task.title}
+    history={task.blocking_history}
+    {busy}
+    on:close={() => (blockModalOpen = false)}
+    on:block={(event) => block(event.detail)}
+    on:reblock={reblock}
+    on:deleteBlock={(event) => deleteBlock(event.detail)}
+  />
+{/if}
 
 <style>
   .task-description {
