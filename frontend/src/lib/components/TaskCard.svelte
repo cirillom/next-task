@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
+  import Markdown from './Markdown.svelte';
 
   export let task: Task;
   export let statuses: Status[] = [];
@@ -32,6 +33,10 @@
     <button class="title-button" on:click={() => dispatch('open', task.id)}>{task.title}</button>
     <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
   </div>
+
+  {#if task.description}
+    <Markdown source={task.description} />
+  {/if}
 
   <div class="meta-row">
     <span class="priority">P{task.priority}</span>
@@ -77,4 +82,3 @@
     </div>
   {/if}
 </article>
-
