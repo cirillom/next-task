@@ -16,16 +16,30 @@
   let loading = true;
   let searchTimer: number;
 
-  function finishedParam(): boolean | null {
-    if (finishedFilter === 'all') return null;
-    return finishedFilter === 'finished';
-  }
-
   function matchesCurrentFilter(task: Task): boolean {
     return (
       finishedFilter === 'all' ||
       (finishedFilter === 'finished' ? Boolean(task.finished_at) : !task.finished_at)
     );
+  }
+
+  function sortTasks(items: Task[]): Task[] {
+    return items.sort((a, b) => b.score - a.score || a.id - b.id);
+  }
+
+  async function loadTasks(): Promise<Task[]> {
+    if (finishedFilter === 'all') {
+      const [unfinished, finished] = await Promise.all([
+        api.tasks(workspace.id, { finished: false, search }),
+        api.tasks(workspace.id, { finished: true, search })
+      ]);
+      return sortTasks([...unfinished, ...finished]);
+    }
+
+    return api.tasks(workspace.id, {
+      finished: finishedFilter === 'finished',
+      search
+    });
   }
 
   async function load() {
@@ -34,10 +48,7 @@
     try {
       [statuses, tasks] = await Promise.all([
         api.statuses(workspace.id),
-        api.tasks(workspace.id, {
-          finished: finishedParam(),
-          search
-        })
+        loadTasks()
       ]);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tasks';
@@ -55,7 +66,7 @@
     if (!matchesCurrentFilter(updated)) {
       tasks = tasks.filter((task) => task.id !== updated.id);
     } else {
-      tasks = tasks.map((task) => (task.id === updated.id ? updated : task));
+      tasks = sortTasks(tasks.map((task) => (task.id === updated.id ? updated : task)));
     }
   }
 
