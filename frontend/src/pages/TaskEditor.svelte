@@ -14,6 +14,7 @@
   let tags: Tag[] = [];
   let members: Member[] = [];
   let parentTasks: Task[] = [];
+  let filteredParentTasks: Task[] = [];
   let title = '';
   let description = '';
   let statusId = 0;
@@ -21,7 +22,8 @@
   let dueDate = '';
   let lastWorked = '';
   let parentTaskId = 0;
-  let parentSearch = '';
+  let parentQuery = '';
+  let parentPickerOpen = false;
   let assigneeIds: number[] = [];
   let tagIds: number[] = [];
   let newTags = '';
@@ -30,6 +32,15 @@
   let busy = false;
   let blockModalOpen = false;
   let error = '';
+
+  $: {
+    const needle = parentQuery.trim().toLowerCase();
+    filteredParentTasks = parentTasks.filter(
+      (item) =>
+        item.id !== taskId &&
+        (!needle || parentOptionLabel(item).toLowerCase().includes(needle))
+    );
+  }
 
   function datetimeLocal(value: string | null): string {
     if (!value) return '';
@@ -42,12 +53,21 @@
     return `${item.title} (#${item.id})`;
   }
 
-  function handleParentSearch(value: string) {
-    parentSearch = value;
-    const selected = parentTasks.find(
-      (item) => item.id !== taskId && parentOptionLabel(item) === value
-    );
-    parentTaskId = selected?.id || 0;
+  function selectedParentLabel(): string {
+    const selected = parentTasks.find((item) => item.id === parentTaskId);
+    return selected ? parentOptionLabel(selected) : '';
+  }
+
+  function openParentPicker() {
+    if (workspace.role === 'viewer') return;
+    parentPickerOpen = true;
+    parentQuery = '';
+  }
+
+  function selectParent(item: Task | null) {
+    parentTaskId = item?.id || 0;
+    parentQuery = '';
+    parentPickerOpen = false;
   }
 
   onMount(async () => {
@@ -68,8 +88,6 @@
         dueDate = task.due_date || '';
         lastWorked = datetimeLocal(task.last_worked_at);
         parentTaskId = task.parent_task_id || 0;
-        const parent = parentTasks.find((item) => item.id === parentTaskId);
-        parentSearch = parent ? parentOptionLabel(parent) : '';
         assigneeIds = task.assignees.map((item) => item.id);
         tagIds = task.direct_tags.map((item) => item.id);
       }
@@ -250,23 +268,51 @@
           <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
           <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
           <label>Last worked<input type="datetime-local" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
-          <label class="wide">
-            Parent task
-            <input
-              type="text"
-              list="parent-task-options"
-              value={parentSearch}
-              placeholder="No parent"
-              autocomplete="off"
-              disabled={workspace.role === 'viewer'}
-              on:input={(event) => handleParentSearch(event.currentTarget.value)}
-            />
-            <datalist id="parent-task-options">
-              {#each parentTasks.filter((item) => item.id !== taskId) as item}
-                <option value={parentOptionLabel(item)}></option>
-              {/each}
-            </datalist>
-          </label>
+          <div class="wide parent-field">
+            <label for="parent-task-search">Parent task</label>
+            <div class="parent-picker">
+              <input
+                id="parent-task-search"
+                type="text"
+                value={parentPickerOpen ? parentQuery : selectedParentLabel()}
+                placeholder="No parent"
+                autocomplete="off"
+                role="combobox"
+                aria-expanded={parentPickerOpen}
+                aria-controls="parent-task-options"
+                disabled={workspace.role === 'viewer'}
+                on:focus={openParentPicker}
+                on:click={openParentPicker}
+                on:input={(event) => {
+                  parentPickerOpen = true;
+                  parentQuery = event.currentTarget.value;
+                }}
+                on:keydown={(event) => {
+                  if (event.key === 'Escape') parentPickerOpen = false;
+                }}
+              />
+              {#if parentPickerOpen}
+                <div id="parent-task-options" class="parent-options" role="listbox">
+                  {#if !parentQuery.trim()}
+                    <button type="button" class="parent-option muted-option" on:mousedown|preventDefault={() => selectParent(null)}>No parent</button>
+                  {/if}
+                  {#each filteredParentTasks as item}
+                    <button
+                      type="button"
+                      class="parent-option"
+                      class:selected={item.id === parentTaskId}
+                      on:mousedown|preventDefault={() => selectParent(item)}
+                    >
+                      {parentOptionLabel(item)}
+                    </button>
+                  {/each}
+                  {#if !filteredParentTasks.length}
+                    <div class="parent-empty">No matching tasks</div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
         </div>
 
         <div class="mobile-tabs"><button type="button" class:active={mobileTab === 'edit'} on:click={() => (mobileTab = 'edit')}>Edit</button><button type="button" class:active={mobileTab === 'preview'} on:click={() => (mobileTab = 'preview')}>Preview</button></div>
@@ -360,6 +406,57 @@
   .block-action.active {
     border-color: #d8b5a6;
     background: #fff4ee;
+  }
+
+  .parent-field > label {
+    display: block;
+    margin-bottom: .35rem;
+  }
+
+  .parent-picker {
+    position: relative;
+  }
+
+  .parent-options {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + .25rem);
+    left: 0;
+    right: 0;
+    max-height: 14rem;
+    overflow-y: auto;
+    border: 1px solid #cfcbc0;
+    border-radius: .55rem;
+    background: #fff;
+    box-shadow: 0 .45rem 1rem rgba(50, 45, 38, .12);
+    padding: .25rem;
+  }
+
+  .parent-option {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    padding: .5rem .6rem;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+  }
+
+  .parent-option:hover,
+  .parent-option.selected {
+    background: #f3f0e8;
+  }
+
+  .muted-option {
+    color: #6f6b62;
+  }
+
+  .parent-empty {
+    padding: .55rem .6rem;
+    color: #777168;
+    font-size: .85rem;
   }
 
   .new-tags {
