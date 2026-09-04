@@ -85,8 +85,7 @@
   function closeParent() {
     parentOpen = false;
     if (!parentDirty) return;
-    const selected = parentTasks.find((item) => item.id === parentTaskId);
-    parentSearch = selected ? parentOptionLabel(selected) : '';
+    parentSearch = '';
     parentDirty = false;
   }
 
