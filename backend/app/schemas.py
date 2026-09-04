@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -10,6 +10,14 @@ def clean_required(value: str, tag: bool = False) -> str:
     if not cleaned:
         raise ValueError("Value cannot be blank")
     return cleaned
+
+
+def ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class ApiModel(BaseModel):
@@ -123,6 +131,11 @@ class BlockRead(ApiModel):
     reason: str
     blocked_at: datetime
     unblocked_at: datetime | None
+
+    @field_validator("blocked_at", "unblocked_at", mode="before")
+    @classmethod
+    def normalize_timestamps(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc(value)
 
 
 class TaskSummary(ApiModel):
