@@ -87,3 +87,9 @@ export interface TaskInput {
   tag_ids: number[];
 }
 
+export interface PomodoroSettings {
+  focus_minutes: number;
+  short_break_minutes: number;
+  long_break_minutes: number;
+  short_breaks_before_long: number;
+}
