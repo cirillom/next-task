@@ -8,6 +8,7 @@
 
   const dispatch = createEventDispatcher<{ close: void; block: string }>();
   let reason = '';
+  $: lastBlock = history[0] ?? null;
 
   function close() {
     if (!busy) dispatch('close');
@@ -16,6 +17,10 @@
   function submit() {
     const trimmed = reason.trim();
     if (trimmed && !busy) dispatch('block', trimmed);
+  }
+
+  function reblockLastReason() {
+    if (lastBlock && !busy) dispatch('block', lastBlock.reason);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -41,7 +46,23 @@
     </header>
 
     <form on:submit|preventDefault={submit}>
-      <label>
+      {#if lastBlock}
+        <section class="previous-blocker" aria-labelledby="previous-blocker-title">
+          <div>
+            <span class="field-label" id="previous-blocker-title">Previous blocker</span>
+            <strong>{lastBlock.reason}</strong>
+            <span class="previous-blocker__time">
+              Last blocked {formatDate(lastBlock.blocked_at)}
+              {#if lastBlock.unblocked_at} · unblocked {formatDate(lastBlock.unblocked_at)}{/if}
+            </span>
+          </div>
+          <button type="button" class="reblock-button" disabled={busy} on:click={reblockLastReason}>
+            {busy ? 'Blocking…' : 'Reblock with this reason'}
+          </button>
+        </section>
+      {/if}
+
+      <label class="reason-field">
         Blocking reason
         <textarea
           bind:value={reason}
@@ -116,6 +137,48 @@
     display: grid;
     gap: 0;
     padding: 1.25rem 1.4rem 0;
+  }
+
+  .previous-blocker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+    border: 1px solid #d9c9a7;
+    border-radius: .7rem;
+    background: #faf3e3;
+    padding: .85rem .9rem;
+  }
+
+  .previous-blocker > div {
+    min-width: 0;
+    display: grid;
+    gap: .22rem;
+  }
+
+  .previous-blocker strong {
+    overflow-wrap: anywhere;
+  }
+
+  .previous-blocker__time {
+    color: var(--muted);
+    font-size: .76rem;
+  }
+
+  .reblock-button {
+    flex: 0 0 auto;
+    border: 1px solid #b69657;
+    border-radius: .55rem;
+    background: #fffaf0;
+    color: var(--ink);
+    padding: .6rem .75rem;
+    font-weight: 700;
+  }
+
+  .reason-field {
+    border-top: 1px solid var(--line);
+    padding-top: 1.05rem;
   }
 
   textarea {
@@ -200,5 +263,16 @@
     background: #fff;
     color: var(--ink);
     padding: .65rem .9rem;
+  }
+
+  @media (max-width: 600px) {
+    .previous-blocker {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .reblock-button {
+      width: 100%;
+    }
   }
 </style>
