@@ -185,7 +185,6 @@
       return;
     }
 
-    // Score-affecting edits may change future ranking, but never replace the pinned task.
     currentTask = updated;
   }
 
