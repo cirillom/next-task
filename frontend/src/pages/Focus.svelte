@@ -719,15 +719,15 @@
     border-radius: .45rem;
     background: rgba(255, 255, 255, .72);
     color: var(--forest-2);
-    padding: .28rem .48rem;
-    font-size: .7rem;
+    padding: .26rem .42rem;
+    font-size: .68rem;
     font-weight: 800;
     line-height: 1;
   }
 
   .unblock-task-button svg {
-    width: .8rem;
-    height: .8rem;
+    width: .78rem;
+    height: .78rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;
