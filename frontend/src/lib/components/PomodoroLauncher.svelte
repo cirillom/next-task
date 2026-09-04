@@ -1,10 +1,13 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
-  import type { PomodoroSettings } from '../api/types';
+  import type { PomodoroSettings, Tag } from '../api/types';
 
-  const dispatch = createEventDispatcher<{ start: void }>();
+  export let tags: Tag[] = [];
+
+  const dispatch = createEventDispatcher<{ start: number | null }>();
   let settings: PomodoroSettings | null = null;
+  let selectedTagId = '';
   let error = '';
 
   onMount(async () => {
@@ -14,6 +17,10 @@
       error = reason instanceof Error ? reason.message : 'Could not load Pomodoro settings';
     }
   });
+
+  function startSession() {
+    dispatch('start', selectedTagId ? Number(selectedTagId) : null);
+  }
 </script>
 
 <section class="pomodoro-launcher" aria-label="Pomodoro focus">
@@ -24,6 +31,7 @@
       <path d="M12.2 5.3c1.15-.7 2.25-.8 3.3-.35" />
     </svg>
   </div>
+
   <div class="pomodoro-copy">
     <p class="eyebrow">Focus mode</p>
     <h2>Start a Pomodoro</h2>
@@ -35,16 +43,28 @@
       <p>Loading your focus rhythm…</p>
     {/if}
   </div>
-  <button class="primary start-button" disabled={!settings} on:click={() => dispatch('start')}>
+
+  <label class="tag-filter">
+    <span>Session tag</span>
+    <select bind:value={selectedTagId}>
+      <option value="">All tags</option>
+      {#each tags as tag}
+        <option value={tag.id}>#{tag.name}</option>
+      {/each}
+    </select>
+    <small>Includes child tags.</small>
+  </label>
+
+  <button class="primary start-button" disabled={!settings} on:click={startSession}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
-    Start focus
+    Start session
   </button>
 </section>
 
 <style>
   .pomodoro-launcher {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) minmax(10rem, 14rem) auto;
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
@@ -100,6 +120,24 @@
     font-size: .82rem;
   }
 
+  .tag-filter {
+    display: grid;
+    gap: .2rem;
+    margin: 0;
+    font-size: .72rem;
+    font-weight: 800;
+  }
+
+  .tag-filter select {
+    min-width: 0;
+  }
+
+  .tag-filter small {
+    color: var(--muted);
+    font-size: .68rem;
+    font-weight: 500;
+  }
+
   .start-button {
     display: inline-flex;
     align-items: center;
@@ -107,9 +145,13 @@
     white-space: nowrap;
   }
 
-  @media (max-width: 680px) {
+  @media (max-width: 840px) {
     .pomodoro-launcher {
       grid-template-columns: auto 1fr;
+    }
+
+    .tag-filter {
+      grid-column: 1 / -1;
     }
 
     .start-button {
