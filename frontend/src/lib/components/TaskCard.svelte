@@ -99,7 +99,7 @@
   {/if}
 
   <div class="meta-row">
-    <span class="priority">P{task.priority}</span>
+    <span class="priority" title="Priority">{task.priority}</span>
     <span>{task.status.name}</span>
     {#if task.due_date}<span class:overdue={!task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}>Due {task.due_date}</span>{/if}
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
@@ -168,14 +168,19 @@
         {/if}
       </button>
 
-      <select
-        aria-label="Status"
-        disabled={busy}
-        value={task.status.id}
-        on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}
-      >
-        {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
-      </select>
+      <div class="status-select">
+        <select
+          aria-label="Status"
+          disabled={busy}
+          value={task.status.id}
+          on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}
+        >
+          {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m8 10 4 4 4-4" />
+        </svg>
+      </div>
 
       <div class="priority-stepper" aria-label="Priority">
         <button
@@ -185,7 +190,7 @@
           disabled={busy || task.priority <= 1}
           on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}
         >−</button>
-        <span title="Priority">P{task.priority}</span>
+        <span title="Priority">{task.priority}</span>
         <button
           type="button"
           aria-label="Increase priority"
@@ -325,6 +330,51 @@
     background: #fff4ee;
   }
 
+  .status-select {
+    position: relative;
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+  }
+
+  .status-select select {
+    height: 100%;
+    max-width: 11rem;
+    appearance: none;
+    border: 1px solid #c8cec6;
+    border-radius: .55rem;
+    background: #f4f7f2;
+    color: var(--forest-2);
+    padding: 0 1.8rem 0 .65rem;
+    font-size: .78rem;
+    font-weight: 750;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .status-select select:hover:not(:disabled) {
+    border-color: #9daa9f;
+    background: #fff;
+  }
+
+  .status-select select:focus-visible {
+    outline: 2px solid var(--forest);
+    outline-offset: 2px;
+  }
+
+  .status-select > svg {
+    position: absolute;
+    right: .52rem;
+    width: .85rem;
+    height: .85rem;
+    pointer-events: none;
+    fill: none;
+    stroke: var(--forest-2);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
   .priority-stepper {
     display: inline-grid;
     height: 2rem;
@@ -352,11 +402,11 @@
 
   .priority-stepper span {
     display: grid;
-    min-width: 2rem;
+    min-width: 1.65rem;
     place-items: center;
     border-right: 1px solid #dedad0;
     border-left: 1px solid #dedad0;
-    padding: 0 .25rem;
+    padding: 0 .2rem;
     color: var(--forest);
     font-size: .76rem;
     font-weight: 800;
@@ -404,6 +454,10 @@
       width: 2rem;
       justify-content: center;
       padding: 0;
+    }
+
+    .status-select select {
+      max-width: 8.5rem;
     }
   }
 </style>
