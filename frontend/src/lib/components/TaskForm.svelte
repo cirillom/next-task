@@ -16,13 +16,15 @@
   export let initialAssigneeIds: number[] = [];
   export let initialTagIds: number[] = [];
   export let initialNewTags = '';
+  export let taskDetails: Task | null = null;
+  export let allowDelete = false;
   export let busy = false;
   export let error = '';
   export let submitLabel = 'Save task';
   export let busyLabel = 'Saving…';
   export let cancelLabel = 'Cancel';
 
-  const dispatch = createEventDispatcher<{ submit: TaskInput; cancel: void }>();
+  const dispatch = createEventDispatcher<{ submit: TaskInput; cancel: void; delete: void }>();
 
   let statuses: Status[] = [];
   let tags: Tag[] = [];
@@ -194,6 +196,7 @@
             autocomplete="off"
             role="combobox"
             aria-autocomplete="list"
+            aria-controls="parent-task-options"
             aria-expanded={parentOpen}
             disabled={workspace.role === 'viewer'}
             on:focus={focusParent}
@@ -201,7 +204,7 @@
             on:blur={closeParent}
           />
           {#if parentOpen && workspace.role !== 'viewer'}
-            <div class="parent-options" role="listbox">
+            <div id="parent-task-options" class="parent-options" role="listbox">
               <button type="button" class:selected={!parentTaskId} on:mousedown|preventDefault={() => chooseParent(null)}>No parent</button>
               {#each filteredParentTasks as item (item.id)}
                 <button type="button" class:selected={item.id === parentTaskId} on:mousedown|preventDefault={() => chooseParent(item)}>{item.title}</button>
@@ -226,11 +229,17 @@
       <label class="new-tags">Add new tags<input bind:value={newTags} placeholder="errands, home, project-x" /><span class="help">Comma- or newline-separated. New tags are created and assigned when you save.</span></label>
     </fieldset>
 
-    <slot name="details" />
+    {#if taskDetails}
+      <section class="detail-panel">
+        <dl><div><dt>Creator</dt><dd>{taskDetails.creator.display_name}</dd></div><div><dt>Created</dt><dd>{new Date(taskDetails.created_at).toLocaleString()}</dd></div><div><dt>Finished</dt><dd>{taskDetails.finished_at ? new Date(taskDetails.finished_at).toLocaleString() : 'Not finished'}</dd></div></dl>
+        {#if taskDetails.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {taskDetails.current_block.reason}</div>{/if}
+        {#if taskDetails.subtasks.length}<h3>Subtasks</h3><ul>{#each taskDetails.subtasks as subtask}<li>{subtask.finished_at ? '✓' : '○'} {subtask.title}</li>{/each}</ul>{/if}
+      </section>
+    {/if}
 
     {#if localError || error}<p class="error" role="alert">{localError || error}</p>{/if}
     <footer class="editor-actions">
-      <slot name="leading-actions" />
+      {#if allowDelete}<button type="button" class="danger" disabled={busy || resolving} on:click={() => dispatch('delete')}>Delete</button>{/if}
       <span></span>
       <button type="button" disabled={busy || resolving} on:click={() => dispatch('cancel')}>{cancelLabel}</button>
       {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || resolving || !statusId || !title.trim()}>{busy || resolving ? busyLabel : submitLabel}</button>{/if}
@@ -239,61 +248,12 @@
 {/if}
 
 <style>
-  .shared-task-form {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .parent-field > label {
-    display: block;
-    margin-bottom: .35rem;
-  }
-
-  .parent-combobox {
-    position: relative;
-  }
-
-  .parent-options {
-    position: absolute;
-    z-index: 8;
-    top: calc(100% + .25rem);
-    left: 0;
-    right: 0;
-    max-height: 15rem;
-    overflow: auto;
-    border: 1px solid #cbc8be;
-    border-radius: .55rem;
-    background: #fff;
-    box-shadow: 0 12px 28px rgba(20, 27, 23, .16);
-    padding: .3rem;
-  }
-
-  .parent-options button {
-    display: block;
-    width: 100%;
-    border: 0;
-    border-radius: .4rem;
-    background: transparent;
-    color: var(--ink);
-    padding: .5rem .6rem;
-    text-align: left;
-    font: inherit;
-  }
-
-  .parent-options button:hover,
-  .parent-options button.selected {
-    background: #f0eee7;
-  }
-
-  .parent-empty {
-    display: block;
-    padding: .55rem .6rem;
-    color: var(--muted);
-    font-size: .85rem;
-  }
-
-  .new-tags {
-    display: block;
-    margin-top: .85rem;
-  }
+  .shared-task-form { display: grid; gap: 1rem; }
+  .parent-field > label { display: block; margin-bottom: .35rem; }
+  .parent-combobox { position: relative; }
+  .parent-options { position: absolute; z-index: 8; top: calc(100% + .25rem); left: 0; right: 0; max-height: 15rem; overflow: auto; border: 1px solid #cbc8be; border-radius: .55rem; background: #fff; box-shadow: 0 12px 28px rgba(20, 27, 23, .16); padding: .3rem; }
+  .parent-options button { display: block; width: 100%; border: 0; border-radius: .4rem; background: transparent; color: var(--ink); padding: .5rem .6rem; text-align: left; font: inherit; }
+  .parent-options button:hover, .parent-options button.selected { background: #f0eee7; }
+  .parent-empty { display: block; padding: .55rem .6rem; color: var(--muted); font-size: .85rem; }
+  .new-tags { display: block; margin-top: .85rem; }
 </style>
