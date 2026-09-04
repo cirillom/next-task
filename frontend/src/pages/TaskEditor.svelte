@@ -167,22 +167,16 @@
         initialParentTaskId={task?.parent_task_id || 0}
         initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
         initialTagIds={task?.direct_tags.map((item) => item.id) || []}
+        taskDetails={task}
+        allowDelete={!!task && workspace.role !== 'viewer'}
         {busy}
         {error}
         submitLabel={taskId ? 'Save task' : 'Create task'}
         busyLabel={taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
+        on:delete={remove}
         on:submit={(event) => save(event.detail)}
-      >
-        {#if task}
-          <section slot="details" class="detail-panel">
-            <dl><div><dt>Creator</dt><dd>{task.creator.display_name}</dd></div><div><dt>Created</dt><dd>{new Date(task.created_at).toLocaleString()}</dd></div><div><dt>Finished</dt><dd>{task.finished_at ? new Date(task.finished_at).toLocaleString() : 'Not finished'}</dd></div></dl>
-            {#if task.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {task.current_block.reason}</div>{/if}
-            {#if task.subtasks.length}<h3>Subtasks</h3><ul>{#each task.subtasks as subtask}<li>{subtask.finished_at ? '✓' : '○'} {subtask.title}</li>{/each}</ul>{/if}
-          </section>
-          {#if workspace.role !== 'viewer'}<button slot="leading-actions" type="button" class="danger" disabled={busy} on:click={remove}>Delete</button>{/if}
-        {/if}
-      </TaskForm>
+      />
     {/if}
   </div>
 </div>
