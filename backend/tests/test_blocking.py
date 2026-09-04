@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -20,8 +20,6 @@ def make_task(client: TestClient) -> dict:
 
 
 def assert_utc_timestamp(value: str) -> None:
-    from datetime import datetime
-
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     assert parsed.tzinfo is not None
     assert parsed.utcoffset() == timedelta(0)
