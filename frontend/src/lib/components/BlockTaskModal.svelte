@@ -297,12 +297,11 @@
 
   @media (max-width: 600px) {
     .block-history__top {
-      align-items: stretch;
-      flex-direction: column;
+      gap: .5rem;
     }
 
-    .history-actions {
-      justify-content: space-between;
+    .reblock-button {
+      white-space: nowrap;
     }
   }
 </style>
