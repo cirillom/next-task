@@ -360,9 +360,14 @@
                         class="unblock-task-button"
                         disabled={unblockingTaskId !== null}
                         aria-label={`Unblock ${task.title}`}
+                        title="Unblock task"
                         on:click={() => unblockListedTask(task)}
                       >
-                        {unblockingTaskId === task.id ? 'Unblocking…' : 'Unblock'}
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M7 10V8a5 5 0 0 1 9.5-2" />
+                          <rect x="5" y="10" width="14" height="10" rx="2" />
+                        </svg>
+                        <span>{unblockingTaskId === task.id ? 'Unblocking…' : 'Unblock'}</span>
                       </button>
                     {/if}
                   </div>
@@ -707,6 +712,9 @@
   }
 
   .unblock-task-button {
+    display: inline-flex;
+    align-items: center;
+    gap: .28rem;
     border: 1px solid rgba(45, 105, 80, .25);
     border-radius: .45rem;
     background: rgba(255, 255, 255, .72);
@@ -715,6 +723,16 @@
     font-size: .7rem;
     font-weight: 800;
     line-height: 1;
+  }
+
+  .unblock-task-button svg {
+    width: .8rem;
+    height: .8rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
   }
 
   .unblock-task-button:hover:not(:disabled) {
