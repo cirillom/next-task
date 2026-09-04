@@ -64,7 +64,24 @@
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
   <div class="task-card__top">
     <button class="title-button" on:click={() => dispatch('open', task.id)}>{task.title}</button>
-    <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    <div class="task-card__header-actions">
+      {#if !readOnly}
+        <button
+          type="button"
+          class="edit-button"
+          aria-label="Edit task"
+          title="Edit task"
+          disabled={busy}
+          on:click={() => dispatch('open', task.id)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      {/if}
+      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    </div>
   </div>
 
   {#if task.description}
@@ -82,7 +99,7 @@
   {/if}
 
   <div class="meta-row">
-    <span class="priority">P{task.priority}</span>
+    <span class="priority" title="Priority">{task.priority}</span>
     <span>{task.status.name}</span>
     {#if task.due_date}<span class:overdue={!task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}>Due {task.due_date}</span>{/if}
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
@@ -102,26 +119,85 @@
 
   {#if !readOnly}
     <div class="task-actions">
-      <button disabled={busy} on:click={() => dispatch('open', task.id)}>Open</button>
-      <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
-      <button disabled={busy} on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}>
-        {task.finished_at ? 'Reopen' : 'Finish'}
-      </button>
-      <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
-        {task.current_block ? 'Unblock' : 'Block'}
-      </button>
-      <select
-        aria-label="Status"
+      <button
+        type="button"
+        class="finish-toggle"
+        class:checked={!!task.finished_at}
+        aria-label={task.finished_at ? 'Reopen task' : 'Finish task'}
+        aria-pressed={!!task.finished_at}
+        title={task.finished_at ? 'Reopen task' : 'Finish task'}
         disabled={busy}
-        value={task.status.id}
-        on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}
+        on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
       >
-        {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
-      </select>
-      <div class="stepper" aria-label="Priority">
-        <button disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
-        <span>{task.priority}</span>
-        <button disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
+        <span aria-hidden="true">✓</span>
+      </button>
+
+      <button
+        type="button"
+        class="quick-action worked-action"
+        disabled={busy}
+        title="Set last worked on to now"
+        on:click={markWorkedNow}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3.2 2" />
+        </svg>
+        <span>Worked now</span>
+      </button>
+
+      <button
+        type="button"
+        class="quick-action block-action"
+        class:active={!!task.current_block}
+        disabled={busy}
+        on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}
+      >
+        {#if task.current_block}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 10V8a5 5 0 0 1 9.5-2" />
+            <rect x="5" y="10" width="14" height="10" rx="2" />
+          </svg>
+          <span>Unblock</span>
+        {:else}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.5" />
+            <path d="M6 18 18 6" />
+          </svg>
+          <span>Block</span>
+        {/if}
+      </button>
+
+      <div class="status-select">
+        <select
+          aria-label="Status"
+          disabled={busy}
+          value={task.status.id}
+          on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}
+        >
+          {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m8 10 4 4 4-4" />
+        </svg>
+      </div>
+
+      <div class="priority-stepper" aria-label="Priority">
+        <button
+          type="button"
+          aria-label="Decrease priority"
+          title="Decrease priority"
+          disabled={busy || task.priority <= 1}
+          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}
+        >−</button>
+        <span title="Priority">{task.priority}</span>
+        <button
+          type="button"
+          aria-label="Increase priority"
+          title="Increase priority"
+          disabled={busy}
+          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}
+        >+</button>
       </div>
     </div>
   {/if}
@@ -140,6 +216,203 @@
 {/if}
 
 <style>
+  .task-card__header-actions {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .edit-button {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--muted);
+    opacity: .35;
+    padding: .3rem;
+    transition: opacity .15s ease, background .15s ease;
+  }
+
+  .edit-button svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .task-card:hover .edit-button,
+  .edit-button:focus-visible {
+    opacity: .85;
+  }
+
+  .edit-button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .04);
+  }
+
+  .finish-toggle {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
+    place-items: center;
+    border: 1.5px solid #aaa69c;
+    border-radius: .45rem;
+    background: #fff;
+    color: #d8d6cf;
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .finish-toggle.checked {
+    border-color: var(--forest);
+    background: var(--forest);
+    color: #fff;
+  }
+
+  .finish-toggle:hover:not(:disabled) {
+    border-color: var(--forest);
+    color: #aaa69c;
+  }
+
+  .finish-toggle.checked:hover:not(:disabled) {
+    color: #fff;
+  }
+
+  .quick-action {
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+    gap: .38rem;
+    border: 1px solid #cfcbc0;
+    border-radius: .55rem;
+    background: #fbfaf6;
+    color: var(--ink);
+    padding: 0 .62rem;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .quick-action svg {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .quick-action:hover:not(:disabled) {
+    border-color: #aaa69c;
+    background: #fff;
+  }
+
+  .worked-action {
+    color: var(--forest-2);
+  }
+
+  .block-action {
+    color: #8a4d36;
+  }
+
+  .block-action.active {
+    border-color: #d8b5a6;
+    background: #fff4ee;
+  }
+
+  .status-select {
+    position: relative;
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+  }
+
+  .status-select select {
+    height: 100%;
+    max-width: 11rem;
+    appearance: none;
+    border: 1px solid #c8cec6;
+    border-radius: .55rem;
+    background: #f4f7f2;
+    color: var(--forest-2);
+    padding: 0 1.8rem 0 .65rem;
+    font-size: .78rem;
+    font-weight: 750;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .status-select select:hover:not(:disabled) {
+    border-color: #9daa9f;
+    background: #fff;
+  }
+
+  .status-select select:focus-visible {
+    outline: 2px solid var(--forest);
+    outline-offset: 2px;
+  }
+
+  .status-select > svg {
+    position: absolute;
+    right: .52rem;
+    width: .85rem;
+    height: .85rem;
+    pointer-events: none;
+    fill: none;
+    stroke: var(--forest-2);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
+  .priority-stepper {
+    display: inline-grid;
+    height: 2rem;
+    grid-template-columns: 1.65rem auto 1.65rem;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid #cfcbc0;
+    border-radius: .5rem;
+    background: #fbfaf6;
+  }
+
+  .priority-stepper button {
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    font-size: .95rem;
+    line-height: 1;
+  }
+
+  .priority-stepper button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .045);
+  }
+
+  .priority-stepper span {
+    display: grid;
+    min-width: 1.65rem;
+    place-items: center;
+    border-right: 1px solid #dedad0;
+    border-left: 1px solid #dedad0;
+    padding: 0 .2rem;
+    color: var(--forest);
+    font-size: .76rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
   .task-description {
     width: 100%;
     height: 7rem;
@@ -166,5 +439,25 @@
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: .15rem;
+  }
+
+  @media (max-width: 600px) {
+    .edit-button {
+      opacity: .6;
+    }
+
+    .quick-action span {
+      display: none;
+    }
+
+    .quick-action {
+      width: 2rem;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .status-select select {
+      max-width: 8.5rem;
+    }
   }
 </style>

@@ -14,7 +14,7 @@
   let statusId = '';
   let tagId = '';
   let assigneeId = '';
-  let blocked = '';
+  let blocked = 'false';
   let error = '';
   let loading = true;
 
@@ -44,9 +44,14 @@
     }
   }
 
+  function matchesBlockedFilter(task: Task): boolean {
+    if (blocked === '') return true;
+    return blocked === 'true' ? Boolean(task.current_block) : !task.current_block;
+  }
+
   function replaceTask(updated: Task) {
     tasks = tasks
-      .filter((task) => !updated.finished_at || task.id !== updated.id)
+      .filter((task) => (!updated.finished_at && matchesBlockedFilter(updated)) || task.id !== updated.id)
       .map((task) => (task.id === updated.id ? updated : task))
       .sort((a, b) => b.score - a.score || a.id - b.id);
   }
@@ -71,7 +76,7 @@
   <label>Status<select bind:value={statusId} on:change={loadTasks}><option value="">All</option>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
   <label>Tag<select bind:value={tagId} on:change={loadTasks}><option value="">All</option>{#each tags as item}<option value={item.id}>#{item.name}</option>{/each}</select></label>
   <label>Assignee<select bind:value={assigneeId} on:change={loadTasks}><option value="">Anyone</option>{#each members as item}<option value={item.user_id}>{item.display_name}</option>{/each}</select></label>
-  <label>Blocked<select bind:value={blocked} on:change={loadTasks}><option value="">Either</option><option value="true">Blocked</option><option value="false">Not blocked</option></select></label>
+  <label>Blocked<select bind:value={blocked} on:change={loadTasks}><option value="false">Not blocked</option><option value="true">Blocked</option><option value="">Either</option></select></label>
 </section>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
