@@ -129,7 +129,7 @@
         disabled={busy}
         on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
       >
-        <span aria-hidden="true">{task.finished_at ? '✓' : ''}</span>
+        <span aria-hidden="true">✓</span>
       </button>
       <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
       <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
@@ -213,7 +213,7 @@
     border: 1.5px solid #aaa69c;
     border-radius: .45rem;
     background: #fff;
-    color: #fff;
+    color: #d8d6cf;
     padding: 0;
     font-size: 1rem;
     font-weight: 900;
@@ -223,10 +223,16 @@
   .finish-toggle.checked {
     border-color: var(--forest);
     background: var(--forest);
+    color: #fff;
   }
 
   .finish-toggle:hover:not(:disabled) {
     border-color: var(--forest);
+    color: #aaa69c;
+  }
+
+  .finish-toggle.checked:hover:not(:disabled) {
+    color: #fff;
   }
 
   .task-description {
