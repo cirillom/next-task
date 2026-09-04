@@ -4,15 +4,39 @@
   import type { Status, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
 
+  type FinishedFilter = 'unfinished' | 'finished' | 'all';
+  type BlockedFilter = 'unblocked' | 'blocked' | 'all';
+
   export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number }>();
   let tasks: Task[] = [];
   let statuses: Status[] = [];
   let search = '';
-  let showFinished = false;
+  let finishedFilter: FinishedFilter = 'unfinished';
+  let blockedFilter: BlockedFilter = 'unblocked';
   let error = '';
   let loading = true;
   let searchTimer: number;
+
+  function finishedParam(): boolean | null {
+    if (finishedFilter === 'all') return null;
+    return finishedFilter === 'finished';
+  }
+
+  function blockedParam(): boolean | null {
+    if (blockedFilter === 'all') return null;
+    return blockedFilter === 'blocked';
+  }
+
+  function matchesCurrentFilters(task: Task): boolean {
+    const finishedMatches =
+      finishedFilter === 'all' ||
+      (finishedFilter === 'finished' ? Boolean(task.finished_at) : !task.finished_at);
+    const blockedMatches =
+      blockedFilter === 'all' ||
+      (blockedFilter === 'blocked' ? Boolean(task.current_block) : !task.current_block);
+    return finishedMatches && blockedMatches;
+  }
 
   async function load() {
     loading = true;
@@ -20,7 +44,11 @@
     try {
       [statuses, tasks] = await Promise.all([
         api.statuses(workspace.id),
-        api.tasks(workspace.id, { finished: showFinished, search })
+        api.tasks(workspace.id, {
+          finished: finishedParam(),
+          blocked: blockedParam(),
+          search
+        })
       ]);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tasks';
@@ -35,7 +63,7 @@
   }
 
   function replaceTask(updated: Task) {
-    if (Boolean(updated.finished_at) !== showFinished) {
+    if (!matchesCurrentFilters(updated)) {
       tasks = tasks.filter((task) => task.id !== updated.id);
     } else {
       tasks = tasks.map((task) => (task.id === updated.id ? updated : task));
@@ -52,7 +80,22 @@
 
 <section class="filter-bar tasks-toolbar">
   <label class="search-field">Search<input type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" /></label>
-  <label>Show<select bind:value={showFinished} on:change={load}><option value={false}>Unfinished</option><option value={true}>Finished</option></select></label>
+  <label>
+    Completion
+    <select bind:value={finishedFilter} on:change={load}>
+      <option value="unfinished">Unfinished</option>
+      <option value="finished">Finished</option>
+      <option value="all">All</option>
+    </select>
+  </label>
+  <label>
+    Blocking
+    <select bind:value={blockedFilter} on:change={load}>
+      <option value="unblocked">Not blocked</option>
+      <option value="blocked">Blocked</option>
+      <option value="all">All</option>
+    </select>
+  </label>
 </section>
 
 {#if error}<p class="error">{error}</p>{/if}
@@ -69,4 +112,3 @@
     />
   {/each}
 </div>
-
