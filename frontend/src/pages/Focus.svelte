@@ -29,6 +29,7 @@
   let loading = true;
   let selecting = false;
   let listLoading = false;
+  let unblockingTaskId: number | null = null;
   let error = '';
   let timer: number;
   let seenTaskVersion = taskVersion;
@@ -87,6 +88,21 @@
       error = reason instanceof Error ? reason.message : 'Could not load session tasks';
     } finally {
       listLoading = false;
+    }
+  }
+
+  async function unblockListedTask(task: Task) {
+    if (!task.current_block || unblockingTaskId !== null) return;
+    unblockingTaskId = task.id;
+    error = '';
+    try {
+      await api.unblockTask(task.id);
+      await loadSessionTasks();
+      if (!currentTask && phase === 'focus') await selectNextTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not unblock task';
+    } finally {
+      unblockingTaskId = null;
     }
   }
 
@@ -343,6 +359,17 @@
                     <span>Priority {task.priority}</span>
                     <span>{task.status.name}</span>
                     <span>Score {task.score.toFixed(1)}</span>
+                    {#if task.current_block && workspace.role !== 'viewer'}
+                      <button
+                        type="button"
+                        class="unblock-task-button"
+                        disabled={unblockingTaskId !== null}
+                        aria-label={`Unblock ${task.title}`}
+                        on:click={() => unblockListedTask(task)}
+                      >
+                        {unblockingTaskId === task.id ? 'Unblocking…' : 'Unblock'}
+                      </button>
+                    {/if}
                   </div>
                 </article>
               {/each}
@@ -682,6 +709,22 @@
   .blocked-chip {
     background: rgba(166, 80, 56, .1);
     color: #8e4b37;
+  }
+
+  .unblock-task-button {
+    border: 1px solid rgba(45, 105, 80, .25);
+    border-radius: .45rem;
+    background: rgba(255, 255, 255, .72);
+    color: var(--forest-2);
+    padding: .28rem .48rem;
+    font-size: .7rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .unblock-task-button:hover:not(:disabled) {
+    border-color: rgba(45, 105, 80, .45);
+    background: #fff;
   }
 
   .task-list-empty {
