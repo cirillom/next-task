@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
-  import { api } from '../lib/api/client';
+  import { ApiError, api } from '../lib/api/client';
   import type { Member, Status, Tag, Task, TaskInput, Workspace } from '../lib/api/types';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
   import Markdown from '../lib/components/Markdown.svelte';
@@ -14,6 +14,7 @@
   let tags: Tag[] = [];
   let members: Member[] = [];
   let parentTasks: Task[] = [];
+  let filteredParentTasks: Task[] = [];
   let title = '';
   let description = '';
   let statusId = 0;
@@ -21,13 +22,24 @@
   let dueDate = '';
   let lastWorked = '';
   let parentTaskId = 0;
+  let parentSearch = '';
   let assigneeIds: number[] = [];
   let tagIds: number[] = [];
+  let newTags = '';
   let mobileTab: 'edit' | 'preview' = 'edit';
   let loading = true;
   let busy = false;
   let blockModalOpen = false;
   let error = '';
+
+  $: {
+    const needle = parentSearch.trim().toLowerCase();
+    filteredParentTasks = parentTasks.filter(
+      (item) =>
+        item.id !== taskId &&
+        (item.id === parentTaskId || !needle || item.title.toLowerCase().includes(needle))
+    );
+  }
 
   function datetimeLocal(value: string | null): string {
     if (!value) return '';
@@ -64,21 +76,53 @@
     }
   });
 
+  function normalizedNewTags(): string[] {
+    const values = newTags
+      .split(/[\n,]+/)
+      .map((value) => value.trim().replace(/^#/, '').trim().toLowerCase())
+      .filter(Boolean);
+    return [...new Set(values)];
+  }
+
+  async function resolveTagIds(): Promise<number[]> {
+    const resolved = new Set(tagIds);
+    for (const name of normalizedNewTags()) {
+      const existing = tags.find((tag) => tag.name.toLowerCase() === name);
+      if (existing) {
+        resolved.add(existing.id);
+        continue;
+      }
+      try {
+        const created = await api.createTag(workspace.id, { name });
+        tags = [...tags, created];
+        resolved.add(created.id);
+      } catch (reason) {
+        if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
+        tags = await api.tags(workspace.id);
+        const concurrent = tags.find((tag) => tag.name.toLowerCase() === name);
+        if (!concurrent) throw reason;
+        resolved.add(concurrent.id);
+      }
+    }
+    return [...resolved];
+  }
+
   async function save() {
     busy = true;
     error = '';
-    const input: TaskInput = {
-      title,
-      description: description || null,
-      status_id: statusId,
-      priority,
-      due_date: dueDate || null,
-      last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
-      parent_task_id: parentTaskId || null,
-      assignee_ids: assigneeIds,
-      tag_ids: tagIds
-    };
     try {
+      const resolvedTagIds = taskId ? tagIds : await resolveTagIds();
+      const input: TaskInput = {
+        title,
+        description: description || null,
+        status_id: statusId,
+        priority,
+        due_date: dueDate || null,
+        last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
+        parent_task_id: parentTaskId || null,
+        assignee_ids: assigneeIds,
+        tag_ids: resolvedTagIds
+      };
       const saved = taskId
         ? await api.updateTask(taskId, input)
         : await api.createTask({ ...input, workspace_id: workspace.id });
@@ -202,7 +246,15 @@
           <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
           <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
           <label>Last worked<input type="datetime-local" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
-          <label class="wide">Parent task<select bind:value={parentTaskId} disabled={workspace.role === 'viewer'}><option value={0}>No parent</option>{#each parentTasks.filter((item) => item.id !== taskId) as item}<option value={item.id}>{item.title}</option>{/each}</select></label>
+          <label class="wide parent-picker">
+            Parent task
+            <input type="search" bind:value={parentSearch} placeholder="Search unfinished tasks…" disabled={workspace.role === 'viewer'} />
+            <select bind:value={parentTaskId} disabled={workspace.role === 'viewer'}>
+              <option value={0}>No parent</option>
+              {#each filteredParentTasks as item}<option value={item.id}>{item.title}</option>{/each}
+            </select>
+            <span class="help">Only unfinished tasks are available as parents.</span>
+          </label>
         </div>
 
         <div class="mobile-tabs"><button type="button" class:active={mobileTab === 'edit'} on:click={() => (mobileTab = 'edit')}>Edit</button><button type="button" class:active={mobileTab === 'preview'} on:click={() => (mobileTab = 'preview')}>Preview</button></div>
@@ -212,7 +264,13 @@
         </div>
 
         <fieldset disabled={workspace.role === 'viewer'}><legend>Assignees</legend><div class="choice-grid">{#each members as member}<label><input type="checkbox" value={member.user_id} bind:group={assigneeIds} /> {member.display_name}</label>{/each}</div></fieldset>
-        <fieldset disabled={workspace.role === 'viewer'}><legend>Direct tags</legend><div class="choice-grid">{#each tags as tag}<label><input type="checkbox" value={tag.id} bind:group={tagIds} /> #{tag.name}</label>{/each}</div></fieldset>
+        <fieldset disabled={workspace.role === 'viewer'}>
+          <legend>Direct tags</legend>
+          <div class="choice-grid">{#each tags as tag}<label><input type="checkbox" value={tag.id} bind:group={tagIds} /> #{tag.name}</label>{/each}</div>
+          {#if !taskId && workspace.role !== 'viewer'}
+            <label class="new-tags">Add new tags<input bind:value={newTags} placeholder="errands, home, project-x" /><span class="help">Comma-separated. New tags are created and assigned when you save the task.</span></label>
+          {/if}
+        </fieldset>
 
         {#if task}
           <section class="detail-panel">
@@ -290,6 +348,15 @@
   .block-action.active {
     border-color: #d8b5a6;
     background: #fff4ee;
+  }
+
+  .parent-picker > input {
+    margin-bottom: .45rem;
+  }
+
+  .new-tags {
+    display: block;
+    margin-top: .85rem;
   }
 
   @media (max-width: 600px) {
