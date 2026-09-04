@@ -2,10 +2,11 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Member, Status, Tag, Task, Workspace } from '../lib/api/types';
+  import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
 
   export let workspace: Workspace;
-  const dispatch = createEventDispatcher<{ openTask: number }>();
+  const dispatch = createEventDispatcher<{ openTask: number; startFocus: void }>();
 
   let tasks: Task[] = [];
   let statuses: Status[] = [];
@@ -71,6 +72,8 @@
   <div><p class="eyebrow">Ranked for you</p><h1>Next task</h1></div>
   {#if workspace.role !== 'viewer'}<button class="primary" on:click={() => dispatch('openTask', 0)}>+ New task</button>{/if}
 </div>
+
+<PomodoroLauncher on:start={() => dispatch('startFocus')} />
 
 <section class="filter-bar" aria-label="Task filters">
   <label>Status<select bind:value={statusId} on:change={loadTasks}><option value="">All</option>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
