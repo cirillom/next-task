@@ -110,6 +110,23 @@ def _mcp_headers(access_token: str) -> dict[str, str]:
     }
 
 
+def test_oauth_discovery_supports_chatgpt_and_rfc_paths() -> None:
+    expected = {
+        "resource": MCP_RESOURCE,
+        "authorization_servers": [MCP_BASE_URL],
+        "scopes_supported": ["tasks"],
+        "bearer_methods_supported": ["header"],
+    }
+    with TestClient(create_app(), base_url=MCP_BASE_URL) as client:
+        root_metadata = client.get("/.well-known/oauth-protected-resource")
+        resource_metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+
+    assert root_metadata.status_code == 200
+    assert root_metadata.json() == expected
+    assert resource_metadata.status_code == 200
+    assert resource_metadata.json() == expected
+
+
 def test_rejects_non_chatgpt_oauth_redirect() -> None:
     with TestClient(create_app(), base_url=MCP_BASE_URL) as client:
         response = client.post(

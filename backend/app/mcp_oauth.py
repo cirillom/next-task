@@ -387,6 +387,28 @@ def _clear_failed_logins(request: Request) -> None:
 
 
 def install_oauth_routes(server: Any, provider: NextTaskOAuthProvider) -> None:
+    @server.custom_route(
+        "/.well-known/oauth-protected-resource",
+        methods=["GET"],
+        include_in_schema=False,
+    )
+    async def protected_resource_metadata(_request: Request) -> Response:
+        """Compatibility discovery endpoint used by ChatGPT's plugin builder.
+
+        RFC 9728 also permits the path-specific
+        /.well-known/oauth-protected-resource/mcp endpoint installed by the MCP
+        SDK. ChatGPT probes the origin-level endpoint while configuring an
+        explicitly OAuth-authenticated plugin, so publish both representations.
+        """
+        return JSONResponse(
+            {
+                "resource": provider.resource,
+                "authorization_servers": [provider.issuer],
+                "scopes_supported": SCOPES,
+                "bearer_methods_supported": ["header"],
+            }
+        )
+
     @server.custom_route("/", methods=["GET"], include_in_schema=False)
     async def landing(_request: Request) -> Response:
         return JSONResponse({"name": "Next Task MCP", "mcp": "/mcp", "status": "ok"})
