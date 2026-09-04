@@ -66,16 +66,19 @@
   }
   async function logout() { await api.logout(); user = null; workspaces = []; workspace = null; }
 
-  function taskEditorSaved() {
-    editorTaskId = null;
+  function taskEditorChanged() {
     if (view === 'focus') focusTaskVersion += 1;
     else refreshKey += 1;
   }
 
+  function taskEditorSaved() {
+    editorTaskId = null;
+    taskEditorChanged();
+  }
+
   function taskEditorDeleted() {
     editorTaskId = null;
-    if (view === 'focus') focusTaskVersion += 1;
-    else refreshKey += 1;
+    taskEditorChanged();
   }
 
   function startFocus(tagId: number | null) {
@@ -145,6 +148,7 @@
     {workspace}
     taskId={editorTaskId}
     on:close={() => (editorTaskId = null)}
+    on:changed={taskEditorChanged}
     on:saved={taskEditorSaved}
     on:deleted={taskEditorDeleted}
   />
