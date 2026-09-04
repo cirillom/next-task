@@ -61,3 +61,33 @@ def test_reblock_restores_existing_block_and_serializes_times_as_utc(
 
     already_blocked = client.post(f"/api/tasks/{task['id']}/reblock")
     assert already_blocked.status_code == 409
+
+
+def test_delete_block_history_only_allows_inactive_entries(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    task = make_task(client)
+
+    blocked = client.post(
+        f"/api/tasks/{task['id']}/block",
+        json={"reason": "Temporary blocker"},
+    )
+    assert blocked.status_code == 201
+    block_id = blocked.json()["current_block"]["id"]
+
+    active_delete = client.delete(f"/api/tasks/{task['id']}/blocks/{block_id}")
+    assert active_delete.status_code == 409
+
+    unblocked = client.post(f"/api/tasks/{task['id']}/unblock")
+    assert unblocked.status_code == 200
+    assert len(unblocked.json()["blocking_history"]) == 1
+
+    deleted = client.delete(f"/api/tasks/{task['id']}/blocks/{block_id}")
+    assert deleted.status_code == 200
+    body = deleted.json()
+    assert body["current_block"] is None
+    assert body["blocking_history"] == []
+
+    missing = client.delete(f"/api/tasks/{task['id']}/blocks/{block_id}")
+    assert missing.status_code == 404
