@@ -36,19 +36,17 @@
   </div>
 
   {#if task.description}
+    <div class:expanded={descriptionExpanded} class="task-description">
+      <Markdown source={task.description} />
+    </div>
     <button
       type="button"
       class="description-toggle"
       aria-expanded={descriptionExpanded}
       on:click={() => (descriptionExpanded = !descriptionExpanded)}
     >
-      {descriptionExpanded ? 'Hide description' : 'Show description'}
+      {descriptionExpanded ? 'Collapse description' : 'Expand description'}
     </button>
-    {#if descriptionExpanded}
-      <div class="task-description">
-        <Markdown source={task.description} />
-      </div>
-    {/if}
   {/if}
 
   <div class="meta-row">
@@ -97,8 +95,24 @@
 </article>
 
 <style>
+  .task-description {
+    width: 100%;
+    height: 7rem;
+    margin-top: .6rem;
+    overflow-y: auto;
+    padding: .65rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: .55rem;
+    background: #faf8f2;
+  }
+
+  .task-description.expanded {
+    height: auto;
+    overflow-y: visible;
+  }
+
   .description-toggle {
-    margin-top: .55rem;
+    margin-top: .35rem;
     border: 0;
     background: transparent;
     color: var(--forest-2);
@@ -107,11 +121,5 @@
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: .15rem;
-  }
-
-  .task-description {
-    margin-top: .55rem;
-    padding: .7rem .8rem;
-    border-left: 2px solid var(--line);
   }
 </style>
