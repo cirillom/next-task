@@ -283,6 +283,7 @@
                 disabled={workspace.role === 'viewer'}
                 on:focus={openParentPicker}
                 on:click={openParentPicker}
+                on:blur={() => (parentPickerOpen = false)}
                 on:input={(event) => {
                   parentPickerOpen = true;
                   parentQuery = event.currentTarget.value;
