@@ -6,7 +6,7 @@
   export let history: Block[] = [];
   export let busy = false;
 
-  const dispatch = createEventDispatcher<{ close: void; block: string }>();
+  const dispatch = createEventDispatcher<{ close: void; block: string; reblock: void }>();
   let reason = '';
 
   function close() {
@@ -18,8 +18,8 @@
     if (trimmed && !busy) dispatch('block', trimmed);
   }
 
-  function reblock(block: Block) {
-    if (!busy) dispatch('block', block.reason);
+  function reblock() {
+    if (!busy) dispatch('reblock');
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -70,7 +70,7 @@
                 <div class="block-history__top">
                   <strong>{block.reason}</strong>
                   {#if index === 0 && block.unblocked_at}
-                    <button type="button" class="reblock-button" disabled={busy} on:click={() => reblock(block)}>
+                    <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
                       {busy ? 'Reblocking…' : 'Reblock with this reason'}
                     </button>
                   {/if}
