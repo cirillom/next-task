@@ -131,10 +131,43 @@
       >
         <span aria-hidden="true">✓</span>
       </button>
-      <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
-      <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
-        {task.current_block ? 'Unblock' : 'Block'}
+
+      <button
+        type="button"
+        class="quick-action worked-action"
+        disabled={busy}
+        title="Set last worked on to now"
+        on:click={markWorkedNow}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3.2 2" />
+        </svg>
+        <span>Worked now</span>
       </button>
+
+      <button
+        type="button"
+        class="quick-action block-action"
+        class:active={!!task.current_block}
+        disabled={busy}
+        on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}
+      >
+        {#if task.current_block}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 10V8a5 5 0 0 1 9.5-2" />
+            <rect x="5" y="10" width="14" height="10" rx="2" />
+          </svg>
+          <span>Unblock</span>
+        {:else}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.5" />
+            <path d="M6 18 18 6" />
+          </svg>
+          <span>Block</span>
+        {/if}
+      </button>
+
       <select
         aria-label="Status"
         disabled={busy}
@@ -143,10 +176,23 @@
       >
         {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
       </select>
-      <div class="stepper" aria-label="Priority">
-        <button disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
-        <span>{task.priority}</span>
-        <button disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
+
+      <div class="priority-stepper" aria-label="Priority">
+        <button
+          type="button"
+          aria-label="Decrease priority"
+          title="Decrease priority"
+          disabled={busy || task.priority <= 1}
+          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}
+        >−</button>
+        <span title="Priority">P{task.priority}</span>
+        <button
+          type="button"
+          aria-label="Increase priority"
+          title="Increase priority"
+          disabled={busy}
+          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}
+        >+</button>
       </div>
     </div>
   {/if}
@@ -235,6 +281,88 @@
     color: #fff;
   }
 
+  .quick-action {
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+    gap: .38rem;
+    border: 1px solid #cfcbc0;
+    border-radius: .55rem;
+    background: #fbfaf6;
+    color: var(--ink);
+    padding: 0 .62rem;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .quick-action svg {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .quick-action:hover:not(:disabled) {
+    border-color: #aaa69c;
+    background: #fff;
+  }
+
+  .worked-action {
+    color: var(--forest-2);
+  }
+
+  .block-action {
+    color: #8a4d36;
+  }
+
+  .block-action.active {
+    border-color: #d8b5a6;
+    background: #fff4ee;
+  }
+
+  .priority-stepper {
+    display: inline-grid;
+    height: 2rem;
+    grid-template-columns: 1.65rem auto 1.65rem;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid #cfcbc0;
+    border-radius: .5rem;
+    background: #fbfaf6;
+  }
+
+  .priority-stepper button {
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    font-size: .95rem;
+    line-height: 1;
+  }
+
+  .priority-stepper button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .045);
+  }
+
+  .priority-stepper span {
+    display: grid;
+    min-width: 2rem;
+    place-items: center;
+    border-right: 1px solid #dedad0;
+    border-left: 1px solid #dedad0;
+    padding: 0 .25rem;
+    color: var(--forest);
+    font-size: .76rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
   .task-description {
     width: 100%;
     height: 7rem;
@@ -266,6 +394,16 @@
   @media (max-width: 600px) {
     .edit-button {
       opacity: .6;
+    }
+
+    .quick-action span {
+      display: none;
+    }
+
+    .quick-action {
+      width: 2rem;
+      justify-content: center;
+      padding: 0;
     }
   }
 </style>
