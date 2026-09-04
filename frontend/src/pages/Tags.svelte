@@ -3,11 +3,30 @@
   import { api } from '../lib/api/client';
   import type { Tag, Workspace } from '../lib/api/types';
 
+  const SUGGESTED_TAG_COLORS = [
+    '#587b6a',
+    '#5f6f8f',
+    '#8a6f5a',
+    '#7b658e',
+    '#4f7f86',
+    '#8c625e',
+    '#6f7f4f',
+    '#9a7048',
+    '#536f83',
+    '#8a6678',
+    '#607b73',
+    '#7d7150'
+  ];
+
+  function randomTagColor(): string {
+    return SUGGESTED_TAG_COLORS[Math.floor(Math.random() * SUGGESTED_TAG_COLORS.length)];
+  }
+
   export let workspace: Workspace;
   let tags: Tag[] = [];
   let name = '';
   let description = '';
-  let color = '#587b6a';
+  let color = randomTagColor();
   let editing = 0;
   let editName = '';
   let editDescription = '';
@@ -31,6 +50,7 @@
       await api.createTag(workspace.id, { name, description, color });
       name = '';
       description = '';
+      color = randomTagColor();
       await load();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create tag';
