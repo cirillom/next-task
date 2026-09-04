@@ -195,11 +195,6 @@
     await loadSessionTasks();
   }
 
-  async function handleListedTaskChanged(updated: Task) {
-    if (currentTask?.id === updated.id) await handleTaskChanged(updated);
-    await loadSessionTasks();
-  }
-
   async function reconcileExternalTaskChange() {
     if (!currentTask) {
       await selectNextTask();
