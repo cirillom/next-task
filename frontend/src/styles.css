@@ -115,6 +115,8 @@ dt { color: var(--muted); } dd { margin: 0; }
 .editable-row { display: grid; grid-template-columns: 1fr 8rem auto auto; gap: .5rem; }
 .member-list > div { display: grid; grid-template-columns: 1fr 9rem auto; align-items: center; gap: .6rem; border-bottom: 1px solid #ece8df; padding: .5rem 0; }
 .narrow { max-width: 42rem; } .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.connector-row { display: flex; align-items: stretch; gap: .55rem; }
+.connector-row button { border: 1px solid #cbc8be; border-radius: .5rem; background: #fff; padding: .48rem .8rem; }
 @media (max-width: 760px) {
   .app-shell { display: block; padding-bottom: 4.2rem; }
   .topbar { height: 3.8rem; display: grid; grid-template-columns: auto 1fr; padding: 0 .8rem; }

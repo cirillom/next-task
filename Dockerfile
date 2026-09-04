@@ -4,7 +4,7 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN npm run check && npm run build
 
 FROM python:3.12-slim AS runtime
 
@@ -28,7 +28,7 @@ RUN useradd --create-home --uid 10001 appuser \
     && chown appuser:appuser /data
 
 USER appuser
-EXPOSE 8000
+EXPOSE 8000 8001
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]

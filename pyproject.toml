@@ -1,6 +1,6 @@
 [project]
 name = "next-task"
-version = "0.2.0"
+version = "0.3.0"
 description = "A small, self-hosted, score-ranked task manager"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -10,7 +10,9 @@ dependencies = [
     "cryptography>=46,<48",
     "fastapi>=0.116,<1",
     "httpx>=0.28,<1",
+    "mcp>=2,<3",
     "pydantic-settings>=2.10,<3",
+    "python-multipart>=0.0.20,<1",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.35,<1",
 ]

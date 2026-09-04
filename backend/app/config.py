@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     credential_secret: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.8-flash"
+    mcp_public_url: str = "http://localhost:8001"
+    mcp_access_token_minutes: int = 60
+    mcp_refresh_token_days: int = 90
 
 
 @lru_cache

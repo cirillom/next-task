@@ -9,7 +9,8 @@ services:
     environment:
       TZ: America/Sao_Paulo
       NEXT_TASK_COOKIE_SECURE: "true"
-      NEXT_TASK_CREDENTIAL_SECRET: "${NEXT_TASK_CREDENTIAL_SECRET:?set NEXT_TASK_CREDENTIAL_SECRET in services/.env}"
+      NEXT_TASK_CREDENTIAL_SECRET: "${NEXT_TASK_CREDENTIAL_SECRET:?set NEXT_TASK_CREDENTIAL_SECRET}"
+      NEXT_TASK_MCP_PUBLIC_URL: "${NEXT_TASK_MCP_PUBLIC_URL:?set NEXT_TASK_MCP_PUBLIC_URL}"
 
     volumes:
       - /mnt/hdd/next-task/data:/data
@@ -17,7 +18,30 @@ services:
     networks:
       - proxy
 
+  next-task-mcp:
+    image: ghcr.io/cirillom/next-task:latest
+    container_name: next-task-mcp
+    restart: always
+    command: ["uv", "run", "uvicorn", "app.mcp_app:app", "--host", "0.0.0.0", "--port", "8001"]
+
+    environment:
+      TZ: America/Sao_Paulo
+      NEXT_TASK_CREDENTIAL_SECRET: "${NEXT_TASK_CREDENTIAL_SECRET:?set NEXT_TASK_CREDENTIAL_SECRET}"
+      NEXT_TASK_MCP_PUBLIC_URL: "${NEXT_TASK_MCP_PUBLIC_URL:?set NEXT_TASK_MCP_PUBLIC_URL}"
+
+    ports:
+      - "127.0.0.1:${NEXT_TASK_MCP_PORT:-8765}:8001"
+
+    volumes:
+      - /mnt/hdd/next-task/data:/data
+
+    depends_on:
+      next-task:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+
 networks:
   proxy:
     external: true
-

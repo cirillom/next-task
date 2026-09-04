@@ -5,10 +5,10 @@ workspace-configurable score. It supports multiple workspaces, owner/editor/view
 roles, Markdown task descriptions, subtasks, assignees, blocking history, and a
 Tag Studio-style inheritance DAG.
 
-The application is deliberately one deployable unit: FastAPI serves the REST API
-and built Svelte PWA, while SQLite stores application data in a mounted `/data`
-directory. There is no offline synchronization; the service worker caches only the
-application shell and an offline explanation page.
+One production image contains both entrypoints: FastAPI serves the REST API and
+built Svelte PWA, and a separate isolated process serves the authenticated MCP
+gateway. Both use SQLite in a mounted `/data` directory. There is no offline
+synchronization; the service worker caches only the application shell.
 
 ## Docker development
 
@@ -37,14 +37,14 @@ The tag must match the version in both `pyproject.toml` and
 `frontend/package.json`:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 The homeserver keeps only deployment configuration in `~/services/next-task`.
-Its Compose file pulls the published image, joins the existing `proxy` network,
-and mounts persistent state from `/mnt/hdd/next-task/data`. It does not alter
-proxy, DNS, or TLS configuration.
+Its Compose file pulls the published image, mounts persistent state from
+`/mnt/hdd/next-task/data`, and runs the private web app plus a loopback-only MCP
+gateway. Tailscale Funnel provides public HTTPS only for the gateway.
 
 ```bash
 cd ~/services/next-task
@@ -124,6 +124,48 @@ uv run alembic check
 
 Rollback one revision during development with `uv run alembic downgrade -1`.
 Never replace migrations with `Base.metadata.create_all()` in production.
+
+## ChatGPT MCP connector
+
+The connector lets ChatGPT use Next Task tools directly. Your ChatGPT subscription
+handles the conversation and natural-language interpretation; this server never calls
+an OpenAI model API and does not need an OpenAI API key.
+
+The production Compose file binds the isolated MCP process to host loopback. Give it a
+public HTTPS URL with Tailscale Funnel and set that exact origin in
+`NEXT_TASK_MCP_PUBLIC_URL` before starting either container:
+
+```bash
+sudo tailscale funnel --bg --https=8443 8765
+tailscale funnel status
+```
+
+The connector URL is the public origin plus `/mcp`, for example:
+
+```text
+https://homeserver.tail195af8.ts.net:8443/mcp
+```
+
+To connect:
+
+1. In Next Task, open **Settings → ChatGPT task connector** and copy the URL.
+2. In ChatGPT, enable **Developer mode** in **Settings → Security and login**.
+3. Open **Settings → Plugins**, add a custom connector, and paste the URL.
+4. Sign in on the Next Task authorization page and approve the connection.
+
+Then ask naturally, for example:
+
+```text
+In my Home workspace, create a high-priority task to buy detergent tomorrow and tag it shopping.
+```
+
+ChatGPT first inspects the selected workspace's statuses, tags, and members, proposes the
+task fields, and asks for confirmation before calling a write tool. It can list and inspect
+tasks, create and update them, mark them finished or reopened, and block or unblock them.
+
+OAuth uses authorization code with PKCE. Access and refresh tokens are stored only as
+hashes, registered client secrets are encrypted with `NEXT_TASK_CREDENTIAL_SECRET`, and
+each user can revoke all ChatGPT connections from Next Task Settings.
 
 ## Gemini text to task
 
