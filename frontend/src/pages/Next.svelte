@@ -6,7 +6,7 @@
   import TaskCard from '../lib/components/TaskCard.svelte';
 
   export let workspace: Workspace;
-  const dispatch = createEventDispatcher<{ openTask: number; startFocus: void }>();
+  const dispatch = createEventDispatcher<{ openTask: number; startFocus: number | null }>();
 
   let tasks: Task[] = [];
   let statuses: Status[] = [];
@@ -73,7 +73,7 @@
   {#if workspace.role !== 'viewer'}<button class="primary" on:click={() => dispatch('openTask', 0)}>+ New task</button>{/if}
 </div>
 
-<PomodoroLauncher on:start={() => dispatch('startFocus')} />
+<PomodoroLauncher {tags} on:start={(event) => dispatch('startFocus', event.detail)} />
 
 <section class="filter-bar" aria-label="Task filters">
   <label>Status<select bind:value={statusId} on:change={loadTasks}><option value="">All</option>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
@@ -101,4 +101,3 @@
     {/each}
   </div>
 {/if}
-
