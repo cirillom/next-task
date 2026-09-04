@@ -55,6 +55,10 @@
       busy = false;
     }
   }
+
+  function markWorkedNow() {
+    void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
+  }
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
@@ -99,6 +103,7 @@
   {#if !readOnly}
     <div class="task-actions">
       <button disabled={busy} on:click={() => dispatch('open', task.id)}>Open</button>
+      <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
       <button disabled={busy} on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}>
         {task.finished_at ? 'Reopen' : 'Finish'}
       </button>
