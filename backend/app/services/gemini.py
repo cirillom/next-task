@@ -90,6 +90,21 @@ def _interaction_text(payload: dict[str, Any]) -> str:
     raise GeminiServiceError("Gemini returned no task draft")
 
 
+def _error_detail(response: httpx.Response, api_key: str) -> str | None:
+    try:
+        payload = response.json()
+    except (json.JSONDecodeError, ValueError):
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return None
+    message = error.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    safe_message = " ".join(message.split()).replace(api_key, "[redacted]")
+    return safe_message[:400]
+
+
 def generate_task_draft(
     api_key: str,
     workspace_context: dict[str, Any],
@@ -116,7 +131,7 @@ def generate_task_draft(
             "details in Markdown, and never invent dates, people, or requirements."
         ),
         "input": prompt,
-        "max_output_tokens": 2_048,
+        "generation_config": {"max_output_tokens": 2_048},
         "response_format": {
             "type": "text",
             "mime_type": "application/json",
@@ -139,12 +154,19 @@ def generate_task_draft(
         if owns_client:
             client.close()
 
+    detail = _error_detail(response, api_key)
     if response.status_code in {400, 401, 403}:
-        raise GeminiServiceError("Gemini rejected the API key or request", 400)
+        message = "Gemini rejected the request"
+        if detail:
+            message = f"{message}: {detail}"
+        raise GeminiServiceError(message, 400)
     if response.status_code == 429:
         raise GeminiServiceError("Gemini rate limit reached. Try again shortly.", 429)
     if response.status_code >= 400:
-        raise GeminiServiceError("Gemini could not generate a task draft")
+        message = "Gemini could not generate a task draft"
+        if detail:
+            message = f"{message}: {detail}"
+        raise GeminiServiceError(message)
 
     try:
         body = response.json()
