@@ -32,6 +32,7 @@
   let textToTaskOpen = false;
   let refreshKey = 0;
   let focusTaskVersion = 0;
+  let focusTagId: number | null = null;
   let firstWorkspaceName = '';
 
   async function loadWorkspaces(preferredId?: number) {
@@ -77,8 +78,15 @@
     else refreshKey += 1;
   }
 
+  function startFocus(tagId: number | null) {
+    focusTagId = tagId;
+    focusTaskVersion = 0;
+    navigate('focus');
+  }
+
   function endFocus() {
     editorTaskId = null;
+    focusTagId = null;
     navigate('next');
   }
 
@@ -96,6 +104,7 @@
   <Focus
     {workspace}
     taskVersion={focusTaskVersion}
+    sessionTagId={focusTagId}
     on:openTask={(event) => (editorTaskId = event.detail)}
     on:end={endFocus}
   />
@@ -118,7 +127,7 @@
         <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<input bind:value={firstWorkspaceName} required placeholder="Personal" /></label><button class="primary">Create workspace</button></form></section>
       {:else}
         {#key `${workspace.id}-${view}-${refreshKey}`}
-          {#if view === 'next'}<Next {workspace} on:openTask={(event) => (editorTaskId = event.detail)} on:startFocus={() => navigate('focus')} />
+          {#if view === 'next'}<Next {workspace} on:openTask={(event) => (editorTaskId = event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
           {:else if view === 'tasks'}<Tasks {workspace} on:openTask={(event) => (editorTaskId = event.detail)} />
           {:else if view === 'tags'}<Tags {workspace} />
           {:else if view === 'workspaces'}<Workspaces {workspace} {workspaces} on:select={(event) => selectWorkspace(event.detail)} on:created={(event) => { workspaces = [...workspaces, event.detail]; selectWorkspace(event.detail.id); }} on:updated={(event) => { workspaces = workspaces.map((item) => item.id === event.detail.id ? event.detail : item); workspace = event.detail; }} />
