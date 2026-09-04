@@ -1,19 +1,25 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { PomodoroSettings, Status, Task, Workspace } from '../lib/api/types';
+  import type { PomodoroSettings, Status, Tag, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
 
   type Phase = 'focus' | 'short-break' | 'long-break';
+  type BlockedFilter = '' | 'false' | 'true';
 
   export let workspace: Workspace;
   export let taskVersion = 0;
+  export let sessionTagId: number | null = null;
 
   const dispatch = createEventDispatcher<{ openTask: number; end: void }>();
 
   let settings: PomodoroSettings | null = null;
   let statuses: Status[] = [];
+  let tags: Tag[] = [];
+  let sessionTag: Tag | null = null;
   let currentTask: Task | null = null;
+  let sessionTasks: Task[] = [];
+  let taskListBlocked: BlockedFilter = '';
   let phase: Phase = 'focus';
   let running = false;
   let remainingSeconds = 0;
@@ -22,6 +28,7 @@
   let shortBreaksTaken = 0;
   let loading = true;
   let selecting = false;
+  let listLoading = false;
   let error = '';
   let timer: number;
   let seenTaskVersion = taskVersion;
@@ -55,12 +62,31 @@
     selecting = true;
     error = '';
     try {
-      const ranked = await api.tasks(workspace.id, { finished: false, blocked: false });
+      const ranked = await api.tasks(workspace.id, {
+        finished: false,
+        blocked: false,
+        tag_id: sessionTagId
+      });
       currentTask = ranked[0] ?? null;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not select the next task';
     } finally {
       selecting = false;
+    }
+  }
+
+  async function loadSessionTasks() {
+    listLoading = true;
+    try {
+      sessionTasks = await api.tasks(workspace.id, {
+        finished: false,
+        blocked: taskListBlocked,
+        tag_id: sessionTagId
+      });
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not load session tasks';
+    } finally {
+      listLoading = false;
     }
   }
 
@@ -139,9 +165,8 @@
       const elapsed = focusStartedAt ? Date.now() - focusStartedAt : 0;
       if (running && phase === 'focus' && elapsed > settings.focus_minutes * 60_000 / 2) {
         prepareBreak();
-      } else if (phase === 'focus') {
-        await selectNextTask();
       }
+      await selectNextTask();
       return;
     }
 
@@ -149,27 +174,35 @@
     currentTask = updated;
   }
 
+  async function handlePinnedTaskChanged(updated: Task) {
+    await handleTaskChanged(updated);
+    await loadSessionTasks();
+  }
+
+  async function handleListedTaskChanged(updated: Task) {
+    if (currentTask?.id === updated.id) await handleTaskChanged(updated);
+    await loadSessionTasks();
+  }
+
   async function reconcileExternalTaskChange() {
     if (!currentTask) {
-      if (phase === 'focus') await selectNextTask();
+      await selectNextTask();
+      await loadSessionTasks();
       return;
     }
 
     try {
       const refreshed = await api.task(currentTask.id);
       if (refreshed.finished_at || refreshed.current_block) {
-        if (phase === 'focus') {
-          await handleTaskChanged(refreshed);
-        } else {
-          currentTask = null;
-        }
+        await handleTaskChanged(refreshed);
       } else {
         currentTask = refreshed;
       }
     } catch {
       currentTask = null;
-      if (phase === 'focus') await selectNextTask();
+      await selectNextTask();
     }
+    await loadSessionTasks();
   }
 
   $: if (taskVersion !== seenTaskVersion) {
@@ -181,11 +214,13 @@
     timer = window.setInterval(tick, 250);
     void (async () => {
       try {
-        [settings, statuses] = await Promise.all([
+        [settings, statuses, tags] = await Promise.all([
           api.pomodoroSettings(),
-          api.statuses(workspace.id)
+          api.statuses(workspace.id),
+          api.tags(workspace.id)
         ]);
-        await prepareFocus();
+        sessionTag = sessionTagId === null ? null : tags.find((tag) => tag.id === sessionTagId) ?? null;
+        await Promise.all([prepareFocus(), loadSessionTasks()]);
       } catch (reason) {
         error = reason instanceof Error ? reason.message : 'Could not start focus mode';
       } finally {
@@ -234,6 +269,12 @@
       </div>
     {/if}
 
+    <div class="session-scope">
+      <span>Session scope</span>
+      <strong>{sessionTag ? `#${sessionTag.name}` : 'All tags'}</strong>
+      {#if sessionTag}<small>includes child tags</small>{/if}
+    </div>
+
     {#if error}<p class="error" role="alert">{error}</p>{/if}
 
     {#if loading}
@@ -255,7 +296,7 @@
             task={currentTask}
             {statuses}
             readOnly={workspace.role === 'viewer'}
-            on:changed={(event) => handleTaskChanged(event.detail)}
+            on:changed={(event) => handlePinnedTaskChanged(event.detail)}
             on:open={(event) => dispatch('openTask', event.detail)}
             on:error={(event) => (error = event.detail)}
           />
@@ -264,12 +305,50 @@
           </p>
         {:else}
           <div class="empty-focus">
-            <p>No unfinished, unblocked tasks are available.</p>
+            <p>No unfinished, unblocked tasks are available in this session scope.</p>
             {#if workspace.role !== 'viewer'}
               <button class="primary" on:click={() => dispatch('openTask', 0)}>Create a task</button>
             {/if}
           </div>
         {/if}
+
+        <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
+          <div class="session-tasks__heading">
+            <div>
+              <p class="eyebrow">Session tasks</p>
+              <h2>Tasks</h2>
+            </div>
+            <label class="blocked-filter">
+              <span>Blocked</span>
+              <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
+                <option value="">Either</option>
+                <option value="false">Not blocked</option>
+                <option value="true">Blocked</option>
+              </select>
+            </label>
+          </div>
+
+          {#if listLoading}
+            <p class="task-list-empty">Loading tasks…</p>
+          {:else if sessionTasks.length === 0}
+            <p class="task-list-empty">No matching unfinished tasks.</p>
+          {:else}
+            <div class="simple-task-list">
+              {#each sessionTasks as task (task.id)}
+                <article class:current={task.id === currentTask?.id} class:blocked={!!task.current_block} class="simple-task-row">
+                  <button class="simple-task-title" on:click={() => dispatch('openTask', task.id)}>{task.title}</button>
+                  <div class="simple-task-meta">
+                    {#if task.id === currentTask?.id}<span class="current-chip">Current</span>{/if}
+                    {#if task.current_block}<span class="blocked-chip">Blocked</span>{/if}
+                    <span>Priority {task.priority}</span>
+                    <span>{task.status.name}</span>
+                    <span>Score {task.score.toFixed(1)}</span>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
+        </section>
       </section>
     {:else}
       <section class="break-card">
@@ -285,7 +364,7 @@
         {#if currentTask}
           <p class="pinned-note"><strong>{currentTask.title}</strong> remains pinned for the next focus period.</p>
         {:else}
-          <p class="pinned-note">Your next task will be ranked when the next focus period is prepared.</p>
+          <p class="pinned-note">Your next task will be ranked within this session scope.</p>
         {/if}
       </section>
     {/if}
@@ -403,7 +482,7 @@
     display: flex;
     justify-content: center;
     gap: .4rem;
-    margin: .85rem 0 2.2rem;
+    margin: .85rem 0 .8rem;
   }
 
   .cycle-dots span {
@@ -423,6 +502,26 @@
     background: #9daf9f;
   }
 
+  .session-scope {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin-bottom: 2rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .55);
+    color: var(--muted);
+    padding: .35rem .65rem;
+    font-size: .72rem;
+  }
+
+  .session-scope strong {
+    color: var(--forest-2);
+  }
+
+  .session-scope small {
+    opacity: .8;
+  }
+
   .focus-task-area {
     text-align: left;
   }
@@ -436,7 +535,9 @@
   }
 
   .focus-task-heading .eyebrow,
-  .focus-task-heading h1 {
+  .focus-task-heading h1,
+  .session-tasks__heading .eyebrow,
+  .session-tasks__heading h2 {
     margin: 0;
   }
 
@@ -476,6 +577,119 @@
     text-align: center;
   }
 
+  .session-tasks {
+    margin-top: 1.75rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid rgba(100, 95, 80, .16);
+  }
+
+  .session-tasks__heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: .75rem;
+  }
+
+  .session-tasks__heading h2 {
+    margin-top: .1rem;
+    font-size: 1.15rem;
+  }
+
+  .blocked-filter {
+    display: grid;
+    min-width: 9.5rem;
+    gap: .2rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: .7rem;
+    font-weight: 800;
+  }
+
+  .blocked-filter select {
+    min-width: 0;
+  }
+
+  .simple-task-list {
+    display: grid;
+    gap: .45rem;
+  }
+
+  .simple-task-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid rgba(100, 95, 80, .14);
+    border-radius: .65rem;
+    background: rgba(255, 255, 255, .62);
+    padding: .7rem .8rem;
+  }
+
+  .simple-task-row.current {
+    border-color: rgba(45, 105, 80, .35);
+    box-shadow: inset 3px 0 0 var(--forest);
+  }
+
+  .simple-task-row.blocked {
+    opacity: .78;
+  }
+
+  .simple-task-title {
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: 0;
+    font: inherit;
+    font-weight: 750;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .simple-task-title:hover {
+    color: var(--forest-2);
+    text-decoration: underline;
+    text-underline-offset: .15rem;
+  }
+
+  .simple-task-meta {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: .4rem;
+    color: var(--muted);
+    font-size: .7rem;
+  }
+
+  .simple-task-meta > span {
+    white-space: nowrap;
+  }
+
+  .current-chip,
+  .blocked-chip {
+    border-radius: 999px;
+    padding: .18rem .4rem;
+    font-weight: 800;
+  }
+
+  .current-chip {
+    background: rgba(45, 105, 80, .1);
+    color: var(--forest-2);
+  }
+
+  .blocked-chip {
+    background: rgba(166, 80, 56, .1);
+    color: #8e4b37;
+  }
+
+  .task-list-empty {
+    margin: .6rem 0 0;
+    color: var(--muted);
+    font-size: .82rem;
+  }
+
   .break-card {
     max-width: 540px;
     margin: 2rem auto 0;
@@ -495,11 +709,10 @@
     line-height: 1.5;
   }
 
-  .break-card .pinned-note {
-    margin-top: 1.2rem;
-    border-top: 1px solid rgba(100, 95, 80, .12);
-    padding-top: 1rem;
-    font-size: .82rem;
+  .pinned-note {
+    border-radius: .65rem;
+    background: rgba(55, 95, 75, .07);
+    padding: .7rem .8rem;
   }
 
   @media (max-width: 640px) {
@@ -516,9 +729,19 @@
       padding-top: 1rem;
     }
 
-    .focus-task-heading {
+    .focus-task-heading,
+    .session-tasks__heading,
+    .simple-task-row {
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .blocked-filter {
+      width: 100%;
+    }
+
+    .simple-task-meta {
+      flex-wrap: wrap;
     }
   }
 </style>
