@@ -10,6 +10,7 @@
 
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string }>();
   let busy = false;
+  let descriptionExpanded = false;
 
   async function act(action: () => Promise<Task>) {
     busy = true;
@@ -35,7 +36,19 @@
   </div>
 
   {#if task.description}
-    <Markdown source={task.description} />
+    <button
+      type="button"
+      class="description-toggle"
+      aria-expanded={descriptionExpanded}
+      on:click={() => (descriptionExpanded = !descriptionExpanded)}
+    >
+      {descriptionExpanded ? 'Hide description' : 'Show description'}
+    </button>
+    {#if descriptionExpanded}
+      <div class="task-description">
+        <Markdown source={task.description} />
+      </div>
+    {/if}
   {/if}
 
   <div class="meta-row">
@@ -82,3 +95,23 @@
     </div>
   {/if}
 </article>
+
+<style>
+  .description-toggle {
+    margin-top: .55rem;
+    border: 0;
+    background: transparent;
+    color: var(--forest-2);
+    padding: .15rem 0;
+    font-size: .8rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: .15rem;
+  }
+
+  .task-description {
+    margin-top: .55rem;
+    padding: .7rem .8rem;
+    border-left: 2px solid var(--line);
+  }
+</style>
