@@ -44,6 +44,17 @@
   function reblock() {
     void runBlockingAction(() => api.reblockTask(task.id), 'Could not reblock task');
   }
+
+  async function deleteBlock(blockId: number) {
+    busy = true;
+    try {
+      dispatch('changed', await api.deleteBlock(task.id, blockId));
+    } catch (error) {
+      dispatch('error', error instanceof Error ? error.message : 'Could not delete blocking reason');
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
@@ -119,6 +130,7 @@
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
     on:reblock={reblock}
+    on:deleteBlock={(event) => deleteBlock(event.detail)}
   />
 {/if}
 
