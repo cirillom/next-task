@@ -25,16 +25,24 @@
     }
   }
 
-  async function block(reason: string) {
+  async function runBlockingAction(action: () => Promise<Task>, fallbackMessage: string) {
     busy = true;
     try {
-      dispatch('changed', await api.blockTask(task.id, reason));
+      dispatch('changed', await action());
       blockModalOpen = false;
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Could not block task');
+      dispatch('error', error instanceof Error ? error.message : fallbackMessage);
     } finally {
       busy = false;
     }
+  }
+
+  function block(reason: string) {
+    void runBlockingAction(() => api.blockTask(task.id, reason), 'Could not block task');
+  }
+
+  function reblock() {
+    void runBlockingAction(() => api.reblockTask(task.id), 'Could not reblock task');
   }
 </script>
 
@@ -110,6 +118,7 @@
     {busy}
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
+    on:reblock={reblock}
   />
 {/if}
 
