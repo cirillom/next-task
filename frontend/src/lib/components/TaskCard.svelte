@@ -64,7 +64,24 @@
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
   <div class="task-card__top">
     <button class="title-button" on:click={() => dispatch('open', task.id)}>{task.title}</button>
-    <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    <div class="task-card__header-actions">
+      {#if !readOnly}
+        <button
+          type="button"
+          class="edit-button"
+          aria-label="Edit task"
+          title="Edit task"
+          disabled={busy}
+          on:click={() => dispatch('open', task.id)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      {/if}
+      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    </div>
   </div>
 
   {#if task.description}
@@ -102,11 +119,19 @@
 
   {#if !readOnly}
     <div class="task-actions">
-      <button disabled={busy} on:click={() => dispatch('open', task.id)}>Open</button>
-      <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
-      <button disabled={busy} on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}>
-        {task.finished_at ? 'Reopen' : 'Finish'}
+      <button
+        type="button"
+        class="finish-toggle"
+        class:checked={!!task.finished_at}
+        aria-label={task.finished_at ? 'Reopen task' : 'Finish task'}
+        aria-pressed={!!task.finished_at}
+        title={task.finished_at ? 'Reopen task' : 'Finish task'}
+        disabled={busy}
+        on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
+      >
+        <span aria-hidden="true">{task.finished_at ? '✓' : ''}</span>
       </button>
+      <button disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>Worked now</button>
       <button disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
         {task.current_block ? 'Unblock' : 'Block'}
       </button>
@@ -140,6 +165,70 @@
 {/if}
 
 <style>
+  .task-card__header-actions {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .edit-button {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--muted);
+    opacity: .35;
+    padding: .3rem;
+    transition: opacity .15s ease, background .15s ease;
+  }
+
+  .edit-button svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .task-card:hover .edit-button,
+  .edit-button:focus-visible {
+    opacity: .85;
+  }
+
+  .edit-button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .04);
+  }
+
+  .finish-toggle {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
+    place-items: center;
+    border: 1.5px solid #aaa69c;
+    border-radius: .45rem;
+    background: #fff;
+    color: #fff;
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .finish-toggle.checked {
+    border-color: var(--forest);
+    background: var(--forest);
+  }
+
+  .finish-toggle:hover:not(:disabled) {
+    border-color: var(--forest);
+  }
+
   .task-description {
     width: 100%;
     height: 7rem;
@@ -166,5 +255,11 @@
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: .15rem;
+  }
+
+  @media (max-width: 600px) {
+    .edit-button {
+      opacity: .6;
+    }
   }
 </style>
