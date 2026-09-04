@@ -1,4 +1,13 @@
-import type { Member, Status, Tag, Task, TaskInput, User, Workspace } from './types';
+import type {
+  Member,
+  PomodoroSettings,
+  Status,
+  Tag,
+  Task,
+  TaskInput,
+  User,
+  Workspace
+} from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +52,10 @@ export const api = {
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),
+
+  pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
+  updatePomodoroSettings: (body: PomodoroSettings) =>
+    request<PomodoroSettings>('/api/pomodoro/settings', json('PUT', body)),
 
   workspaces: () => request<Workspace[]>('/api/workspaces'),
   createWorkspace: (name: string) =>
