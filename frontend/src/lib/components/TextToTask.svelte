@@ -51,7 +51,7 @@
     <header class="editor-header">
       <div>
         <p class="eyebrow">{stage === 'prompt' ? 'Gemini Flash' : 'Review before creating'}</p>
-        <h1 id="text-task-title">{stage === 'prompt' ? 'Text to task' : 'Edit task draft'}</h1>
+        <h1 id="text-task-title">{stage === 'prompt' ? 'Text to task' : 'New task'}</h1>
       </div>
       <button class="icon-button" aria-label="Close" on:click={() => dispatch('close')}>×</button>
     </header>
@@ -70,7 +70,7 @@
         </footer>
       </form>
     {:else if draft}
-      <p class="notice">Gemini suggested this draft using <code>{draft.model}</code>. Review every field before creating it.</p>
+      <p class="notice">Gemini suggested the initial values using <code>{draft.model}</code>. Review them before creating the task.</p>
       <TaskForm
         {workspace}
         initialTitle={draft.title}
@@ -94,42 +94,12 @@
 </div>
 
 <style>
-  .prompt-form {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .prompt-form textarea {
-    line-height: 1.5;
-  }
-
-  .modal-actions {
-    position: sticky;
-    bottom: -1.4rem;
-    display: flex;
-    justify-content: flex-end;
-    gap: .7rem;
-    border-top: 1px solid var(--line);
-    background: var(--paper);
-    margin: .4rem -1.4rem -1.4rem;
-    padding: 1rem 1.4rem;
-  }
-
-  .modal-actions > button:not(.primary) {
-    background: #fff;
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    padding: .48rem .7rem;
-    color: var(--ink);
-  }
-
+  .prompt-form { display: grid; gap: 1rem; }
+  .prompt-form textarea { line-height: 1.5; }
+  .modal-actions { position: sticky; bottom: -1.4rem; display: flex; justify-content: flex-end; gap: .7rem; border-top: 1px solid var(--line); background: var(--paper); margin: .4rem -1.4rem -1.4rem; padding: 1rem 1.4rem; }
+  .modal-actions > button:not(.primary) { background: #fff; border: 1px solid #cbc8be; border-radius: .5rem; padding: .48rem .7rem; color: var(--ink); }
   code { overflow-wrap: anywhere; }
-
   @media (max-width: 760px) {
-    .modal-actions {
-      bottom: -1rem;
-      margin: .4rem -1rem -1rem;
-      padding: .8rem 1rem max(.8rem, env(safe-area-inset-bottom));
-    }
+    .modal-actions { bottom: -1rem; margin: .4rem -1rem -1rem; padding: .8rem 1rem max(.8rem, env(safe-area-inset-bottom)); }
   }
 </style>
