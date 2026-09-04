@@ -2,11 +2,12 @@ import json
 from collections.abc import Callable
 
 import httpx
+import pytest
 from app.database import SessionLocal
 from app.gemini_schemas import GeneratedTask
 from app.models import User
 from app.routes import gemini as gemini_routes
-from app.services.gemini import generate_task_draft
+from app.services.gemini import GeminiServiceError, generate_task_draft
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -140,11 +141,23 @@ def test_text_to_task_requires_own_key_and_editor_access(
     assert denied.status_code == 403
 
 
+def gemini_context() -> dict:
+    return {
+        "name": "Personal",
+        "today": "2026-09-03",
+        "statuses": [{"name": "todo"}],
+        "members": [{"name": "Owner", "email": "owner@example.com"}],
+        "existing_tags": [],
+    }
+
+
 def test_gemini_interactions_request_uses_structured_output() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-goog-api-key"] == "secret-key"
         body = json.loads(request.content)
         assert body["model"] == "gemini-3.8-flash"
+        assert "max_output_tokens" not in body
+        assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
         assert body["response_format"]["schema"]["properties"]["status_name"]["enum"] == [
             "todo"
@@ -171,14 +184,32 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
             },
         )
 
-    context = {
-        "name": "Personal",
-        "today": "2026-09-03",
-        "statuses": [{"name": "todo"}],
-        "members": [{"name": "Owner", "email": "owner@example.com"}],
-        "existing_tags": [],
-    }
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        draft = generate_task_draft("secret-key", context, "Buy groceries", client)
+        draft = generate_task_draft("secret-key", gemini_context(), "Buy groceries", client)
     assert draft.title == "Buy groceries"
     assert draft.tag_names == ["errands"]
+
+
+def test_gemini_request_error_keeps_useful_detail_and_redacts_key() -> None:
+    api_key = "secret-key"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": f'Invalid JSON payload for {api_key}: unknown field "bad_field".',
+                }
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(GeminiServiceError) as caught:
+            generate_task_draft(api_key, gemini_context(), "Buy groceries", client)
+
+    assert caught.value.status_code == 400
+    assert "unknown field" in str(caught.value)
+    assert api_key not in str(caught.value)
+    assert "[redacted]" in str(caught.value)
