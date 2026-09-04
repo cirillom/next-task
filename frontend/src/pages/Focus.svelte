@@ -98,7 +98,6 @@
     try {
       await api.unblockTask(task.id);
       await loadSessionTasks();
-      if (!currentTask && phase === 'focus') await selectNextTask();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not unblock task';
     } finally {
