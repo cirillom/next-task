@@ -205,9 +205,11 @@ def test_gemini_request_error_keeps_useful_detail_and_redacts_key() -> None:
             },
         )
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(GeminiServiceError) as caught:
-            generate_task_draft(api_key, gemini_context(), "Buy groceries", client)
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(GeminiServiceError) as caught,
+    ):
+        generate_task_draft(api_key, gemini_context(), "Buy groceries", client)
 
     assert caught.value.status_code == 400
     assert "unknown field" in str(caught.value)
