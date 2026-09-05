@@ -178,7 +178,13 @@
 {:else}
   <form class="shared-task-form" on:submit|preventDefault={submit}>
     <div class="form-grid">
-      <label class="wide">Title<input bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
+      <label class="wide">
+        <span class="field-label-row">
+          <span>Title</span>
+          {#if taskId}<span class="task-id">#{taskId}</span>{/if}
+        </span>
+        <input bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} />
+      </label>
       <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
       <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
       <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
@@ -248,6 +254,8 @@
 
 <style>
   .shared-task-form { display: grid; gap: 1rem; }
+  .field-label-row { display: flex; align-items: baseline; gap: .45rem; }
+  .task-id { color: var(--muted); font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .parent-field > label { display: block; margin-bottom: .35rem; }
   .parent-combobox { position: relative; }
   .parent-options { position: absolute; z-index: 8; top: calc(100% + .25rem); left: 0; right: 0; max-height: 15rem; overflow: auto; border: 1px solid #cbc8be; border-radius: .55rem; background: #fff; box-shadow: 0 12px 28px rgba(20, 27, 23, .16); padding: .3rem; }
