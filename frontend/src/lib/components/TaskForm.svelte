@@ -206,7 +206,7 @@
             <div id="parent-task-options" class="parent-options" role="listbox">
               <button type="button" class:selected={!parentTaskId} on:mousedown|preventDefault={() => chooseParent(null)}>No parent</button>
               {#each filteredParentTasks as item (item.id)}
-                <button type="button" class:selected={item.id === parentTaskId} on:mousedown|preventDefault={() => chooseParent(item)}>{item.title}</button>
+                <button type="button" class:selected={item.id === parentTaskId} on:mousedown|preventDefault={() => chooseParent(item)}>{parentOptionLabel(item)}</button>
               {/each}
               {#if !filteredParentTasks.length}<span class="parent-empty">No matching tasks</span>{/if}
             </div>
