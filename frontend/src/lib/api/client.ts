@@ -47,8 +47,10 @@ const json = (method: string, body?: unknown): RequestInit => ({
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  login: (email: string, password: string) =>
-    request<User>('/api/auth/login', json('POST', { email, password })),
+  login: (identifier: string, password: string) =>
+    request<User>('/api/auth/login', json('POST', { email: identifier, password })),
+  signup: (identifier: string, password: string) =>
+    request<User>('/api/auth/signup', json('POST', { identifier, password })),
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),

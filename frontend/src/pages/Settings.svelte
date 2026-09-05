@@ -31,7 +31,7 @@
 
 <div class="page-heading"><div><p class="eyebrow">Your account</p><h1>Settings</h1></div></div>
 <div class="settings-stack narrow">
-  <section class="panel"><h2>Profile</h2><dl><div><dt>Name</dt><dd>{user.display_name}</dd></div><div><dt>Email</dt><dd>{user.email}</dd></div></dl></section>
+  <section class="panel"><h2>Profile</h2><dl><div><dt>Name</dt><dd>{user.display_name}</dd></div><div><dt>Username / email</dt><dd>{user.email}</dd></div></dl></section>
   <PomodoroSettings />
   <ChatGPTSettings />
   <GeminiSettings />

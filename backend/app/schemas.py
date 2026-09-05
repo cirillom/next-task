@@ -40,6 +40,16 @@ class LoginRequest(ApiModel):
     password: str
 
 
+class SignUpRequest(ApiModel):
+    identifier: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=10, max_length=1024)
+
+    @field_validator("identifier")
+    @classmethod
+    def clean_identifier(cls, value: str) -> str:
+        return clean_required(value).lower()
+
+
 class PasswordChange(ApiModel):
     current_password: str
     new_password: str = Field(min_length=10, max_length=1024)
