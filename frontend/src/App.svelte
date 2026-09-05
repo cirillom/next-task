@@ -60,6 +60,18 @@
     if (workspace) localStorage.setItem('next-task-workspace', String(workspace.id));
     refreshKey += 1;
   }
+  function workspaceDeleted(id: number) {
+    const deletedIndex = workspaces.findIndex((item) => item.id === id);
+    const remaining = workspaces.filter((item) => item.id !== id);
+    workspaces = remaining;
+    workspace = remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)] || null;
+    editorTaskId = null;
+    textToTaskOpen = false;
+    focusTagId = null;
+    if (workspace) localStorage.setItem('next-task-workspace', String(workspace.id));
+    else localStorage.removeItem('next-task-workspace');
+    refreshKey += 1;
+  }
   async function createFirstWorkspace() {
     try { const created = await api.createWorkspace(firstWorkspaceName); workspaces = [created]; selectWorkspace(created.id); }
     catch (reason) { error = reason instanceof Error ? reason.message : 'Could not create workspace'; }
@@ -133,7 +145,7 @@
           {#if view === 'next'}<Next {workspace} on:openTask={(event) => (editorTaskId = event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
           {:else if view === 'tasks'}<Tasks {workspace} on:openTask={(event) => (editorTaskId = event.detail)} />
           {:else if view === 'tags'}<Tags {workspace} />
-          {:else if view === 'workspaces'}<Workspaces {workspace} {workspaces} on:select={(event) => selectWorkspace(event.detail)} on:created={(event) => { workspaces = [...workspaces, event.detail]; selectWorkspace(event.detail.id); }} on:updated={(event) => { workspaces = workspaces.map((item) => item.id === event.detail.id ? event.detail : item); workspace = event.detail; }} />
+          {:else if view === 'workspaces'}<Workspaces {workspace} {workspaces} on:select={(event) => selectWorkspace(event.detail)} on:created={(event) => { workspaces = [...workspaces, event.detail]; selectWorkspace(event.detail.id); }} on:updated={(event) => { workspaces = workspaces.map((item) => item.id === event.detail.id ? event.detail : item); workspace = event.detail; }} on:deleted={(event) => workspaceDeleted(event.detail)} />
           {:else}<Settings {user} />{/if}
         {/key}
       {/if}
