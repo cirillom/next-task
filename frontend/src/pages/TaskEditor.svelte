@@ -93,9 +93,12 @@
     }
   }
 
-  function block(reason: string) {
+  function block(request: { reason: string; unblocked_at: string | null }) {
     if (!task) return;
-    void runBlockingAction(() => api.blockTask(task!.id, reason), 'Could not block task');
+    void runBlockingAction(
+      () => api.blockTask(task!.id, request.reason, request.unblocked_at),
+      'Could not block task'
+    );
   }
 
   function unblock() {
