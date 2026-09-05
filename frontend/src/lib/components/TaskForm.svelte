@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { ApiError, api } from '../api/client';
   import type { Member, Status, Tag, Task, TaskInput, Workspace } from '../api/types';
+  import { formatDateTime } from '../format';
   import Markdown from './Markdown.svelte';
 
   export let workspace: Workspace;
@@ -181,8 +182,8 @@
       <label class="wide">Title<input bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
       <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
       <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
-      <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
-      <label>Last worked<input type="datetime-local" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
+      <label>Due date<input type="date" lang="pt-BR" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
+      <label>Last worked<input type="datetime-local" lang="pt-BR" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
 
       <div class="wide parent-field">
         <label for="task-parent-search">Parent task</label>
@@ -230,7 +231,7 @@
 
     {#if taskDetails}
       <section class="detail-panel">
-        <dl><div><dt>Creator</dt><dd>{taskDetails.creator.display_name}</dd></div><div><dt>Created</dt><dd>{new Date(taskDetails.created_at).toLocaleString()}</dd></div><div><dt>Finished</dt><dd>{taskDetails.finished_at ? new Date(taskDetails.finished_at).toLocaleString() : 'Not finished'}</dd></div></dl>
+        <dl><div><dt>Creator</dt><dd>{taskDetails.creator.display_name}</dd></div><div><dt>Created</dt><dd>{formatDateTime(taskDetails.created_at)}</dd></div><div><dt>Finished</dt><dd>{taskDetails.finished_at ? formatDateTime(taskDetails.finished_at) : 'Not finished'}</dd></div></dl>
         {#if taskDetails.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {taskDetails.current_block.reason}</div>{/if}
         {#if taskDetails.subtasks.length}<h3>Subtasks</h3><ul>{#each taskDetails.subtasks as subtask}<li>{subtask.finished_at ? '✓' : '○'} {subtask.title}</li>{/each}</ul>{/if}
       </section>
