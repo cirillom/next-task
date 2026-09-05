@@ -217,17 +217,33 @@ it is lost or replaced, users must save their Gemini keys again.
 ## Scoring formulas
 
 Scores are calculated when tasks are read and are not persisted. Available
-variables are `priority`, `ageDays`, `idleDays`, `dueOffsetDays`, and
-`statusValue`. Formulas accept numbers, arithmetic, comparisons, boolean
-operations, and Python-style conditional expressions, for example:
+variables are `priority`, `ageDays`, `idleDays`, `dueOffsetDays`, `hasDueDate`, and
+`statusValue`. `hasDueDate` is `1` when a due date exists and `0` otherwise. The
+`dueOffsetDays` value is negative before the due date, zero on the due date, and
+positive after it. Formulas accept numbers, arithmetic, comparisons, boolean
+operations, the `exp()` function, and Python-style conditional expressions.
+
+The default formula is:
 
 ```text
-priority * 20 + idleDays * 1.5 + (dueOffsetDays * 50 if dueOffsetDays > 0 else 0)
+priority * 25
++ ageDays * 0.25
++ idleDays * 1.00
++ statusValue * 20
++ (
+    (
+        50 * exp(dueOffsetDays / 7)
+        if dueOffsetDays < 0
+        else 50 + dueOffsetDays * 20
+    )
+    if hasDueDate > 0
+    else 0
+)
 ```
 
-Function calls, attribute access, imports, and other arbitrary Python are rejected
-by the limited expression evaluator. Finished tasks score zero and are excluded
-from the normal Next queue.
+Only the explicitly supported `exp()` function can be called. Other function calls,
+attribute access, imports, and arbitrary Python are rejected by the limited expression
+evaluator. Finished tasks score zero and are excluded from the normal Next queue.
 
 ## API
 
