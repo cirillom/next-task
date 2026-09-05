@@ -59,6 +59,14 @@
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
   }
+
+  function formatDate(value: string): string {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map(Number);
+      return new Date(year, month - 1, day).toLocaleDateString();
+    }
+    return new Date(value).toLocaleDateString();
+  }
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
@@ -104,7 +112,11 @@
   <div class="meta-row">
     <span class="priority" title="Priority">{task.priority}</span>
     <span>{task.status.name}</span>
-    {#if task.due_date}<span class:overdue={!task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}>Due {task.due_date}</span>{/if}
+    <span class="date-meta" title={new Date(task.created_at).toLocaleString()}>Created {formatDate(task.created_at)}</span>
+    <span
+      class="date-meta"
+      class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
+    >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
@@ -231,6 +243,11 @@
     font-size: .72rem;
     font-weight: 700;
     opacity: .72;
+  }
+
+  .date-meta {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
 
   .task-card__header-actions {
