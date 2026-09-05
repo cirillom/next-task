@@ -127,7 +127,13 @@
 <div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
-      <div><p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p><h1 id="task-editor-title">{taskId ? task?.title || 'Task' : 'New task'}</h1></div>
+      <div>
+        <p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p>
+        <h1 id="task-editor-title" class="editor-title">
+          {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
+          <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
+        </h1>
+      </div>
       <div class="editor-header-actions">
         {#if task && workspace.role !== 'viewer'}
           <button
@@ -194,6 +200,19 @@
 {/if}
 
 <style>
+  .editor-title {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+  }
+
+  .header-task-id {
+    color: var(--muted);
+    font-size: .52em;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+  }
+
   .editor-header-actions {
     display: flex;
     align-items: center;
