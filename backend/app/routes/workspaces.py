@@ -110,6 +110,18 @@ def update_workspace(
     return workspace_read(membership.workspace, membership.role)
 
 
+@router.delete("/{workspace_id}", status_code=204)
+def delete_workspace(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    membership = require_owner(db, workspace_id, user)
+    db.delete(membership.workspace)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.get("/{workspace_id}/members", response_model=list[MemberRead])
 def list_members(
     workspace_id: int,
