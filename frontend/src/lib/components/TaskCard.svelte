@@ -112,6 +112,7 @@
       class="date-meta"
       class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
+    <span class="date-meta">Last worked {task.last_worked_at ? formatDateTime(task.last_worked_at) : '—'}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
