@@ -1,29 +1,15 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Member, Status, Tag, Task, TaskInput, Workspace } from '../lib/api/types';
+  import type { Task, TaskInput, Workspace } from '../lib/api/types';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
-  import Markdown from '../lib/components/Markdown.svelte';
+  import TaskForm from '../lib/components/TaskForm.svelte';
 
   export let workspace: Workspace;
   export let taskId = 0;
   const dispatch = createEventDispatcher<{ close: void; saved: Task; changed: Task; deleted: number }>();
 
   let task: Task | null = null;
-  let statuses: Status[] = [];
-  let tags: Tag[] = [];
-  let members: Member[] = [];
-  let parentTasks: Task[] = [];
-  let title = '';
-  let description = '';
-  let statusId = 0;
-  let priority = 1;
-  let dueDate = '';
-  let lastWorked = '';
-  let parentTaskId = 0;
-  let assigneeIds: number[] = [];
-  let tagIds: number[] = [];
-  let mobileTab: 'edit' | 'preview' = 'edit';
   let loading = true;
   let busy = false;
   let blockModalOpen = false;
@@ -37,26 +23,13 @@
   }
 
   onMount(async () => {
+    if (!taskId) {
+      loading = false;
+      return;
+    }
+
     try {
-      [statuses, tags, members, parentTasks] = await Promise.all([
-        api.statuses(workspace.id),
-        api.tags(workspace.id),
-        api.members(workspace.id),
-        api.tasks(workspace.id, { finished: false })
-      ]);
-      statusId = statuses[0]?.id || 0;
-      if (taskId) {
-        task = await api.task(taskId);
-        title = task.title;
-        description = task.description || '';
-        statusId = task.status.id;
-        priority = task.priority;
-        dueDate = task.due_date || '';
-        lastWorked = datetimeLocal(task.last_worked_at);
-        parentTaskId = task.parent_task_id || 0;
-        assigneeIds = task.assignees.map((item) => item.id);
-        tagIds = task.direct_tags.map((item) => item.id);
-      }
+      task = await api.task(taskId);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load task';
     } finally {
@@ -64,20 +37,9 @@
     }
   });
 
-  async function save() {
+  async function save(input: TaskInput) {
     busy = true;
     error = '';
-    const input: TaskInput = {
-      title,
-      description: description || null,
-      status_id: statusId,
-      priority,
-      due_date: dueDate || null,
-      last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
-      parent_task_id: parentTaskId || null,
-      assignee_ids: assigneeIds,
-      tag_ids: tagIds
-    };
     try {
       const saved = taskId
         ? await api.updateTask(taskId, input)
@@ -165,7 +127,13 @@
 <div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
-      <div><p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p><h1 id="task-editor-title">{taskId ? title || 'Task' : 'New task'}</h1></div>
+      <div>
+        <p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p>
+        <h1 id="task-editor-title" class="editor-title">
+          {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
+          <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
+        </h1>
+      </div>
       <div class="editor-header-actions">
         {#if task && workspace.role !== 'viewer'}
           <button
@@ -176,16 +144,10 @@
             on:click={() => task?.current_block ? unblock() : (blockModalOpen = true)}
           >
             {#if task.current_block}
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7 10V8a5 5 0 0 1 9.5-2" />
-                <rect x="5" y="10" width="14" height="10" rx="2" />
-              </svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg>
               <span>Unblock</span>
             {:else}
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="8.5" />
-                <path d="M6 18 18 6" />
-              </svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
               <span>Block</span>
             {/if}
           </button>
@@ -194,41 +156,33 @@
       </div>
     </header>
 
-    {#if loading}<p class="empty">Loading editor…</p>{:else}
-      <form on:submit|preventDefault={save}>
-        <div class="form-grid">
-          <label class="wide">Title<input bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
-          <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-          <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
-          <label>Due date<input type="date" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
-          <label>Last worked<input type="datetime-local" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
-          <label class="wide">Parent task<select bind:value={parentTaskId} disabled={workspace.role === 'viewer'}><option value={0}>No parent</option>{#each parentTasks.filter((item) => item.id !== taskId) as item}<option value={item.id}>{item.title}</option>{/each}</select></label>
-        </div>
-
-        <div class="mobile-tabs"><button type="button" class:active={mobileTab === 'edit'} on:click={() => (mobileTab = 'edit')}>Edit</button><button type="button" class:active={mobileTab === 'preview'} on:click={() => (mobileTab = 'preview')}>Preview</button></div>
-        <div class="markdown-editor">
-          <label class:hidden-mobile={mobileTab !== 'edit'}>Description (Markdown)<textarea bind:value={description} rows="14" disabled={workspace.role === 'viewer'} placeholder="Add details, links, lists, tables, or code…"></textarea></label>
-          <section class:hidden-mobile={mobileTab !== 'preview'} class="preview"><span class="field-label">Preview</span>{#if description}<Markdown source={description} />{:else}<p class="muted">Nothing to preview yet.</p>{/if}</section>
-        </div>
-
-        <fieldset disabled={workspace.role === 'viewer'}><legend>Assignees</legend><div class="choice-grid">{#each members as member}<label><input type="checkbox" value={member.user_id} bind:group={assigneeIds} /> {member.display_name}</label>{/each}</div></fieldset>
-        <fieldset disabled={workspace.role === 'viewer'}><legend>Direct tags</legend><div class="choice-grid">{#each tags as tag}<label><input type="checkbox" value={tag.id} bind:group={tagIds} /> #{tag.name}</label>{/each}</div></fieldset>
-
-        {#if task}
-          <section class="detail-panel">
-            <dl><div><dt>Creator</dt><dd>{task.creator.display_name}</dd></div><div><dt>Created</dt><dd>{new Date(task.created_at).toLocaleString()}</dd></div><div><dt>Finished</dt><dd>{task.finished_at ? new Date(task.finished_at).toLocaleString() : 'Not finished'}</dd></div></dl>
-            {#if task.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {task.current_block.reason}</div>{/if}
-            {#if task.subtasks.length}<h3>Subtasks</h3><ul>{#each task.subtasks as subtask}<li>{subtask.finished_at ? '✓' : '○'} {subtask.title}</li>{/each}</ul>{/if}
-          </section>
-        {/if}
-
-        {#if error}<p class="error" role="alert">{error}</p>{/if}
-        <footer class="editor-actions">
-          {#if task && workspace.role !== 'viewer'}<button type="button" class="danger" disabled={busy} on:click={remove}>Delete</button>{/if}
-          <span></span><button type="button" on:click={() => dispatch('close')}>Cancel</button>
-          {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || !statusId}>{busy ? 'Saving…' : 'Save task'}</button>{/if}
-        </footer>
-      </form>
+    {#if loading}
+      <p class="empty">Loading editor…</p>
+    {:else if taskId && !task}
+      {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {:else}
+      <TaskForm
+        {workspace}
+        {taskId}
+        initialTitle={task?.title || ''}
+        initialDescription={task?.description || ''}
+        initialStatusId={task?.status.id || 0}
+        initialPriority={task?.priority || 1}
+        initialDueDate={task?.due_date || ''}
+        initialLastWorked={datetimeLocal(task?.last_worked_at || null)}
+        initialParentTaskId={task?.parent_task_id || 0}
+        initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
+        initialTagIds={task?.direct_tags.map((item) => item.id) || []}
+        taskDetails={task}
+        allowDelete={!!task && workspace.role !== 'viewer'}
+        {busy}
+        {error}
+        submitLabel={taskId ? 'Save task' : 'Create task'}
+        busyLabel={taskId ? 'Saving…' : 'Creating…'}
+        on:cancel={() => dispatch('close')}
+        on:delete={remove}
+        on:submit={(event) => save(event.detail)}
+      />
     {/if}
   </div>
 </div>
@@ -246,6 +200,19 @@
 {/if}
 
 <style>
+  .editor-title {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+  }
+
+  .header-task-id {
+    color: var(--muted);
+    font-size: .52em;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+  }
+
   .editor-header-actions {
     display: flex;
     align-items: center;
@@ -283,24 +250,11 @@
     background: #fff;
   }
 
-  .block-action {
-    color: #8a4d36;
-  }
-
-  .block-action.active {
-    border-color: #d8b5a6;
-    background: #fff4ee;
-  }
+  .block-action { color: #8a4d36; }
+  .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
   @media (max-width: 600px) {
-    .quick-action span {
-      display: none;
-    }
-
-    .quick-action {
-      width: 2.1rem;
-      justify-content: center;
-      padding: 0;
-    }
+    .quick-action span { display: none; }
+    .quick-action { width: 2.1rem; justify-content: center; padding: 0; }
   }
 </style>
