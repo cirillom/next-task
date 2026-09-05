@@ -110,8 +110,10 @@
   {/if}
 
   <div class="meta-row">
-    <span class="priority" title="Priority">{task.priority}</span>
-    <span>{task.status.name}</span>
+    {#if readOnly}
+      <span class="priority" title="Priority">{task.priority}</span>
+      <span>{task.status.name}</span>
+    {/if}
     <span class="date-meta" title={new Date(task.created_at).toLocaleString()}>Created {formatDate(task.created_at)}</span>
     <span
       class="date-meta"
