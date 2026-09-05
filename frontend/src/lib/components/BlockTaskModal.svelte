@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import type { Block } from '../api/types';
   import { formatDateTime } from '../format';
 
@@ -10,11 +10,13 @@
   const dispatch = createEventDispatcher<{
     close: void;
     block: { reason: string; unblocked_at: string | null };
-    reblock: void;
+    reblock: { unblocked_at: string | null };
     deleteBlock: number;
   }>();
   let reason = '';
   let autoUnblockAt = '';
+  let reblockMode = false;
+  let autoUnblockInput: HTMLInputElement;
 
   function datetimeLocalNow(): string {
     const now = new Date();
@@ -36,11 +38,22 @@
     const trimmed = reason.trim();
     if (!trimmed || busy) return;
     const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
+    if (reblockMode) {
+      dispatch('reblock', { unblocked_at: unblockedAt });
+      return;
+    }
     dispatch('block', { reason: trimmed, unblocked_at: unblockedAt });
   }
 
-  function reblock() {
-    if (!busy) dispatch('reblock');
+  async function prepareReblock(block: Block) {
+    if (busy) return;
+    reason = block.reason;
+    autoUnblockAt = '';
+    reblockMode = true;
+    minimumAutoUnblock = datetimeLocalNow();
+    await tick();
+    autoUnblockInput?.focus();
+    autoUnblockInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function deleteBlock(blockId: number) {
@@ -59,7 +72,7 @@
     <header class="block-modal__header">
       <div>
         <p class="eyebrow">Task blocking</p>
-        <h1 id="block-modal-title">Block task</h1>
+        <h1 id="block-modal-title">{reblockMode ? 'Reblock task' : 'Block task'}</h1>
         <p class="task-title">{taskTitle}</p>
       </div>
       <button type="button" class="icon-button" aria-label="Close" disabled={busy} on:click={close}>×</button>
@@ -73,6 +86,7 @@
           rows="4"
           placeholder="What is preventing this task from moving forward?"
           disabled={busy}
+          readonly={reblockMode}
           required
         ></textarea>
       </label>
@@ -81,6 +95,7 @@
       <label class="auto-unblock-field">
         <span>Auto-unblock at <span class="optional">(optional)</span></span>
         <input
+          bind:this={autoUnblockInput}
           type="datetime-local"
           lang="pt-BR"
           bind:value={autoUnblockAt}
@@ -104,8 +119,13 @@
                   <strong>{block.reason}</strong>
                   <div class="history-actions">
                     {#if index === 0 && !isActive(block)}
-                      <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
-                        {busy ? 'Reblocking…' : 'Reblock with this reason'}
+                      <button
+                        type="button"
+                        class="reblock-button"
+                        disabled={busy}
+                        on:click={() => prepareReblock(block)}
+                      >
+                        Reblock with this reason
                       </button>
                     {/if}
                     {#if !isActive(block)}
@@ -144,7 +164,13 @@
 
       <footer class="block-modal__actions">
         <button type="button" disabled={busy} on:click={close}>Cancel</button>
-        <button class="primary" disabled={busy || !reason.trim()}>{busy ? 'Blocking…' : 'Block task'}</button>
+        <button class="primary" disabled={busy || !reason.trim()}>
+          {#if busy}
+            {reblockMode ? 'Reblocking…' : 'Blocking…'}
+          {:else}
+            {reblockMode ? 'Reblock task' : 'Block task'}
+          {/if}
+        </button>
       </footer>
     </form>
   </section>
@@ -189,6 +215,11 @@
   textarea {
     min-height: 7rem;
     line-height: 1.5;
+  }
+
+  textarea[readonly] {
+    background: #f5f2ea;
+    color: var(--muted);
   }
 
   .help {
