@@ -212,7 +212,7 @@ class BlockCreate(ApiModel):
     def clean_reason(cls, value: str) -> str:
         return clean_required(value)
 
-    @field_validator("unblocked_at", mode="before")
+    @field_validator("unblocked_at")
     @classmethod
     def normalize_unblocked_at(cls, value: datetime | None) -> datetime | None:
         return ensure_utc(value)
