@@ -5,7 +5,12 @@
 
   export let workspace: Workspace;
   export let workspaces: Workspace[];
-  const dispatch = createEventDispatcher<{ select: number; created: Workspace; updated: Workspace }>();
+  const dispatch = createEventDispatcher<{
+    select: number;
+    created: Workspace;
+    updated: Workspace;
+    deleted: number;
+  }>();
 
   let members: Member[] = [];
   let statuses: Status[] = [];
@@ -18,6 +23,7 @@
   let statusValue = 0;
   let error = '';
   let notice = '';
+  let deleting = false;
 
   async function load() {
     try {
@@ -50,6 +56,24 @@
       dispatch('updated', updated);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not save workspace';
+    }
+  }
+
+  async function deleteWorkspace() {
+    if (
+      !window.confirm(
+        `Delete workspace “${workspace.name}” and all of its tasks, tags, statuses, and memberships? This cannot be undone.`
+      )
+    ) return;
+    deleting = true;
+    error = '';
+    try {
+      await api.deleteWorkspace(workspace.id);
+      dispatch('deleted', workspace.id);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not delete workspace';
+    } finally {
+      deleting = false;
     }
   }
 
@@ -134,7 +158,7 @@
 
   <div class="settings-stack">
     {#if workspace.role === 'owner'}
-      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<input bind:value={workspaceName} required /></label><label>Scoring formula<textarea class="code-input" bind:value={formula} rows="4"></textarea></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><button class="primary">Save settings</button></form></section>
+      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<input bind:value={workspaceName} required /></label><label>Scoring formula<textarea class="code-input" bind:value={formula} rows="4"></textarea></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><button class="primary">Save settings</button></form><button type="button" class="danger-subtle" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting…' : 'Delete workspace'}</button></section>
     {/if}
 
     <section class="panel"><h2>Statuses</h2><div class="editable-list">{#each statuses as item}<div class="editable-row"><input bind:value={item.name} disabled={workspace.role === 'viewer'} aria-label="Status name" /><input type="number" step="any" bind:value={item.score_value} disabled={workspace.role === 'viewer'} aria-label="Score value" />{#if workspace.role !== 'viewer'}<button on:click={() => saveStatus(item)}>Save</button><button class="danger-subtle" on:click={() => removeStatus(item)}>Delete</button>{/if}</div>{/each}</div>{#if workspace.role !== 'viewer'}<form class="inline-control" on:submit|preventDefault={addStatus}><input bind:value={statusName} placeholder="New status" required /><input type="number" step="any" bind:value={statusValue} aria-label="Score value" /><button>Add status</button></form>{/if}</section>
