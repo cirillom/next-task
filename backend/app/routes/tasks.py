@@ -11,6 +11,7 @@ from app.models import Tag, Task, TaskAssignee, TaskBlock, User
 from app.schemas import (
     BlockCreate,
     BlockRead,
+    BlockReblock,
     TagSummary,
     TaskCreate,
     TaskRead,
@@ -289,12 +290,17 @@ def unblock_task(
 @router.post("/{task_id}/reblock", response_model=TaskRead)
 def reblock_task(
     task_id: int,
+    payload: BlockReblock | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
     now = datetime.now(UTC)
+    unblocked_at = payload.unblocked_at if payload is not None else None
+    if unblocked_at is not None and unblocked_at <= now:
+        raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
+
     active = db.scalar(
         select(TaskBlock).where(
             TaskBlock.task_id == task.id,
@@ -313,7 +319,7 @@ def reblock_task(
     if previous is None:
         raise HTTPException(status_code=409, detail="Task has no previous block to restore")
 
-    previous.unblocked_at = None
+    previous.unblocked_at = unblocked_at
     try:
         db.commit()
     except IntegrityError as error:
