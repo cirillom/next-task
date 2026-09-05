@@ -106,9 +106,12 @@
     void runTaskAction(() => api.unblockTask(task!.id), 'Could not unblock task');
   }
 
-  function reblock() {
+  function reblock(request: { unblocked_at: string | null }) {
     if (!task) return;
-    void runBlockingAction(() => api.reblockTask(task!.id), 'Could not reblock task');
+    void runBlockingAction(
+      () => api.reblockTask(task!.id, request.unblocked_at),
+      'Could not reblock task'
+    );
   }
 
   async function deleteBlock(blockId: number) {
@@ -197,7 +200,7 @@
     {busy}
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
-    on:reblock={reblock}
+    on:reblock={(event) => reblock(event.detail)}
     on:deleteBlock={(event) => deleteBlock(event.detail)}
   />
 {/if}
