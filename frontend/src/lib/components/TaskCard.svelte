@@ -246,6 +246,13 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .meta-row > span + span::before {
+    content: '·';
+    margin-right: .65rem;
+    color: #b8b3a8;
+    font-weight: 700;
+  }
+
   .task-card__header-actions {
     display: flex;
     align-items: center;
