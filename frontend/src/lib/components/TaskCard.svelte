@@ -38,8 +38,11 @@
     }
   }
 
-  function block(reason: string) {
-    void runBlockingAction(() => api.blockTask(task.id, reason), 'Could not block task');
+  function block(request: { reason: string; unblocked_at: string | null }) {
+    void runBlockingAction(
+      () => api.blockTask(task.id, request.reason, request.unblocked_at),
+      'Could not block task'
+    );
   }
 
   function reblock() {
@@ -125,7 +128,12 @@
   {/if}
 
   {#if task.current_block}
-    <div class="blocked-reason"><strong>Blocked:</strong> {task.current_block.reason}</div>
+    <div class="blocked-reason">
+      <strong>Blocked:</strong> {task.current_block.reason}
+      {#if task.current_block.unblocked_at}
+        <span class="auto-unblock-note">· until {formatDateTime(task.current_block.unblocked_at)}</span>
+      {/if}
+    </div>
   {/if}
 
   {#if !readOnly}
@@ -251,6 +259,11 @@
     margin-right: .65rem;
     color: #b8b3a8;
     font-weight: 700;
+  }
+
+  .auto-unblock-note {
+    color: var(--muted);
+    font-size: .82rem;
   }
 
   .task-card__header-actions {
