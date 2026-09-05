@@ -205,11 +205,26 @@ class TaskRead(ApiModel):
 
 class BlockCreate(ApiModel):
     reason: str = Field(min_length=1, max_length=4000)
+    unblocked_at: datetime | None = None
 
     @field_validator("reason")
     @classmethod
     def clean_reason(cls, value: str) -> str:
         return clean_required(value)
+
+    @field_validator("unblocked_at")
+    @classmethod
+    def normalize_unblocked_at(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc(value)
+
+
+class BlockReblock(ApiModel):
+    unblocked_at: datetime | None = None
+
+    @field_validator("unblocked_at")
+    @classmethod
+    def normalize_unblocked_at(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc(value)
 
 
 class TagCreate(ApiModel):

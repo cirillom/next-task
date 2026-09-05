@@ -11,6 +11,7 @@ from app.models import Tag, Task, TaskAssignee, TaskBlock, User
 from app.schemas import (
     BlockCreate,
     BlockRead,
+    BlockReblock,
     TagSummary,
     TaskCreate,
     TaskRead,
@@ -32,10 +33,28 @@ from app.services.workspaces import get_membership, require_editor
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
+def normalize_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def block_is_active(block: TaskBlock, now: datetime | None = None) -> bool:
+    if block.unblocked_at is None:
+        return True
+    current = now or datetime.now(UTC)
+    return normalize_utc(block.unblocked_at) > current
+
+
+def active_block_condition(now: datetime):
+    return or_(TaskBlock.unblocked_at.is_(None), TaskBlock.unblocked_at > now)
+
+
 def task_read(db: Session, task: Task) -> TaskRead:
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
-    current_block = next((block for block in task.blocks if block.unblocked_at is None), None)
+    now = datetime.now(UTC)
+    current_block = next((block for block in task.blocks if block_is_active(block, now)), None)
     return TaskRead(
         id=task.id,
         created_by_user_id=task.created_by_user_id,
@@ -101,8 +120,10 @@ def list_tasks(
         allowed_tag_ids = descendant_ids(db, tag_id)
         query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
     if blocked is not None:
+        now = datetime.now(UTC)
         active_block = exists().where(
-            TaskBlock.task_id == Task.id, TaskBlock.unblocked_at.is_(None)
+            TaskBlock.task_id == Task.id,
+            active_block_condition(now),
         )
         query = query.where(active_block if blocked else ~active_block)
     if search and search.strip():
@@ -215,7 +236,25 @@ def block_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
-    db.add(TaskBlock(task_id=task.id, reason=payload.reason))
+    now = datetime.now(UTC)
+    if payload.unblocked_at is not None and payload.unblocked_at <= now:
+        raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
+
+    active = db.scalar(
+        select(TaskBlock.id)
+        .where(TaskBlock.task_id == task.id, active_block_condition(now))
+        .limit(1)
+    )
+    if active is not None:
+        raise HTTPException(status_code=409, detail="Task is already blocked")
+
+    db.add(
+        TaskBlock(
+            task_id=task.id,
+            reason=payload.reason,
+            unblocked_at=payload.unblocked_at,
+        )
+    )
     try:
         db.commit()
     except IntegrityError as error:
@@ -233,12 +272,16 @@ def unblock_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    now = datetime.now(UTC)
     active = db.scalar(
-        select(TaskBlock).where(TaskBlock.task_id == task.id, TaskBlock.unblocked_at.is_(None))
+        select(TaskBlock).where(
+            TaskBlock.task_id == task.id,
+            active_block_condition(now),
+        )
     )
     if active is None:
         raise HTTPException(status_code=409, detail="Task is not blocked")
-    active.unblocked_at = datetime.now(UTC)
+    active.unblocked_at = now
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -247,13 +290,22 @@ def unblock_task(
 @router.post("/{task_id}/reblock", response_model=TaskRead)
 def reblock_task(
     task_id: int,
+    payload: BlockReblock | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    now = datetime.now(UTC)
+    unblocked_at = payload.unblocked_at if payload is not None else None
+    if unblocked_at is not None and unblocked_at <= now:
+        raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
+
     active = db.scalar(
-        select(TaskBlock).where(TaskBlock.task_id == task.id, TaskBlock.unblocked_at.is_(None))
+        select(TaskBlock).where(
+            TaskBlock.task_id == task.id,
+            active_block_condition(now),
+        )
     )
     if active is not None:
         raise HTTPException(status_code=409, detail="Task is already blocked")
@@ -267,7 +319,7 @@ def reblock_task(
     if previous is None:
         raise HTTPException(status_code=409, detail="Task has no previous block to restore")
 
-    previous.unblocked_at = None
+    previous.unblocked_at = unblocked_at
     try:
         db.commit()
     except IntegrityError as error:
@@ -291,7 +343,7 @@ def delete_block_history_entry(
     )
     if block is None:
         raise HTTPException(status_code=404, detail="Blocking history entry not found")
-    if block.unblocked_at is None:
+    if block_is_active(block):
         raise HTTPException(status_code=409, detail="Active blocks cannot be deleted")
 
     db.delete(block)

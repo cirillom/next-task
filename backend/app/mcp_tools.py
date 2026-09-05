@@ -16,6 +16,10 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import Tag, TaskStatus, User, WorkspaceMember
 from app.routes.tasks import (
+    block_is_active,
+    task_read,
+)
+from app.routes.tasks import (
     block_task as api_block_task,
 )
 from app.routes.tasks import (
@@ -32,9 +36,6 @@ from app.routes.tasks import (
 )
 from app.routes.tasks import (
     reopen_task as api_reopen_task,
-)
-from app.routes.tasks import (
-    task_read,
 )
 from app.routes.tasks import (
     unblock_task as api_unblock_task,
@@ -384,7 +385,7 @@ def install_tools(server: MCPServer[Any]) -> None:
         with SessionLocal() as db, _domain_errors(db):
             user = _current_user(db)
             task = get_task_for_user(db, task_id, user)
-            is_blocked = any(block.unblocked_at is None for block in task.blocks)
+            is_blocked = any(block_is_active(block) for block in task.blocks)
             if blocked == is_blocked:
                 return _json(task_read(db, task))
             if blocked:

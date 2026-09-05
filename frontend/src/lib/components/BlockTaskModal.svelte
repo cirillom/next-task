@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import type { Block } from '../api/types';
   import { formatDateTime } from '../format';
 
@@ -9,11 +9,26 @@
 
   const dispatch = createEventDispatcher<{
     close: void;
-    block: string;
-    reblock: void;
+    block: { reason: string; unblocked_at: string | null };
+    reblock: { unblocked_at: string | null };
     deleteBlock: number;
   }>();
   let reason = '';
+  let autoUnblockAt = '';
+  let reblockMode = false;
+  let autoUnblockInput: HTMLInputElement;
+
+  function datetimeLocalNow(): string {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  let minimumAutoUnblock = datetimeLocalNow();
+
+  function isActive(block: Block): boolean {
+    return !block.unblocked_at || new Date(block.unblocked_at).getTime() > Date.now();
+  }
 
   function close() {
     if (!busy) dispatch('close');
@@ -21,11 +36,24 @@
 
   function submit() {
     const trimmed = reason.trim();
-    if (trimmed && !busy) dispatch('block', trimmed);
+    if (!trimmed || busy) return;
+    const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
+    if (reblockMode) {
+      dispatch('reblock', { unblocked_at: unblockedAt });
+      return;
+    }
+    dispatch('block', { reason: trimmed, unblocked_at: unblockedAt });
   }
 
-  function reblock() {
-    if (!busy) dispatch('reblock');
+  async function prepareReblock(block: Block) {
+    if (busy) return;
+    reason = block.reason;
+    autoUnblockAt = '';
+    reblockMode = true;
+    minimumAutoUnblock = datetimeLocalNow();
+    await tick();
+    autoUnblockInput?.focus();
+    autoUnblockInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function deleteBlock(blockId: number) {
@@ -44,7 +72,7 @@
     <header class="block-modal__header">
       <div>
         <p class="eyebrow">Task blocking</p>
-        <h1 id="block-modal-title">Block task</h1>
+        <h1 id="block-modal-title">{reblockMode ? 'Reblock task' : 'Block task'}</h1>
         <p class="task-title">{taskTitle}</p>
       </div>
       <button type="button" class="icon-button" aria-label="Close" disabled={busy} on:click={close}>×</button>
@@ -58,10 +86,24 @@
           rows="4"
           placeholder="What is preventing this task from moving forward?"
           disabled={busy}
+          readonly={reblockMode}
           required
         ></textarea>
       </label>
       <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
+
+      <label class="auto-unblock-field">
+        <span>Auto-unblock at <span class="optional">(optional)</span></span>
+        <input
+          bind:this={autoUnblockInput}
+          type="datetime-local"
+          lang="pt-BR"
+          bind:value={autoUnblockAt}
+          min={minimumAutoUnblock}
+          disabled={busy}
+          on:focus={() => (minimumAutoUnblock = datetimeLocalNow())}
+        />
+      </label>
 
       <section class="history-section" aria-labelledby="blocking-history-title">
         <div class="history-heading">
@@ -72,16 +114,21 @@
         {#if history.length}
           <ol class="block-history">
             {#each history as block, index}
-              <li class:active={!block.unblocked_at}>
+              <li class:active={isActive(block)}>
                 <div class="block-history__top">
                   <strong>{block.reason}</strong>
                   <div class="history-actions">
-                    {#if index === 0 && block.unblocked_at}
-                      <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
-                        {busy ? 'Reblocking…' : 'Reblock with this reason'}
+                    {#if index === 0 && !isActive(block)}
+                      <button
+                        type="button"
+                        class="reblock-button"
+                        disabled={busy}
+                        on:click={() => prepareReblock(block)}
+                      >
+                        Reblock with this reason
                       </button>
                     {/if}
-                    {#if block.unblocked_at}
+                    {#if !isActive(block)}
                       <button
                         type="button"
                         class="trash-button"
@@ -98,7 +145,15 @@
                   </div>
                 </div>
                 <span>Blocked {formatDateTime(block.blocked_at)}</span>
-                <span>{block.unblocked_at ? `Unblocked ${formatDateTime(block.unblocked_at)}` : 'Currently active'}</span>
+                <span>
+                  {#if !block.unblocked_at}
+                    Currently active
+                  {:else if isActive(block)}
+                    Auto-unblocks {formatDateTime(block.unblocked_at)}
+                  {:else}
+                    Unblocked {formatDateTime(block.unblocked_at)}
+                  {/if}
+                </span>
               </li>
             {/each}
           </ol>
@@ -109,7 +164,13 @@
 
       <footer class="block-modal__actions">
         <button type="button" disabled={busy} on:click={close}>Cancel</button>
-        <button class="primary" disabled={busy || !reason.trim()}>{busy ? 'Blocking…' : 'Block task'}</button>
+        <button class="primary" disabled={busy || !reason.trim()}>
+          {#if busy}
+            {reblockMode ? 'Reblocking…' : 'Blocking…'}
+          {:else}
+            {reblockMode ? 'Reblock task' : 'Block task'}
+          {/if}
+        </button>
       </footer>
     </form>
   </section>
@@ -156,12 +217,44 @@
     line-height: 1.5;
   }
 
+  textarea[readonly] {
+    background: #f5f2ea;
+    color: var(--muted);
+  }
+
   .help {
     margin: .45rem 0 0;
   }
 
+  .auto-unblock-field {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-top: .85rem;
+    color: var(--muted);
+    font-size: .82rem;
+    font-weight: 650;
+  }
+
+  .auto-unblock-field > span {
+    flex: 0 0 auto;
+  }
+
+  .auto-unblock-field input {
+    min-width: 0;
+    flex: 1 1 auto;
+    height: 2.35rem;
+    padding: .45rem .65rem;
+    font-size: .82rem;
+  }
+
+  .optional {
+    color: var(--muted);
+    font-weight: 500;
+  }
+
   .history-section {
-    margin-top: 1.25rem;
+    margin-top: 1rem;
     border-top: 1px solid var(--line);
     padding-top: 1.1rem;
   }
@@ -293,6 +386,15 @@
   }
 
   @media (max-width: 600px) {
+    .auto-unblock-field {
+      gap: .5rem;
+      font-size: .76rem;
+    }
+
+    .auto-unblock-field input {
+      font-size: .76rem;
+    }
+
     .block-history__top {
       gap: .5rem;
     }

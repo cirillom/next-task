@@ -18,6 +18,7 @@
   let blocked = 'false';
   let error = '';
   let loading = true;
+  let refreshTimer: number;
 
   async function loadOptions() {
     [statuses, tags, members] = await Promise.all([
@@ -27,8 +28,8 @@
     ]);
   }
 
-  async function loadTasks() {
-    loading = true;
+  async function loadTasks(showLoading = true) {
+    if (showLoading) loading = true;
     error = '';
     try {
       tasks = await api.tasks(workspace.id, {
@@ -41,7 +42,7 @@
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tasks';
     } finally {
-      loading = false;
+      if (showLoading) loading = false;
     }
   }
 
@@ -57,14 +58,27 @@
       .sort((a, b) => b.score - a.score || a.id - b.id);
   }
 
-  onMount(async () => {
-    try {
-      await loadOptions();
-      await loadTasks();
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load workspace';
-      loading = false;
-    }
+  onMount(() => {
+    void (async () => {
+      try {
+        await loadOptions();
+        await loadTasks();
+      } catch (reason) {
+        error = reason instanceof Error ? reason.message : 'Could not load workspace';
+        loading = false;
+      }
+    })();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadTasks(false);
+    };
+    refreshTimer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   });
 </script>
 
@@ -76,10 +90,10 @@
 <PomodoroLauncher {tags} on:start={(event) => dispatch('startFocus', event.detail)} />
 
 <section class="filter-bar" aria-label="Task filters">
-  <label>Status<select bind:value={statusId} on:change={loadTasks}><option value="">All</option>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-  <label>Tag<select bind:value={tagId} on:change={loadTasks}><option value="">All</option>{#each tags as item}<option value={item.id}>#{item.name}</option>{/each}</select></label>
-  <label>Assignee<select bind:value={assigneeId} on:change={loadTasks}><option value="">Anyone</option>{#each members as item}<option value={item.user_id}>{item.display_name}</option>{/each}</select></label>
-  <label>Blocked<select bind:value={blocked} on:change={loadTasks}><option value="false">Not blocked</option><option value="true">Blocked</option><option value="">Either</option></select></label>
+  <label>Status<select bind:value={statusId} on:change={() => loadTasks()}><option value="">All</option>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
+  <label>Tag<select bind:value={tagId} on:change={() => loadTasks()}><option value="">All</option>{#each tags as item}<option value={item.id}>#{item.name}</option>{/each}</select></label>
+  <label>Assignee<select bind:value={assigneeId} on:change={() => loadTasks()}><option value="">Anyone</option>{#each members as item}<option value={item.user_id}>{item.display_name}</option>{/each}</select></label>
+  <label>Blocked<select bind:value={blocked} on:change={() => loadTasks()}><option value="false">Not blocked</option><option value="true">Blocked</option><option value="">Either</option></select></label>
 </section>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
