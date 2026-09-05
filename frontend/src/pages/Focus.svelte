@@ -13,6 +13,7 @@
   export let sessionTagId: number | null = null;
 
   const dispatch = createEventDispatcher<{ openTask: number; end: void }>();
+  const baseDocumentTitle = typeof document === 'undefined' ? 'Next Task' : document.title;
 
   let settings: PomodoroSettings | null = null;
   let statuses: Status[] = [];
@@ -59,6 +60,12 @@
     if (phase === 'focus') return 'Start focus';
     if (phase === 'long-break') return 'Start long break';
     return 'Start short break';
+  }
+
+  function tabStateLabel(): string {
+    if (phase === 'focus') return running ? 'Focus' : 'Focus ready';
+    if (phase === 'long-break') return running ? 'Long break' : 'Long break ready';
+    return running ? 'Break' : 'Break ready';
   }
 
   function nextBreakLabel(): string {
@@ -210,9 +217,10 @@
     void advancePeriod();
   }
 
-  function startBreakAfterTask() {
+  async function startBreakAfterTask() {
     breakPrompt = null;
     prepareBreak();
+    await startCurrentPeriod();
   }
 
   function keepFocusingAfterTask() {
@@ -265,6 +273,10 @@
     void reconcileExternalTaskChange();
   }
 
+  $: if (typeof document !== 'undefined') {
+    document.title = `${formatTime(remainingSeconds)} · ${tabStateLabel()} — Next Task`;
+  }
+
   onMount(() => {
     timer = window.setInterval(tick, 250);
     void (async () => {
@@ -285,6 +297,7 @@
 
     return () => {
       window.clearInterval(timer);
+      document.title = baseDocumentTitle;
       if (audioContext) void audioContext.close();
     };
   });
