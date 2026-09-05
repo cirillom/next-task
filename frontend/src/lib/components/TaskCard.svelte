@@ -63,7 +63,10 @@
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
   <div class="task-card__top">
-    <button class="title-button" on:click={() => dispatch('open', task.id)}>{task.title}</button>
+    <button class="title-button" on:click={() => dispatch('open', task.id)}>
+      <span>{task.title}</span>
+      <span class="task-id">#{task.id}</span>
+    </button>
     <div class="task-card__header-actions">
       {#if !readOnly}
         <button
@@ -216,6 +219,20 @@
 {/if}
 
 <style>
+  .title-button {
+    display: flex;
+    align-items: baseline;
+    gap: .45rem;
+  }
+
+  .task-id {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 700;
+    opacity: .72;
+  }
+
   .task-card__header-actions {
     display: flex;
     align-items: center;
