@@ -6,6 +6,7 @@
 
   type Phase = 'focus' | 'short-break' | 'long-break';
   type BlockedFilter = '' | 'false' | 'true';
+  type TaskResolution = 'finished' | 'blocked';
 
   export let workspace: Workspace;
   export let taskVersion = 0;
@@ -24,12 +25,13 @@
   let running = false;
   let remainingSeconds = 0;
   let deadline = 0;
-  let focusStartedAt = 0;
   let shortBreaksTaken = 0;
   let loading = true;
   let selecting = false;
   let listLoading = false;
   let unblockingTaskId: number | null = null;
+  let breakPrompt: TaskResolution | null = null;
+  let audioContext: AudioContext | null = null;
   let error = '';
   let timer: number;
   let seenTaskVersion = taskVersion;
@@ -59,6 +61,40 @@
     return 'Start short break';
   }
 
+  function nextBreakLabel(): string {
+    if (!settings) return 'Start break';
+    return shortBreaksTaken >= settings.short_breaks_before_long ? 'Start long break' : 'Start short break';
+  }
+
+  function ensureAudioContext(): AudioContext | null {
+    if (typeof AudioContext === 'undefined') return null;
+    if (!audioContext) audioContext = new AudioContext();
+    if (audioContext.state === 'suspended') void audioContext.resume();
+    return audioContext;
+  }
+
+  function playNotificationSound(completedPhase: Phase) {
+    const context = ensureAudioContext();
+    if (!context) return;
+
+    const frequencies = completedPhase === 'focus' ? [660, 880] : [880, 660];
+    const now = context.currentTime;
+    frequencies.forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = now + index * .17;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(.0001, start);
+      gain.gain.exponentialRampToValueAtTime(.16, start + .015);
+      gain.gain.exponentialRampToValueAtTime(.0001, start + .15);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + .16);
+    });
+  }
+
   async function selectNextTask() {
     selecting = true;
     error = '';
@@ -74,6 +110,12 @@
     } finally {
       selecting = false;
     }
+  }
+
+  function focusTask(task: Task) {
+    if (task.finished_at || task.current_block) return;
+    currentTask = task;
+    error = '';
   }
 
   async function loadSessionTasks() {
@@ -111,7 +153,6 @@
     phase = 'focus';
     running = false;
     deadline = 0;
-    focusStartedAt = 0;
     remainingSeconds = durationSeconds('focus');
     if (completedLongBreak) shortBreaksTaken = 0;
     if (!currentTask) await selectNextTask();
@@ -119,9 +160,9 @@
 
   function prepareBreak() {
     if (!settings || phase !== 'focus') return;
+    breakPrompt = null;
     running = false;
     deadline = 0;
-    focusStartedAt = 0;
 
     if (shortBreaksTaken >= settings.short_breaks_before_long) {
       phase = 'long-break';
@@ -134,11 +175,11 @@
 
   async function startCurrentPeriod() {
     if (!settings || running) return;
+    ensureAudioContext();
     if (phase === 'focus' && !currentTask) await selectNextTask();
     running = true;
     deadline = Date.now() + durationSeconds() * 1000;
     remainingSeconds = durationSeconds();
-    if (phase === 'focus') focusStartedAt = Date.now();
   }
 
   async function advancePeriod() {
@@ -161,27 +202,32 @@
     remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
     if (remainingSeconds > 0) return;
 
+    const completedPhase = phase;
     running = false;
     deadline = 0;
+    breakPrompt = null;
+    playNotificationSound(completedPhase);
     void advancePeriod();
+  }
+
+  function startBreakAfterTask() {
+    breakPrompt = null;
+    prepareBreak();
+  }
+
+  function keepFocusingAfterTask() {
+    breakPrompt = null;
   }
 
   async function handleTaskChanged(updated: Task) {
     if (!currentTask || updated.id !== currentTask.id || !settings) return;
 
-    if (updated.current_block) {
+    if (updated.current_block || updated.finished_at) {
+      const shouldAskForBreak = running && phase === 'focus';
+      const resolution: TaskResolution = updated.current_block ? 'blocked' : 'finished';
       currentTask = null;
       await selectNextTask();
-      return;
-    }
-
-    if (updated.finished_at) {
-      currentTask = null;
-      const elapsed = focusStartedAt ? Date.now() - focusStartedAt : 0;
-      if (running && phase === 'focus' && elapsed > settings.focus_minutes * 60_000 / 2) {
-        prepareBreak();
-      }
-      await selectNextTask();
+      if (shouldAskForBreak) breakPrompt = resolution;
       return;
     }
 
@@ -237,7 +283,10 @@
       }
     })();
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      if (audioContext) void audioContext.close();
+    };
   });
 </script>
 
@@ -295,7 +344,7 @@
             <p class="eyebrow">Your task for this session</p>
             <h1>{currentTask ? 'Focus on this' : 'Nothing actionable right now'}</h1>
           </div>
-          {#if currentTask}<span class="locked-task">Pinned until finished or blocked</span>{/if}
+          {#if currentTask}<span class="locked-task">Current Pomodoro task</span>{/if}
         </div>
 
         {#if selecting}
@@ -310,7 +359,7 @@
             on:error={(event) => (error = event.detail)}
           />
           <p class="session-rule">
-            This task stays pinned across focus and break periods. Blocking it always picks the next ranked task. Finishing it after more than half of a running focus period prepares the next break; otherwise Focus picks the next task and keeps the current focus period going.
+            This task stays pinned across focus and break periods until you finish it, block it, or choose another task below.
           </p>
         {:else}
           <div class="empty-focus">
@@ -352,6 +401,15 @@
                     <span>Priority {task.priority}</span>
                     <span>{task.status.name}</span>
                     <span>Score {task.score.toFixed(1)}</span>
+                    {#if !task.current_block && task.id !== currentTask?.id}
+                      <button
+                        type="button"
+                        class="focus-task-button"
+                        aria-label={`Focus on ${task.title}`}
+                        title="Make this the current Pomodoro task"
+                        on:click={() => focusTask(task)}
+                      >Focus</button>
+                    {/if}
                     {#if task.current_block && workspace.role !== 'viewer'}
                       <button
                         type="button"
@@ -394,6 +452,20 @@
       </section>
     {/if}
   </main>
+
+  {#if breakPrompt}
+    <div class="break-prompt-backdrop" role="presentation">
+      <section class="break-prompt" role="dialog" aria-modal="true" aria-labelledby="break-prompt-title" aria-describedby="break-prompt-description">
+        <p class="eyebrow">{breakPrompt === 'finished' ? 'Task completed' : 'Task blocked'}</p>
+        <h2 id="break-prompt-title">Start a break?</h2>
+        <p id="break-prompt-description">Take a break now, or keep the current focus timer running with the next task.</p>
+        <div class="break-prompt-actions">
+          <button type="button" class="quiet-button" on:click={keepFocusingAfterTask}>Keep focusing</button>
+          <button type="button" class="primary" on:click={startBreakAfterTask}>{nextBreakLabel()}</button>
+        </div>
+      </section>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -709,6 +781,7 @@
     color: #8e4b37;
   }
 
+  .focus-task-button,
   .unblock-task-button {
     display: inline-flex;
     align-items: center;
@@ -723,6 +796,12 @@
     line-height: 1;
   }
 
+  .focus-task-button:hover:not(:disabled),
+  .unblock-task-button:hover:not(:disabled) {
+    border-color: rgba(45, 105, 80, .45);
+    background: #fff;
+  }
+
   .unblock-task-button svg {
     width: .78rem;
     height: .78rem;
@@ -731,11 +810,6 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.8;
-  }
-
-  .unblock-task-button:hover:not(:disabled) {
-    border-color: rgba(45, 105, 80, .45);
-    background: #fff;
   }
 
   .task-list-empty {
@@ -769,6 +843,50 @@
     padding: .7rem .8rem;
   }
 
+  .break-prompt-backdrop {
+    position: fixed;
+    z-index: 50;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(22, 28, 24, .28);
+    padding: 1rem;
+  }
+
+  .break-prompt {
+    width: min(100%, 28rem);
+    border: 1px solid rgba(100, 95, 80, .16);
+    border-radius: .9rem;
+    background: var(--paper);
+    box-shadow: 0 24px 70px rgba(30, 35, 31, .22);
+    padding: 1.35rem;
+    text-align: left;
+  }
+
+  .break-prompt .eyebrow,
+  .break-prompt h2,
+  .break-prompt p {
+    margin: 0;
+  }
+
+  .break-prompt h2 {
+    margin-top: .2rem;
+    font-size: 1.45rem;
+  }
+
+  .break-prompt p:not(.eyebrow) {
+    margin-top: .5rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
+  .break-prompt-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .65rem;
+    margin-top: 1.15rem;
+  }
+
   @media (max-width: 640px) {
     .focus-header {
       align-items: flex-start;
@@ -794,7 +912,8 @@
       width: 100%;
     }
 
-    .simple-task-meta {
+    .simple-task-meta,
+    .break-prompt-actions {
       flex-wrap: wrap;
     }
   }
