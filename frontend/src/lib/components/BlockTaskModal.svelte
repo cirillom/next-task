@@ -9,11 +9,24 @@
 
   const dispatch = createEventDispatcher<{
     close: void;
-    block: string;
+    block: { reason: string; unblocked_at: string | null };
     reblock: void;
     deleteBlock: number;
   }>();
   let reason = '';
+  let autoUnblockAt = '';
+
+  function datetimeLocalNow(): string {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  let minimumAutoUnblock = datetimeLocalNow();
+
+  function isActive(block: Block): boolean {
+    return !block.unblocked_at || new Date(block.unblocked_at).getTime() > Date.now();
+  }
 
   function close() {
     if (!busy) dispatch('close');
@@ -21,7 +34,9 @@
 
   function submit() {
     const trimmed = reason.trim();
-    if (trimmed && !busy) dispatch('block', trimmed);
+    if (!trimmed || busy) return;
+    const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
+    dispatch('block', { reason: trimmed, unblocked_at: unblockedAt });
   }
 
   function reblock() {
@@ -63,6 +78,19 @@
       </label>
       <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
 
+      <label class="auto-unblock-field">
+        Auto-unblock at <span class="optional">(optional)</span>
+        <input
+          type="datetime-local"
+          lang="pt-BR"
+          bind:value={autoUnblockAt}
+          min={minimumAutoUnblock}
+          disabled={busy}
+          on:focus={() => (minimumAutoUnblock = datetimeLocalNow())}
+        />
+      </label>
+      <p class="help">Leave empty to keep the task blocked until you unblock it manually.</p>
+
       <section class="history-section" aria-labelledby="blocking-history-title">
         <div class="history-heading">
           <h2 id="blocking-history-title">Blocking history</h2>
@@ -72,16 +100,16 @@
         {#if history.length}
           <ol class="block-history">
             {#each history as block, index}
-              <li class:active={!block.unblocked_at}>
+              <li class:active={isActive(block)}>
                 <div class="block-history__top">
                   <strong>{block.reason}</strong>
                   <div class="history-actions">
-                    {#if index === 0 && block.unblocked_at}
+                    {#if index === 0 && !isActive(block)}
                       <button type="button" class="reblock-button" disabled={busy} on:click={reblock}>
                         {busy ? 'Reblocking…' : 'Reblock with this reason'}
                       </button>
                     {/if}
-                    {#if block.unblocked_at}
+                    {#if !isActive(block)}
                       <button
                         type="button"
                         class="trash-button"
@@ -98,7 +126,15 @@
                   </div>
                 </div>
                 <span>Blocked {formatDateTime(block.blocked_at)}</span>
-                <span>{block.unblocked_at ? `Unblocked ${formatDateTime(block.unblocked_at)}` : 'Currently active'}</span>
+                <span>
+                  {#if !block.unblocked_at}
+                    Currently active
+                  {:else if isActive(block)}
+                    Auto-unblocks {formatDateTime(block.unblocked_at)}
+                  {:else}
+                    Unblocked {formatDateTime(block.unblocked_at)}
+                  {/if}
+                </span>
               </li>
             {/each}
           </ol>
@@ -158,6 +194,15 @@
 
   .help {
     margin: .45rem 0 0;
+  }
+
+  .auto-unblock-field {
+    margin-top: 1rem;
+  }
+
+  .optional {
+    color: var(--muted);
+    font-weight: 500;
   }
 
   .history-section {
