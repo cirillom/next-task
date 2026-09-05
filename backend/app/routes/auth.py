@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.security import (
@@ -14,7 +15,7 @@ from app.auth.security import (
 from app.config import get_settings
 from app.database import get_db
 from app.models import User, UserSession
-from app.schemas import LoginRequest, Message, PasswordChange, UserRead
+from app.schemas import LoginRequest, Message, PasswordChange, SignUpRequest, UserRead
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
@@ -32,12 +33,41 @@ def set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+def default_display_name(identifier: str) -> str:
+    name = identifier.split("@", 1)[0] if "@" in identifier else identifier
+    return name[:160]
+
+
+@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get_db)) -> User:
+    identifier = normalize_email(payload.identifier)
+    user = User(
+        email=identifier,
+        display_name=default_display_name(identifier),
+        password_hash=hash_password(payload.password),
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That username or email is already in use",
+        ) from error
+    db.refresh(user)
+    token, _expires_at = create_session(db, user)
+    set_session_cookie(response, token)
+    return user
+
+
 @router.post("/login", response_model=UserRead)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> User:
     user = db.scalar(select(User).where(User.email == normalize_email(payload.email)))
     if user is None or not verify_password(user.password_hash, payload.password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username/email or password",
         )
     token, _expires_at = create_session(db, user)
     set_session_cookie(response, token)
