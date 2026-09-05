@@ -112,6 +112,7 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert blocked.status_code == 201
     body = blocked.json()
     assert body["current_block"] is not None
+    original_block_id = body["current_block"]["id"]
     assert_utc_timestamp(body["current_block"]["unblocked_at"])
 
     workspace_id = task["workspace_id"]
@@ -123,7 +124,7 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert task["id"] not in actionable_ids
 
     with SessionLocal() as db:
-        block = db.get(TaskBlock, body["current_block"]["id"])
+        block = db.get(TaskBlock, original_block_id)
         assert block is not None
         block.unblocked_at = datetime.now(UTC) - timedelta(minutes=1)
         db.commit()
@@ -141,9 +142,18 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert task["id"] not in blocked_ids
     assert task["id"] in actionable_ids
 
-    reblocked = client.post(f"/api/tasks/{task['id']}/reblock")
+    next_schedule = datetime.now(UTC) + timedelta(hours=4)
+    reblocked = client.post(
+        f"/api/tasks/{task['id']}/reblock",
+        json={"unblocked_at": next_schedule.isoformat()},
+    )
     assert reblocked.status_code == 200
-    assert reblocked.json()["current_block"]["unblocked_at"] is None
+    reblocked_body = reblocked.json()
+    restored = reblocked_body["current_block"]
+    assert restored["id"] == original_block_id
+    assert restored["reason"] == "Wait until later"
+    assert_utc_timestamp(restored["unblocked_at"])
+    assert len(reblocked_body["blocking_history"]) == 1
 
 
 def test_auto_unblock_must_be_in_the_future(
@@ -151,16 +161,31 @@ def test_auto_unblock_must_be_in_the_future(
 ) -> None:
     client = logged_in_client("owner@example.com")
     task = make_task(client)
+    past = datetime.now(UTC) - timedelta(minutes=1)
 
     response = client.post(
         f"/api/tasks/{task['id']}/block",
         json={
             "reason": "Already expired",
-            "unblocked_at": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+            "unblocked_at": past.isoformat(),
         },
     )
     assert response.status_code == 422
     assert response.json()["detail"] == "Auto-unblock time must be in the future"
+
+    blocked = client.post(
+        f"/api/tasks/{task['id']}/block",
+        json={"reason": "Try again later"},
+    )
+    assert blocked.status_code == 201
+    assert client.post(f"/api/tasks/{task['id']}/unblock").status_code == 200
+
+    reblocked = client.post(
+        f"/api/tasks/{task['id']}/reblock",
+        json={"unblocked_at": past.isoformat()},
+    )
+    assert reblocked.status_code == 422
+    assert reblocked.json()["detail"] == "Auto-unblock time must be in the future"
 
 
 def test_database_trigger_rejects_two_scheduled_active_blocks(
