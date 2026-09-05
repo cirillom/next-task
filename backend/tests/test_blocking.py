@@ -3,11 +3,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.exc import IntegrityError
-
 from app.database import SessionLocal, engine
 from app.models import TaskBlock
+from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 
 def make_task(client: TestClient) -> dict:
@@ -116,13 +115,10 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert_utc_timestamp(body["current_block"]["unblocked_at"])
 
     workspace_id = task["workspace_id"]
-    blocked_ids = {
-        item["id"] for item in client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true").json()
-    }
-    actionable_ids = {
-        item["id"]
-        for item in client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false").json()
-    }
+    blocked_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true")
+    blocked_ids = {item["id"] for item in blocked_response.json()}
+    actionable_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false")
+    actionable_ids = {item["id"] for item in actionable_response.json()}
     assert task["id"] in blocked_ids
     assert task["id"] not in actionable_ids
 
@@ -138,13 +134,10 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert refreshed_body["current_block"] is None
     assert refreshed_body["blocking_history"][0]["unblocked_at"] is not None
 
-    blocked_ids = {
-        item["id"] for item in client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true").json()
-    }
-    actionable_ids = {
-        item["id"]
-        for item in client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false").json()
-    }
+    blocked_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true")
+    blocked_ids = {item["id"] for item in blocked_response.json()}
+    actionable_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false")
+    actionable_ids = {item["id"] for item in actionable_response.json()}
     assert task["id"] not in blocked_ids
     assert task["id"] in actionable_ids
 
