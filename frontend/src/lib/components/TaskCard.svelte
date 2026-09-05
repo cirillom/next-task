@@ -131,7 +131,7 @@
     <div class="blocked-reason">
       <strong>Blocked:</strong> {task.current_block.reason}
       {#if task.current_block.unblocked_at}
-        <span class="auto-unblock-note">· until {formatDateTime(task.current_block.unblocked_at)}</span>
+        <span class="auto-unblock-note">· Auto-unblocks {formatDateTime(task.current_block.unblocked_at)}</span>
       {/if}
     </div>
   {/if}
