@@ -28,18 +28,44 @@ docker compose exec next-task uv run python -m app.cli create-user
 
 ## Releases and homeserver deployment
 
-CI runs backend lint/tests, Svelte checks/build, and a production image build on
-pushes to `main` and pull requests. A semantic version tag publishes both that tag
-and `latest` to `ghcr.io/cirillom/next-task`, then creates a GitHub Release with
-`docker-compose.example.yml` attached.
+CI runs backend lint/tests, release tooling tests, Svelte checks/build, and a
+production image build on pushes to `main` and pull requests. It also checks that
+Python and npm release versions agree, including both lockfiles.
 
-The tag must match the version in both `pyproject.toml` and
-`frontend/package.json`:
+To release, open **Actions → Release → Run workflow**, select **main**, and choose
+`patch` (default), `minor`, or `major`. For example, from `0.4.2` these produce
+`0.4.3`, `0.5.0`, and `1.0.0`, respectively. The equivalent CLI command is:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+gh workflow run release.yml --ref main -f bump=patch
 ```
+
+The workflow updates `pyproject.toml`, `uv.lock`, `frontend/package.json`, and
+`frontend/package-lock.json` using uv and npm. After backend and frontend checks
+pass, it commits the version change and atomically pushes `main` and the matching
+`vMAJOR.MINOR.PATCH` tag. It then publishes the versioned image and `latest` to
+`ghcr.io/cirillom/next-task`, and creates a GitHub Release with
+`docker-compose.example.yml` attached. The frontend remains a private npm package;
+this workflow publishes the Docker image, not packages to npm or PyPI.
+
+The workflow uses the built-in `GITHUB_TOKEN`; repository rules must allow it to
+push the release commit to `main` and create version tags. Publication runs in the
+same workflow because tags pushed by that token do not trigger another workflow.
+Release runs are serialized. If publication fails, use **Re-run failed jobs**;
+rerunning the entire run also reuses its existing release commit and version.
+If `main` changes during validation, the atomic push fails without creating a
+remote tag; rerun to release the updated `main`.
+
+Manually pushed version tags still work when all four files already match the
+tag. To check versions or prepare a bump locally with Python 3.12+, uv, and npm:
+
+```bash
+python3 scripts/release.py check
+python3 scripts/release.py bump patch
+```
+
+The local bump command only updates the four version files. It does not commit,
+tag, or publish anything, and restores those files if a package manager fails.
 
 The homeserver keeps only deployment configuration in `~/services/next-task`.
 Its Compose file pulls the published image, mounts persistent state from
@@ -98,8 +124,8 @@ uv run python -m app.cli create-user
 ### Checks and builds
 
 ```bash
-uv run ruff check backend
-uv run pytest backend/tests
+uv run ruff check backend scripts tests
+uv run pytest backend/tests tests
 
 cd frontend
 npm run check

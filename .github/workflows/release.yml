@@ -1,21 +1,65 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
   push:
     tags:
       - "v*.*.*"
 
+# Serialize version changes and publication of the latest image.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
-  build-and-release:
+  prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
 
     steps:
+      - name: Require main for a new release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          if [ "$RELEASE_REF" != refs/heads/main ]; then
+            echo "::error::Run new releases from main."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          fetch-depth: 0
+
+      - name: Reuse a release already created by this run
+        id: existing
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          release_commit="$(git log origin/main --format=%H --grep="^Release-Run: ${GITHUB_RUN_ID}$" -1)"
+          if [ -n "$release_commit" ]; then
+            git checkout --detach "$release_commit"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
@@ -26,20 +70,37 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install Python dependencies
-        run: uv sync --python 3.12 --frozen
-
-      - name: Lint and test backend
-        run: |
-          uv run ruff check backend
-          uv run pytest backend/tests
-
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Bump Python and npm versions
+        if: github.event_name == 'workflow_dispatch' && steps.existing.outputs.found != 'true'
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: python3 scripts/release.py bump "$RELEASE_BUMP"
+
+      - name: Verify release versions
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$RELEASE_EVENT" = push ]; then
+            python3 scripts/release.py check --tag "$RELEASE_REF_NAME"
+          else
+            python3 scripts/release.py check
+          fi
+
+      - name: Install Python dependencies
+        run: uv sync --python 3.12 --locked
+
+      - name: Lint and test backend and release tooling
+        run: |
+          uv run --locked ruff check backend scripts tests
+          uv run --locked pytest backend/tests tests
 
       - name: Install and check frontend
         working-directory: frontend
@@ -48,14 +109,45 @@ jobs:
           npm run check
           npm run build
 
-      - name: Verify release version
+      - name: Commit and tag the validated release
+        id: release
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          EXISTING_RELEASE: ${{ steps.existing.outputs.found }}
         shell: bash
         run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          project_version="$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          frontend_version="$(node -p 'require("./frontend/package.json").version')"
-          test "$tag_version" = "$project_version"
-          test "$tag_version" = "$frontend_version"
+          version="$(python3 scripts/release.py check)"
+          tag="v${version}"
+          if [ "$RELEASE_EVENT" = workflow_dispatch ] && [ "$EXISTING_RELEASE" != true ]; then
+            if git show-ref --verify --quiet "refs/tags/$tag"; then
+              echo "::error::Tag $tag already exists."
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml uv.lock frontend/package.json frontend/package-lock.json
+            git commit -m "chore: release $tag" -m "Release-Run: ${GITHUB_RUN_ID}"
+            git tag -a "$tag" -m "Release $tag"
+            # A concurrent main update or rejected tag leaves both remote refs untouched.
+            git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
+          fi
+          test "$(git rev-parse "$tag^{commit}")" = "$(git rev-parse HEAD)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout the validated release
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -74,17 +166,18 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/next-task:latest
-            ghcr.io/${{ github.repository_owner }}/next-task:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/next-task:${{ needs.prepare.outputs.tag }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ needs.prepare.outputs.sha }}
           files: docker-compose.example.yml
           generate_release_notes: true
-
