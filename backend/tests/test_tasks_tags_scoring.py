@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from app.database import SessionLocal
 from app.models import Task
-from app.services.scoring import FormulaError, evaluate_formula, score_task
+from app.services.scoring import DEFAULT_SCORING_FORMULA, FormulaError, evaluate_formula, score_task
 from fastapi.testclient import TestClient
 
 
@@ -172,12 +172,34 @@ def test_score_calculation_and_safe_formula(
         "ageDays": 10.0,
         "idleDays": 5.0,
         "dueOffsetDays": 3.0,
+        "hasDueDate": 1.0,
         "statusValue": 1.0,
     }
     assert evaluate_formula("priority * 20 + ageDays + statusValue", values) == 51
     assert evaluate_formula("100 if dueOffsetDays > 0 else 0", values) == 100
+    assert evaluate_formula("exp(0)", values) == 1
     with pytest.raises(FormulaError):
         evaluate_formula("__import__('os').system('id')", values)
+    with pytest.raises(FormulaError):
+        evaluate_formula("sqrt(4)", values)
+
+    no_due_date = {
+        "priority": 1.0,
+        "ageDays": 0.0,
+        "idleDays": 0.0,
+        "dueOffsetDays": 0.0,
+        "hasDueDate": 0.0,
+        "statusValue": 0.0,
+    }
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, no_due_date) == 25
+
+    due_today = {**no_due_date, "hasDueDate": 1.0}
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, due_today) == 75
+
+    due_in_seven_days = {**due_today, "dueOffsetDays": -7.0}
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, due_in_seven_days) == pytest.approx(
+        25 + 50 / 2.718281828459045
+    )
 
     client = logged_in_client("owner@example.com")
     workspace, statuses = make_workspace(client)
@@ -189,7 +211,7 @@ def test_score_calculation_and_safe_formula(
         task.last_worked_at = datetime.now(UTC) - timedelta(days=4)
         task.due_date = date.today() - timedelta(days=2)
         db.commit()
-        assert score_task(task, datetime.now(UTC)) == pytest.approx(166, abs=0.1)
+        assert score_task(task, datetime.now(UTC)) == pytest.approx(171.5, abs=0.1)
 
     invalid = client.patch(
         f"/api/workspaces/{workspace['id']}",
