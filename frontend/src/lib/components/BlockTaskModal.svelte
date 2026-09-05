@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { Block } from '../api/types';
+  import { formatDateTime } from '../format';
 
   export let taskTitle = '';
   export let history: Block[] = [];
@@ -33,10 +34,6 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') close();
-  }
-
-  function formatDate(value: string): string {
-    return new Date(value).toLocaleString();
   }
 </script>
 
@@ -100,8 +97,8 @@
                     {/if}
                   </div>
                 </div>
-                <span>Blocked {formatDate(block.blocked_at)}</span>
-                <span>{block.unblocked_at ? `Unblocked ${formatDate(block.unblocked_at)}` : 'Currently active'}</span>
+                <span>Blocked {formatDateTime(block.blocked_at)}</span>
+                <span>{block.unblocked_at ? `Unblocked ${formatDateTime(block.unblocked_at)}` : 'Currently active'}</span>
               </li>
             {/each}
           </ol>

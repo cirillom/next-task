@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
+  import { formatDate, formatDateTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
@@ -59,14 +60,6 @@
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
   }
-
-  function formatDate(value: string): string {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      const [year, month, day] = value.split('-').map(Number);
-      return new Date(year, month - 1, day).toLocaleDateString();
-    }
-    return new Date(value).toLocaleDateString();
-  }
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
@@ -114,7 +107,7 @@
       <span class="priority" title="Priority">{task.priority}</span>
       <span>{task.status.name}</span>
     {/if}
-    <span class="date-meta" title={new Date(task.created_at).toLocaleString()}>Created {formatDate(task.created_at)}</span>
+    <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     <span
       class="date-meta"
       class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
