@@ -35,7 +35,7 @@ def run_release(project, *args, env=None):
     return subprocess.run(
         [sys.executable, str(project / "scripts/release.py"), *args],
         cwd=project,
-        env={**os.environ, "UV_OFFLINE": "1", **(env or {})},
+        env={**os.environ, **(env or {})},
         text=True,
         capture_output=True,
     )
