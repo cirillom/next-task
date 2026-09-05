@@ -6,10 +6,18 @@ from datetime import UTC, datetime
 from app.models import Task
 
 DAY_SECONDS = 24 * 60 * 60
-VARIABLES = {"priority", "ageDays", "idleDays", "dueOffsetDays", "statusValue"}
+VARIABLES = {
+    "priority",
+    "ageDays",
+    "idleDays",
+    "dueOffsetDays",
+    "hasDueDate",
+    "statusValue",
+}
 DEFAULT_SCORING_FORMULA = (
-    "priority * 20 + idleDays * 1.5 + statusValue * 10 + "
-    "(dueOffsetDays * 50 if dueOffsetDays > 0 else 0)"
+    "priority * 25 + ageDays * 0.25 + idleDays * 1.0 + statusValue * 20 + "
+    "((50 * exp(dueOffsetDays / 7) if dueOffsetDays < 0 else "
+    "50 + dueOffsetDays * 20) if hasDueDate > 0 else 0)"
 )
 
 BIN_OPS = {
@@ -28,6 +36,7 @@ COMPARE_OPS = {
     ast.Eq: operator.eq,
     ast.NotEq: operator.ne,
 }
+FUNCTIONS = {"exp": math.exp}
 
 
 class FormulaError(ValueError):
@@ -62,6 +71,18 @@ def _evaluate(node: ast.AST, values: dict[str, float]) -> float | bool:
     if isinstance(node, ast.IfExp):
         branch = node.body if bool(_evaluate(node.test, values)) else node.orelse
         return _evaluate(branch, values)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in FUNCTIONS
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        argument = float(_evaluate(node.args[0], values))
+        try:
+            return FUNCTIONS[node.func.id](argument)
+        except (ArithmeticError, OverflowError, ValueError) as error:
+            raise FormulaError("Formula function failed") from error
     raise FormulaError("Formula contains an unsupported expression")
 
 
@@ -98,6 +119,7 @@ def score_variables(task: Task, now: datetime | None = None) -> dict[str, float]
         "ageDays": max(0.0, (now - created_at).total_seconds() / DAY_SECONDS),
         "idleDays": max(0.0, (now - last_worked_at).total_seconds() / DAY_SECONDS),
         "dueOffsetDays": due_offset,
+        "hasDueDate": 1.0 if task.due_date else 0.0,
         "statusValue": float(task.status.score_value),
     }
 
