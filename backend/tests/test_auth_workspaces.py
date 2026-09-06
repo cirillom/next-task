@@ -197,8 +197,16 @@ def test_only_owner_can_delete_workspace_and_related_data_is_removed(
 
     with SessionLocal() as db:
         assert db.get(Workspace, workspace_id) is None
-        assert db.scalar(select(WorkspaceMember.workspace_id).where(WorkspaceMember.workspace_id == workspace_id)) is None
-        assert db.scalar(select(TaskStatus.id).where(TaskStatus.workspace_id == workspace_id)) is None
+        membership = db.scalar(
+            select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.workspace_id == workspace_id
+            )
+        )
+        status_item = db.scalar(
+            select(TaskStatus.id).where(TaskStatus.workspace_id == workspace_id)
+        )
+        assert membership is None
+        assert status_item is None
         assert db.scalar(select(Task.id).where(Task.workspace_id == workspace_id)) is None
         assert db.scalar(select(Tag.id).where(Tag.workspace_id == workspace_id)) is None
         assert db.get(User, editor.id) is not None
