@@ -64,6 +64,7 @@ export const api = {
     request<Workspace>('/api/workspaces', json('POST', { name })),
   updateWorkspace: (id: number, body: Partial<Pick<Workspace, 'name' | 'scoring_formula'>>) =>
     request<Workspace>(`/api/workspaces/${id}`, json('PATCH', body)),
+  deleteWorkspace: (id: number) => request<void>(`/api/workspaces/${id}`, json('DELETE')),
   members: (id: number) => request<Member[]>(`/api/workspaces/${id}/members`),
   addMember: (id: number, email: string, role: string) =>
     request<Member>(`/api/workspaces/${id}/members`, json('POST', { email, role })),

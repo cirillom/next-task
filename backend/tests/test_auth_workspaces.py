@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import User
+from app.models import Tag, Task, TaskStatus, User, Workspace, WorkspaceMember
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -144,3 +144,69 @@ def test_last_owner_cannot_be_demoted(logged_in_client: Callable[[str], TestClie
         json={"role": "editor"},
     )
     assert response.status_code == 409
+
+
+def test_only_owner_can_delete_workspace_and_related_data_is_removed(
+    logged_in_client: Callable[[str], TestClient],
+    create_user: Callable[[str, str, str], User],
+) -> None:
+    owner_client = logged_in_client("owner@example.com")
+    editor = create_user("editor@example.com")
+    workspace = owner_client.post("/api/workspaces", json={"name": "Disposable"}).json()
+    workspace_id = workspace["id"]
+
+    assert (
+        owner_client.post(
+            f"/api/workspaces/{workspace_id}/members",
+            json={"email": editor.email, "role": "editor"},
+        ).status_code
+        == 201
+    )
+    statuses = owner_client.get(f"/api/workspaces/{workspace_id}/statuses").json()
+    tag = owner_client.post(
+        f"/api/workspaces/{workspace_id}/tags", json={"name": "temporary"}
+    ).json()
+    task = owner_client.post(
+        "/api/tasks",
+        json={
+            "workspace_id": workspace_id,
+            "title": "Temporary task",
+            "status_id": statuses[0]["id"],
+            "assignee_ids": [editor.id],
+            "tag_ids": [tag["id"]],
+        },
+    )
+    assert task.status_code == 201
+
+    editor_client = TestClient(app)
+    assert (
+        editor_client.post(
+            "/api/auth/login",
+            json={"email": editor.email, "password": "correct horse"},
+        ).status_code
+        == 200
+    )
+    denied = editor_client.delete(f"/api/workspaces/{workspace_id}")
+    assert denied.status_code == 403
+    assert owner_client.get(f"/api/workspaces/{workspace_id}").status_code == 200
+
+    deleted = owner_client.delete(f"/api/workspaces/{workspace_id}")
+    assert deleted.status_code == 204
+    assert owner_client.get(f"/api/workspaces/{workspace_id}").status_code == 404
+    assert editor_client.get(f"/api/workspaces/{workspace_id}").status_code == 404
+
+    with SessionLocal() as db:
+        assert db.get(Workspace, workspace_id) is None
+        membership = db.scalar(
+            select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.workspace_id == workspace_id
+            )
+        )
+        status_item = db.scalar(
+            select(TaskStatus.id).where(TaskStatus.workspace_id == workspace_id)
+        )
+        assert membership is None
+        assert status_item is None
+        assert db.scalar(select(Task.id).where(Task.workspace_id == workspace_id)) is None
+        assert db.scalar(select(Tag.id).where(Tag.workspace_id == workspace_id)) is None
+        assert db.get(User, editor.id) is not None
