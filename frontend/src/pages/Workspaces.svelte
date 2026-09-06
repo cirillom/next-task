@@ -62,7 +62,9 @@
   async function deleteWorkspace() {
     if (
       !window.confirm(
-        `Delete workspace “${workspace.name}” and all of its tasks, tags, statuses, and memberships? This cannot be undone.`
+        `Delete workspace “${workspace.name}”?\n\n` +
+          'This permanently deletes all tasks, subtasks, tags, statuses, workspace memberships, assignments, task-tag links, and blocking history in this workspace.\n\n' +
+          'User accounts will not be deleted. This action cannot be undone.'
       )
     ) return;
     deleting = true;
@@ -158,11 +160,70 @@
 
   <div class="settings-stack">
     {#if workspace.role === 'owner'}
-      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<input bind:value={workspaceName} required /></label><label>Scoring formula<textarea class="code-input" bind:value={formula} rows="4"></textarea></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><button class="primary">Save settings</button></form><button type="button" class="danger-subtle" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting…' : 'Delete workspace'}</button></section>
+      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<input bind:value={workspaceName} required /></label><label>Scoring formula<textarea class="code-input" bind:value={formula} rows="4"></textarea></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><button class="primary">Save settings</button></form></section>
     {/if}
 
     <section class="panel"><h2>Statuses</h2><div class="editable-list">{#each statuses as item}<div class="editable-row"><input bind:value={item.name} disabled={workspace.role === 'viewer'} aria-label="Status name" /><input type="number" step="any" bind:value={item.score_value} disabled={workspace.role === 'viewer'} aria-label="Score value" />{#if workspace.role !== 'viewer'}<button on:click={() => saveStatus(item)}>Save</button><button class="danger-subtle" on:click={() => removeStatus(item)}>Delete</button>{/if}</div>{/each}</div>{#if workspace.role !== 'viewer'}<form class="inline-control" on:submit|preventDefault={addStatus}><input bind:value={statusName} placeholder="New status" required /><input type="number" step="any" bind:value={statusValue} aria-label="Score value" /><button>Add status</button></form>{/if}</section>
 
     <section class="panel"><h2>Members</h2><div class="member-list">{#each members as member}<div><span><strong>{member.display_name}</strong><small>{member.email}</small></span>{#if workspace.role === 'owner'}<select value={member.role} on:change={(event) => changeRole(member, event.currentTarget.value as Role)}><option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button class="danger-subtle" on:click={() => removeMember(member)}>Remove</button>{:else}<span class="role-badge">{member.role}</span>{/if}</div>{/each}</div>{#if workspace.role === 'owner'}<form class="inline-control" on:submit|preventDefault={addMember}><input bind:value={memberEmail} placeholder="Existing username or email" autocomplete="off" required /><select bind:value={memberRole}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select><button>Add member</button></form>{/if}</section>
+
+    {#if workspace.role === 'owner'}
+      <section class="panel danger-zone">
+        <p class="danger-kicker">Danger zone</p>
+        <h2>Delete workspace</h2>
+        <div class="danger-warning">
+          <strong>This permanently deletes everything stored in “{workspace.name}”.</strong>
+          <p>All tasks and subtasks, tags, statuses, workspace memberships, assignments, task-tag links, and blocking history in this workspace will be removed.</p>
+          <p><strong>User accounts will not be deleted.</strong> This action cannot be undone.</p>
+        </div>
+        <button type="button" class="danger-primary" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting workspace…' : 'Delete workspace permanently'}</button>
+      </section>
+    {/if}
   </div>
 </div>
+
+<style>
+  .danger-zone {
+    border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  }
+
+  .danger-kicker {
+    margin-bottom: .35rem;
+    color: var(--danger);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .danger-zone h2 {
+    margin-bottom: .85rem;
+  }
+
+  .danger-warning {
+    border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
+    border-radius: .7rem;
+    background: color-mix(in srgb, var(--danger) 8%, var(--paper));
+    color: #6f2923;
+    padding: 1rem;
+    line-height: 1.5;
+  }
+
+  .danger-warning p {
+    margin: .55rem 0 0;
+  }
+
+  .danger-primary {
+    margin-top: 1rem;
+    border: 0;
+    border-radius: .55rem;
+    background: var(--danger);
+    color: #fff;
+    padding: .75rem 1.05rem;
+    font-weight: 750;
+  }
+
+  .danger-primary:hover:not(:disabled) {
+    filter: brightness(.88);
+  }
+</style>
