@@ -110,6 +110,7 @@
       const ranked = await api.tasks(workspace.id, {
         finished: false,
         blocked: false,
+        actionable: true,
         tag_id: sessionTagId
       });
       currentTask = ranked[0] ?? null;
@@ -132,6 +133,7 @@
       sessionTasks = await api.tasks(workspace.id, {
         finished: false,
         blocked: taskListBlocked,
+        actionable: true,
         tag_id: sessionTagId
       });
     } catch (reason) {
