@@ -82,7 +82,14 @@
   <p class="empty">Ranking your tasks…</p>
 {/if}
 
-<section class:has-recommendation={!loading && tasks.length > 0} class="next-focus-block" aria-label="Recommended task and Pomodoro">
+<section class:has-recommendation={!loading && tasks.length > 0} class="next-focus-block" aria-label="Pomodoro and recommended task">
+  <PomodoroLauncher
+    {tags}
+    recommendedTaskTitle={tasks[0]?.title || ''}
+    on:scopeChange={(event) => changeSessionScope(event.detail)}
+    on:start={(event) => dispatch('startFocus', event.detail)}
+  />
+
   {#if !loading && tasks.length === 0}
     <section class="empty"><strong>Nothing actionable right now.</strong><span>Try another session tag, add a task, or check Tasks for blocked work.</span></section>
   {:else if !loading}
@@ -94,13 +101,6 @@
       on:error={(event) => (error = event.detail)}
     />
   {/if}
-
-  <PomodoroLauncher
-    {tags}
-    recommendedTaskTitle={tasks[0]?.title || ''}
-    on:scopeChange={(event) => changeSessionScope(event.detail)}
-    on:start={(event) => dispatch('startFocus', event.detail)}
-  />
 </section>
 
 {#if !loading && tasks.length > 1}
@@ -126,21 +126,21 @@
     margin-bottom: 0;
   }
 
-  .next-focus-block.has-recommendation :global(.recommended-card) {
+  .next-focus-block.has-recommendation :global(.pomodoro-launcher) {
     border-bottom-right-radius: 0;
     border-bottom-left-radius: 0;
-    box-shadow: 0 8px 26px rgba(30, 48, 39, .08);
+    box-shadow: 0 8px 26px rgba(60, 44, 34, .08);
   }
 
-  .next-focus-block.has-recommendation :global(.pomodoro-launcher) {
+  .next-focus-block.has-recommendation :global(.recommended-card) {
     margin-top: -1px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
-    box-shadow: 0 14px 38px rgba(60, 44, 34, .08);
+    box-shadow: 0 14px 38px rgba(30, 48, 39, .1);
   }
 
   .next-focus-block > .empty {
-    margin-bottom: .75rem;
+    margin-top: .75rem;
   }
 
   .queue {
