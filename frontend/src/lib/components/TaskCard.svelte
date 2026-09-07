@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
-  import { daysSince, formatDate, formatDateTime, formatRelativeTime } from '../format';
+  import { daysSince, formatDate, formatDateTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
@@ -15,8 +15,13 @@
   let descriptionExpanded = false;
   let blockModalOpen = false;
 
-  function idleDays(): number {
-    return daysSince(task.last_worked_at || task.created_at);
+  function idleAnchor(): string {
+    return task.last_worked_at || task.created_at;
+  }
+
+  function idleLabel(): string {
+    const days = daysSince(idleAnchor());
+    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor())})`;
   }
 
   async function act(action: () => Promise<Task>) {
@@ -122,11 +127,7 @@
       class="date-meta"
       class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span
-      class="date-meta"
-      title={task.last_worked_at ? formatDateTime(task.last_worked_at) : 'No work recorded yet'}
-    >Last worked {task.last_worked_at ? formatRelativeTime(task.last_worked_at) : 'never'}</span>
-    <span class="date-meta">Idle {idleDays()}d</span>
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
