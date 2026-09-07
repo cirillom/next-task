@@ -5,6 +5,7 @@
   import { daysSince, formatDate, formatDateTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
+  import TaskHierarchy from './TaskHierarchy.svelte';
 
   export let task: Task;
   export let readOnly = false;
@@ -101,6 +102,8 @@
       <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
     </div>
   </div>
+
+  <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
 
   {#if task.description}
     <div class:expanded={descriptionExpanded} class="task-description">
