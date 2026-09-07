@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.auth.security import get_current_user
 from app.database import get_db
@@ -68,6 +68,7 @@ def task_read(db: Session, task: Task) -> TaskRead:
         last_worked_at=task.last_worked_at,
         finished_at=task.finished_at,
         parent_task_id=task.parent_task_id,
+        parent_task=TaskSummary.model_validate(task.parent) if task.parent else None,
         created_at=task.created_at,
         updated_at=task.updated_at,
         score=round(score_task(task), 2),
@@ -92,6 +93,20 @@ def apply_task_relations(
         task.tags = validate_tags(db, task.workspace_id, tag_ids)
 
 
+def actionable_task_condition(user_id: int):
+    child = aliased(Task)
+    unfinished_child = exists().where(
+        child.parent_task_id == Task.id,
+        child.finished_at.is_(None),
+    )
+    any_assignee = exists().where(TaskAssignee.task_id == Task.id)
+    assigned_to_user = exists().where(
+        TaskAssignee.task_id == Task.id,
+        TaskAssignee.user_id == user_id,
+    )
+    return ~unfinished_child, or_(~any_assignee, assigned_to_user)
+
+
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
     workspace_id: int,
@@ -100,6 +115,7 @@ def list_tasks(
     tag_id: int | None = None,
     assignee_id: int | None = None,
     blocked: bool | None = None,
+    actionable: bool = False,
     search: str | None = Query(default=None, max_length=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -116,6 +132,9 @@ def list_tasks(
         query = query.where(
             exists().where(TaskAssignee.task_id == Task.id, TaskAssignee.user_id == assignee_id)
         )
+    if actionable:
+        leaf_condition, ownership_condition = actionable_task_condition(user.id)
+        query = query.where(leaf_condition, ownership_condition)
     if tag_id is not None:
         allowed_tag_ids = descendant_ids(db, tag_id)
         query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
