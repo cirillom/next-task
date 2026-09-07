@@ -80,10 +80,12 @@
 
 {#if loading}
   <p class="empty">Ranking your tasks…</p>
-{:else if tasks.length === 0}
-  <section class="empty"><strong>Nothing actionable right now.</strong><span>Try another session tag, add a task, or check Tasks for blocked work.</span></section>
-{:else}
-  <section class="recommendation" aria-label="Recommended next task">
+{/if}
+
+<section class:has-recommendation={!loading && tasks.length > 0} class="next-focus-block" aria-label="Recommended task and Pomodoro">
+  {#if !loading && tasks.length === 0}
+    <section class="empty"><strong>Nothing actionable right now.</strong><span>Try another session tag, add a task, or check Tasks for blocked work.</span></section>
+  {:else if !loading}
     <NextTaskCard
       task={tasks[0]}
       readOnly={workspace.role === 'viewer'}
@@ -91,18 +93,18 @@
       on:open={(event) => dispatch('openTask', event.detail)}
       on:error={(event) => (error = event.detail)}
     />
-  </section>
-{/if}
+  {/if}
 
-<PomodoroLauncher
-  {tags}
-  recommendedTaskTitle={tasks[0]?.title || ''}
-  on:scopeChange={(event) => changeSessionScope(event.detail)}
-  on:start={(event) => dispatch('startFocus', event.detail)}
-/>
+  <PomodoroLauncher
+    {tags}
+    recommendedTaskTitle={tasks[0]?.title || ''}
+    on:scopeChange={(event) => changeSessionScope(event.detail)}
+    on:start={(event) => dispatch('startFocus', event.detail)}
+  />
+</section>
 
 {#if !loading && tasks.length > 1}
-  <section class="queue" aria-label="Ranked task queue">
+  <section class="queue" aria-label="Task queue">
     <div class="queue__heading">
       <h2>Queue</h2>
       <span>{tasks.length - 1} more</span>
@@ -110,19 +112,38 @@
 
     <TaskQueue
       tasks={tasks.slice(1)}
-      startRank={2}
       on:open={(event) => dispatch('openTask', event.detail)}
     />
   </section>
 {/if}
 
 <style>
-  .recommendation {
-    margin-bottom: 1rem;
+  .next-focus-block {
+    margin-bottom: 1.5rem;
+  }
+
+  .next-focus-block :global(.pomodoro-launcher) {
+    margin-bottom: 0;
+  }
+
+  .next-focus-block.has-recommendation :global(.recommended-card) {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    box-shadow: 0 8px 26px rgba(30, 48, 39, .08);
+  }
+
+  .next-focus-block.has-recommendation :global(.pomodoro-launcher) {
+    margin-top: -1px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    box-shadow: 0 14px 38px rgba(60, 44, 34, .08);
+  }
+
+  .next-focus-block > .empty {
+    margin-bottom: .75rem;
   }
 
   .queue {
-    margin-top: 1.5rem;
     padding-top: 1.25rem;
     border-top: 1px solid var(--line);
   }
