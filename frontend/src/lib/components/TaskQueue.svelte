@@ -4,7 +4,6 @@
   import { daysSince, formatDate } from '../format';
 
   export let tasks: Task[] = [];
-  export let startRank = 1;
   export let currentTaskId: number | null = null;
   export let allowFocus = false;
   export let allowUnblock = false;
@@ -12,15 +11,19 @@
 
   const dispatch = createEventDispatcher<{ open: number; focus: Task; unblock: Task }>();
 
-  function idleDays(task: Task): number {
-    return daysSince(task.last_worked_at || task.created_at);
+  function idleAnchor(task: Task): string {
+    return task.last_worked_at || task.created_at;
+  }
+
+  function idleLabel(task: Task): string {
+    const days = daysSince(idleAnchor(task));
+    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor(task))})`;
   }
 </script>
 
 <div class="queue-list">
-  {#each tasks as task, index (task.id)}
+  {#each tasks as task (task.id)}
     <article class:current={task.id === currentTaskId} class:blocked={!!task.current_block} class="queue-row">
-      <span class="queue-rank" title={`Rank ${startRank + index}`}>{startRank + index}</span>
       <div class="queue-main">
         <button class="queue-title" on:click={() => dispatch('open', task.id)}>
           <span>{task.title}</span>
@@ -30,13 +33,25 @@
           {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
           {#if task.current_block}<span class="blocked-chip">Blocked</span>{/if}
           <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-          <span>Idle {idleDays(task)}d</span>
+          <span>{idleLabel(task)}</span>
           <span>Priority {task.priority}</span>
           <span>{task.status.name}</span>
           <span>Score {task.score.toFixed(1)}</span>
         </div>
       </div>
       <div class="queue-actions">
+        <button
+          type="button"
+          class="edit-button"
+          aria-label={`Edit ${task.title}`}
+          title="Edit task"
+          on:click={() => dispatch('open', task.id)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
         {#if allowFocus && !task.current_block && task.id !== currentTaskId}
           <button
             type="button"
@@ -78,7 +93,7 @@
 
   .queue-row {
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: .7rem;
     border: 1px solid rgba(100, 95, 80, .14);
@@ -94,19 +109,6 @@
 
   .queue-row.blocked {
     opacity: .78;
-  }
-
-  .queue-rank {
-    display: grid;
-    width: 1.75rem;
-    height: 1.75rem;
-    place-items: center;
-    border-radius: 999px;
-    background: #eeeae0;
-    color: var(--muted);
-    font-size: .72rem;
-    font-weight: 850;
-    font-variant-numeric: tabular-nums;
   }
 
   .queue-main {
@@ -200,6 +202,39 @@
     gap: .35rem;
   }
 
+  .edit-button {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--muted);
+    opacity: .35;
+    padding: .3rem;
+    transition: opacity .15s ease, background .15s ease;
+  }
+
+  .edit-button svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .queue-row:hover .edit-button,
+  .edit-button:focus-visible {
+    opacity: .85;
+  }
+
+  .edit-button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .04);
+  }
+
   .queue-action {
     display: inline-flex;
     align-items: center;
@@ -229,19 +264,23 @@
     stroke-width: 1.8;
   }
 
-  .queue-action:first-child svg {
+  .queue-action:first-of-type svg {
     fill: currentColor;
     stroke: none;
   }
 
   @media (max-width: 720px) {
     .queue-row {
-      grid-template-columns: 2rem minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: start;
     }
 
     .queue-actions {
-      grid-column: 2;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
+
+    .edit-button { opacity: .6; }
   }
 </style>
