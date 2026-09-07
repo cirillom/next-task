@@ -4,8 +4,9 @@
   import type { PomodoroSettings, Tag } from '../api/types';
 
   export let tags: Tag[] = [];
+  export let recommendedTaskTitle = '';
 
-  const dispatch = createEventDispatcher<{ start: number | null }>();
+  const dispatch = createEventDispatcher<{ start: number | null; scopeChange: number | null }>();
   let settings: PomodoroSettings | null = null;
   let selectedTagId = '';
   let error = '';
@@ -18,8 +19,16 @@
     }
   });
 
+  function selectedScope(): number | null {
+    return selectedTagId ? Number(selectedTagId) : null;
+  }
+
+  function changeScope() {
+    dispatch('scopeChange', selectedScope());
+  }
+
   function startSession() {
-    dispatch('start', selectedTagId ? Number(selectedTagId) : null);
+    dispatch('start', selectedScope());
   }
 </script>
 
@@ -37,6 +46,9 @@
     <h2>Start a Pomodoro</h2>
     {#if settings}
       <p>{settings.focus_minutes} min focus · {settings.short_break_minutes} min short break · {settings.long_break_minutes} min long break</p>
+      {#if recommendedTaskTitle}
+        <p class="starts-with">Starts with the recommended task: <strong>{recommendedTaskTitle}</strong></p>
+      {/if}
     {:else if error}
       <p class="error">{error}</p>
     {:else}
@@ -46,16 +58,16 @@
 
   <label class="tag-filter">
     <span>Session tag</span>
-    <select bind:value={selectedTagId}>
+    <select bind:value={selectedTagId} on:change={changeScope}>
       <option value="">All tags</option>
       {#each tags as tag}
         <option value={tag.id}>#{tag.name}</option>
       {/each}
     </select>
-    <small>Includes child tags.</small>
+    <small>Changes the recommendation and includes child tags.</small>
   </label>
 
-  <button class="primary start-button" disabled={!settings} on:click={startSession}>
+  <button class="primary start-button" disabled={!settings || !recommendedTaskTitle} on:click={startSession}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
     Start session
   </button>
@@ -118,6 +130,15 @@
     margin-top: .25rem;
     color: var(--muted);
     font-size: .82rem;
+  }
+
+  .pomodoro-copy .starts-with {
+    margin-top: .35rem;
+    color: #8e4b37;
+  }
+
+  .starts-with strong {
+    color: var(--ink);
   }
 
   .tag-filter {
