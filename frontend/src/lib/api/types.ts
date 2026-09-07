@@ -50,6 +50,12 @@ export interface Block {
   unblocked_at: string | null;
 }
 
+export interface TaskSummary {
+  id: number;
+  title: string;
+  finished_at: string | null;
+}
+
 export interface Task {
   id: number;
   created_by_user_id: number;
@@ -63,6 +69,7 @@ export interface Task {
   last_worked_at: string | null;
   finished_at: string | null;
   parent_task_id: number | null;
+  parent_task: TaskSummary | null;
   created_at: string;
   updated_at: string;
   score: number;
@@ -71,7 +78,7 @@ export interface Task {
   inherited_tags: TagSummary[];
   current_block: Block | null;
   blocking_history: Block[];
-  subtasks: Array<{ id: number; title: string; finished_at: string | null }>;
+  subtasks: TaskSummary[];
 }
 
 export interface TaskInput {
