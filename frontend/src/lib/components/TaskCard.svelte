@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
-  import { formatDate, formatDateTime } from '../format';
+  import { daysSince, formatDate, formatDateTime, formatRelativeTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
@@ -14,6 +14,10 @@
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
+
+  function idleDays(): number {
+    return daysSince(task.last_worked_at || task.created_at);
+  }
 
   async function act(action: () => Promise<Task>) {
     busy = true;
@@ -118,7 +122,11 @@
       class="date-meta"
       class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span class="date-meta">Last worked {task.last_worked_at ? formatDateTime(task.last_worked_at) : '—'}</span>
+    <span
+      class="date-meta"
+      title={task.last_worked_at ? formatDateTime(task.last_worked_at) : 'No work recorded yet'}
+    >Last worked {task.last_worked_at ? formatRelativeTime(task.last_worked_at) : 'never'}</span>
+    <span class="date-meta">Idle {idleDays()}d</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
@@ -143,15 +151,23 @@
     <div class="task-actions">
       <button
         type="button"
-        class="finish-toggle"
-        class:checked={!!task.finished_at}
+        class="finish-action"
+        class:reopen={!!task.finished_at}
         aria-label={task.finished_at ? 'Reopen task' : 'Finish task'}
-        aria-pressed={!!task.finished_at}
         title={task.finished_at ? 'Reopen task' : 'Finish task'}
         disabled={busy}
         on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
       >
-        <span aria-hidden="true">✓</span>
+        {#if task.finished_at}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4.8 9A8 8 0 1 1 4 14" />
+            <path d="M4 4v5h5" />
+          </svg>
+          <span>Reopen</span>
+        {:else}
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+          <span>Finish</span>
+        {/if}
       </button>
 
       <button
@@ -289,14 +305,20 @@
     transition: opacity .15s ease, background .15s ease;
   }
 
-  .edit-button svg {
-    width: 100%;
-    height: 100%;
+  .edit-button svg,
+  .finish-action svg {
+    width: 1rem;
+    height: 1rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.8;
+  }
+
+  .edit-button svg {
+    width: 100%;
+    height: 100%;
   }
 
   .task-card:hover .edit-button,
@@ -308,35 +330,35 @@
     background: rgba(0, 0, 0, .04);
   }
 
-  .finish-toggle {
-    display: grid;
-    width: 2rem;
+  .finish-action {
+    display: inline-flex;
     height: 2rem;
-    flex: 0 0 2rem;
-    place-items: center;
-    border: 1.5px solid #aaa69c;
-    border-radius: .45rem;
-    background: #fff;
-    color: #d8d6cf;
-    padding: 0;
-    font-size: 1rem;
-    font-weight: 900;
+    align-items: center;
+    gap: .38rem;
+    border: 1px solid var(--forest);
+    border-radius: .55rem;
+    background: var(--forest);
+    color: #fff;
+    padding: 0 .68rem;
+    font-size: .78rem;
+    font-weight: 800;
     line-height: 1;
   }
 
-  .finish-toggle.checked {
-    border-color: var(--forest);
-    background: var(--forest);
-    color: #fff;
+  .finish-action:hover:not(:disabled) {
+    border-color: var(--forest-2);
+    background: var(--forest-2);
   }
 
-  .finish-toggle:hover:not(:disabled) {
-    border-color: var(--forest);
-    color: #aaa69c;
+  .finish-action.reopen {
+    border-color: #b9c3bd;
+    background: #fff;
+    color: var(--forest-2);
   }
 
-  .finish-toggle.checked:hover:not(:disabled) {
-    color: #fff;
+  .finish-action.reopen:hover:not(:disabled) {
+    border-color: #93a29a;
+    background: #f8faf8;
   }
 
   .quick-action {
@@ -370,18 +392,9 @@
     background: #fff;
   }
 
-  .worked-action {
-    color: var(--forest-2);
-  }
-
-  .block-action {
-    color: #8a4d36;
-  }
-
-  .block-action.active {
-    border-color: #d8b5a6;
-    background: #fff4ee;
-  }
+  .worked-action { color: var(--forest-2); }
+  .block-action { color: #8a4d36; }
+  .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
   .status-select {
     position: relative;
@@ -495,22 +508,20 @@
   }
 
   @media (max-width: 600px) {
-    .edit-button {
-      opacity: .6;
-    }
+    .edit-button { opacity: .6; }
 
+    .finish-action span,
     .quick-action span {
       display: none;
     }
 
+    .finish-action,
     .quick-action {
       width: 2rem;
       justify-content: center;
       padding: 0;
     }
 
-    .status-select select {
-      max-width: 8.5rem;
-    }
+    .status-select select { max-width: 8.5rem; }
   }
 </style>
