@@ -4,8 +4,9 @@
   import type { PomodoroSettings, Tag } from '../api/types';
 
   export let tags: Tag[] = [];
+  export let recommendedTaskTitle = '';
 
-  const dispatch = createEventDispatcher<{ start: number | null }>();
+  const dispatch = createEventDispatcher<{ start: number | null; scopeChange: number | null }>();
   let settings: PomodoroSettings | null = null;
   let selectedTagId = '';
   let error = '';
@@ -18,12 +19,20 @@
     }
   });
 
+  function selectedScope(): number | null {
+    return selectedTagId ? Number(selectedTagId) : null;
+  }
+
+  function changeScope() {
+    dispatch('scopeChange', selectedScope());
+  }
+
   function startSession() {
-    dispatch('start', selectedTagId ? Number(selectedTagId) : null);
+    dispatch('start', selectedScope());
   }
 </script>
 
-<section class="pomodoro-launcher" aria-label="Pomodoro focus">
+<section class="pomodoro-launcher" aria-label="Start Pomodoro on the recommended task">
   <div class="pomodoro-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24">
       <circle cx="12" cy="13" r="7.5" />
@@ -33,20 +42,19 @@
   </div>
 
   <div class="pomodoro-copy">
-    <p class="eyebrow">Focus mode</p>
-    <h2>Start a Pomodoro</h2>
+    <p class="eyebrow">Pomodoro</p>
     {#if settings}
-      <p>{settings.focus_minutes} min focus · {settings.short_break_minutes} min short break · {settings.long_break_minutes} min long break</p>
+      <p>{settings.focus_minutes} min focus · {settings.short_break_minutes} min break · {settings.long_break_minutes} min long break</p>
     {:else if error}
       <p class="error">{error}</p>
     {:else}
-      <p>Loading your focus rhythm…</p>
+      <p>Loading focus settings…</p>
     {/if}
   </div>
 
   <label class="tag-filter">
     <span>Session tag</span>
-    <select bind:value={selectedTagId}>
+    <select bind:value={selectedTagId} on:change={changeScope}>
       <option value="">All tags</option>
       {#each tags as tag}
         <option value={tag.id}>#{tag.name}</option>
@@ -55,9 +63,15 @@
     <small>Includes child tags.</small>
   </label>
 
-  <button class="primary start-button" disabled={!settings} on:click={startSession}>
+  <button
+    class="primary start-button"
+    disabled={!settings || !recommendedTaskTitle}
+    aria-label={recommendedTaskTitle ? `Start Pomodoro with ${recommendedTaskTitle}` : 'Start Pomodoro'}
+    title={recommendedTaskTitle ? `Start with ${recommendedTaskTitle}` : 'No recommended task in this scope'}
+    on:click={startSession}
+  >
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
-    Start session
+    Start Pomodoro
   </button>
 </section>
 
@@ -68,8 +82,9 @@
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
-    padding: 1rem 1.1rem;
+    padding: .85rem 1.1rem;
     border: 1px solid #e3c9bd;
+    border-left: 5px solid #a65038;
     border-radius: .85rem;
     background: linear-gradient(135deg, #fff9f5, #fffdf9);
     box-shadow: 0 8px 24px rgba(80, 50, 35, .05);
@@ -77,18 +92,18 @@
 
   .pomodoro-icon {
     display: grid;
-    width: 2.8rem;
-    height: 2.8rem;
+    width: 2.5rem;
+    height: 2.5rem;
     place-items: center;
-    border-radius: .8rem;
+    border-radius: .7rem;
     background: #f8e2d8;
     color: #9a4d36;
   }
 
   .pomodoro-icon svg,
   .start-button svg {
-    width: 1.3rem;
-    height: 1.3rem;
+    width: 1.2rem;
+    height: 1.2rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;
@@ -104,20 +119,14 @@
   }
 
   .pomodoro-copy .eyebrow,
-  .pomodoro-copy h2,
   .pomodoro-copy p {
     margin: 0;
   }
 
-  .pomodoro-copy h2 {
-    margin-top: .1rem;
-    font-size: 1.05rem;
-  }
-
   .pomodoro-copy p:last-child {
-    margin-top: .25rem;
+    margin-top: .2rem;
     color: var(--muted);
-    font-size: .82rem;
+    font-size: .8rem;
   }
 
   .tag-filter {
