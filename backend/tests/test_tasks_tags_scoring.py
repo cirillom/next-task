@@ -71,6 +71,12 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
     second = make_task(client, workspace, statuses, "Second", parent_task_id=first["id"])
     other = make_task(client, other_workspace, other_statuses, "Other")
 
+    assert second["parent_task"] == {
+        "id": first["id"],
+        "title": "First",
+        "finished_at": None,
+    }
+
     self_parent = client.patch(f"/api/tasks/{first['id']}", json={"parent_task_id": first["id"]})
     assert self_parent.status_code == 422
     cycle = client.patch(f"/api/tasks/{first['id']}", json={"parent_task_id": second["id"]})
@@ -79,6 +85,79 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
         f"/api/tasks/{first['id']}", json={"parent_task_id": other["id"]}
     )
     assert cross_workspace.status_code == 422
+
+
+def test_actionable_tasks_are_leaf_tasks_for_current_user_or_unassigned(
+    logged_in_client: Callable[[str], TestClient],
+    create_user: Callable,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    owner_id = client.get("/api/auth/me").json()["id"]
+    teammate = create_user("teammate@example.com")
+    workspace, statuses = make_workspace(client)
+    client.post(
+        f"/api/workspaces/{workspace['id']}/members",
+        json={"email": teammate.email, "role": "editor"},
+    )
+
+    parent = make_task(client, workspace, statuses, "Project container")
+    child = make_task(
+        client,
+        workspace,
+        statuses,
+        "Concrete next action",
+        parent_task_id=parent["id"],
+    )
+    mine = make_task(client, workspace, statuses, "Mine", assignee_ids=[owner_id])
+    shared = make_task(
+        client,
+        workspace,
+        statuses,
+        "Shared",
+        assignee_ids=[owner_id, teammate.id],
+    )
+    theirs = make_task(client, workspace, statuses, "Theirs", assignee_ids=[teammate.id])
+    unassigned = make_task(client, workspace, statuses, "Unassigned")
+
+    normal_ids = {
+        item["id"]
+        for item in client.get(
+            "/api/tasks", params={"workspace_id": workspace["id"], "finished": False}
+        ).json()
+    }
+    assert parent["id"] in normal_ids
+    assert theirs["id"] in normal_ids
+
+    actionable = client.get(
+        "/api/tasks",
+        params={
+            "workspace_id": workspace["id"],
+            "finished": False,
+            "blocked": False,
+            "actionable": True,
+        },
+    ).json()
+    actionable_ids = {item["id"] for item in actionable}
+    assert child["id"] in actionable_ids
+    assert mine["id"] in actionable_ids
+    assert shared["id"] in actionable_ids
+    assert unassigned["id"] in actionable_ids
+    assert parent["id"] not in actionable_ids
+    assert theirs["id"] not in actionable_ids
+
+    assert client.post(f"/api/tasks/{child['id']}/finish").status_code == 200
+    actionable_after_finish = client.get(
+        "/api/tasks",
+        params={
+            "workspace_id": workspace["id"],
+            "finished": False,
+            "blocked": False,
+            "actionable": True,
+        },
+    ).json()
+    actionable_after_finish_ids = {item["id"] for item in actionable_after_finish}
+    assert parent["id"] in actionable_after_finish_ids
+    assert child["id"] not in actionable_after_finish_ids
 
 
 def test_tag_dag_and_inherited_filtering(logged_in_client: Callable[[str], TestClient]) -> None:
