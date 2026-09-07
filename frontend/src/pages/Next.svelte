@@ -4,12 +4,14 @@
   import type { Tag, Task, Workspace } from '../lib/api/types';
   import NextTaskCard from '../lib/components/NextTaskCard.svelte';
   import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
+  import TaskQueue from '../lib/components/TaskQueue.svelte';
 
   export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number; startFocus: number | null }>();
 
   let tasks: Task[] = [];
   let tags: Tag[] = [];
+  let sessionTagId: number | null = null;
   let error = '';
   let loading = true;
   let refreshTimer: number;
@@ -20,13 +22,19 @@
     try {
       tasks = await api.tasks(workspace.id, {
         finished: false,
-        blocked: false
+        blocked: false,
+        tag_id: sessionTagId
       });
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tasks';
     } finally {
       if (showLoading) loading = false;
     }
+  }
+
+  async function changeSessionScope(tagId: number | null) {
+    sessionTagId = tagId;
+    await loadTasks();
   }
 
   function replaceTask(updated: Task) {
@@ -73,7 +81,7 @@
 {#if loading}
   <p class="empty">Ranking your tasks…</p>
 {:else if tasks.length === 0}
-  <section class="empty"><strong>Nothing actionable right now.</strong><span>Add a task or check Tasks for blocked work.</span></section>
+  <section class="empty"><strong>Nothing actionable right now.</strong><span>Try another session tag, add a task, or check Tasks for blocked work.</span></section>
 {:else}
   <section class="recommendation" aria-label="Recommended next task">
     <NextTaskCard
@@ -86,27 +94,25 @@
   </section>
 {/if}
 
-<PomodoroLauncher {tags} on:start={(event) => dispatch('startFocus', event.detail)} />
+<PomodoroLauncher
+  {tags}
+  recommendedTaskTitle={tasks[0]?.title || ''}
+  on:scopeChange={(event) => changeSessionScope(event.detail)}
+  on:start={(event) => dispatch('startFocus', event.detail)}
+/>
 
 {#if !loading && tasks.length > 1}
-  <section class="up-next" aria-label="Remaining ranked tasks">
-    <div class="up-next__heading">
-      <div><p class="eyebrow">Ranked queue</p><h2>Up next</h2></div>
+  <section class="queue" aria-label="Ranked task queue">
+    <div class="queue__heading">
+      <h2>Queue</h2>
       <span>{tasks.length - 1} more</span>
     </div>
 
-    <div class="simple-task-list">
-      {#each tasks.slice(1) as task (task.id)}
-        <article class="simple-task-row">
-          <button class="simple-task-title" on:click={() => dispatch('openTask', task.id)}>{task.title}</button>
-          <div class="simple-task-meta">
-            <span>Priority {task.priority}</span>
-            <span>{task.status.name}</span>
-            <span>Score {task.score.toFixed(1)}</span>
-          </div>
-        </article>
-      {/each}
-    </div>
+    <TaskQueue
+      tasks={tasks.slice(1)}
+      startRank={2}
+      on:open={(event) => dispatch('openTask', event.detail)}
+    />
   </section>
 {/if}
 
@@ -115,13 +121,13 @@
     margin-bottom: 1rem;
   }
 
-  .up-next {
+  .queue {
     margin-top: 1.5rem;
     padding-top: 1.25rem;
     border-top: 1px solid var(--line);
   }
 
-  .up-next__heading {
+  .queue__heading {
     display: flex;
     align-items: end;
     justify-content: space-between;
@@ -129,83 +135,14 @@
     margin-bottom: .75rem;
   }
 
-  .up-next__heading .eyebrow,
-  .up-next__heading h2 {
+  .queue__heading h2 {
     margin: 0;
-  }
-
-  .up-next__heading h2 {
-    margin-top: .1rem;
     font-size: 1.15rem;
   }
 
-  .up-next__heading > span {
+  .queue__heading > span {
     color: var(--muted);
     font-size: .75rem;
     font-weight: 700;
-  }
-
-  .simple-task-list {
-    display: grid;
-    gap: .45rem;
-  }
-
-  .simple-task-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border: 1px solid rgba(100, 95, 80, .14);
-    border-radius: .65rem;
-    background: rgba(255, 255, 255, .62);
-    padding: .7rem .8rem;
-  }
-
-  .simple-task-title {
-    overflow: hidden;
-    border: 0;
-    background: transparent;
-    color: var(--ink);
-    padding: 0;
-    font: inherit;
-    font-weight: 750;
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .simple-task-title:hover {
-    color: var(--forest-2);
-    text-decoration: underline;
-    text-underline-offset: .15rem;
-  }
-
-  .simple-task-meta {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: .4rem;
-    color: var(--muted);
-    font-size: .7rem;
-  }
-
-  .simple-task-meta > span {
-    white-space: nowrap;
-  }
-
-  @media (max-width: 680px) {
-    .simple-task-row {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: .45rem;
-    }
-
-    .simple-task-title {
-      width: 100%;
-    }
-
-    .simple-task-meta {
-      flex-wrap: wrap;
-    }
   }
 </style>
