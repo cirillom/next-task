@@ -23,6 +23,7 @@
       tasks = await api.tasks(workspace.id, {
         finished: false,
         blocked: false,
+        actionable: true,
         tag_id: sessionTagId
       });
     } catch (reason) {
@@ -37,15 +38,8 @@
     await loadTasks();
   }
 
-  function replaceTask(updated: Task) {
-    if (updated.finished_at || updated.current_block) {
-      tasks = tasks.filter((task) => task.id !== updated.id);
-      return;
-    }
-
-    tasks = tasks
-      .map((task) => (task.id === updated.id ? updated : task))
-      .sort((a, b) => b.score - a.score || a.id - b.id);
+  async function replaceTask(_updated: Task) {
+    await loadTasks(false);
   }
 
   onMount(() => {
@@ -96,7 +90,7 @@
     <NextTaskCard
       task={tasks[0]}
       readOnly={workspace.role === 'viewer'}
-      on:changed={(event) => replaceTask(event.detail)}
+      on:changed={(event) => void replaceTask(event.detail)}
       on:open={(event) => dispatch('openTask', event.detail)}
       on:error={(event) => (error = event.detail)}
     />
