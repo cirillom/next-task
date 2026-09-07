@@ -7,7 +7,13 @@
 
   export let workspace: Workspace;
   export let taskId = 0;
-  const dispatch = createEventDispatcher<{ close: void; saved: Task; changed: Task; deleted: number }>();
+  const dispatch = createEventDispatcher<{
+    close: void;
+    saved: Task;
+    changed: Task;
+    deleted: number;
+    openTask: number;
+  }>();
 
   let task: Task | null = null;
   let loading = true;
@@ -187,6 +193,7 @@
         busyLabel={taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
         on:delete={remove}
+        on:openTask={(event) => dispatch('openTask', event.detail)}
         on:submit={(event) => save(event.detail)}
       />
     {/if}
