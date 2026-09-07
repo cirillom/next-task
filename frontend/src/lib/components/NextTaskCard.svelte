@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
-  import { formatDate, formatDateTime } from '../format';
+  import { daysSince, formatDate, formatDateTime, formatRelativeTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
@@ -15,8 +15,7 @@
   let blockModalOpen = false;
 
   function idleDays(): number {
-    const anchor = new Date(task.last_worked_at || task.created_at).getTime();
-    return Math.max(0, Math.floor((Date.now() - anchor) / 86_400_000));
+    return daysSince(task.last_worked_at || task.created_at);
   }
 
   async function act(action: () => Promise<Task>) {
@@ -103,8 +102,11 @@
       class="date-meta"
       class:overdue={!!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span class="date-meta">Last worked {task.last_worked_at ? formatDateTime(task.last_worked_at) : '—'}</span>
-    <span class="date-meta">Idle {idleDays()} {idleDays() === 1 ? 'day' : 'days'}</span>
+    <span
+      class="date-meta"
+      title={task.last_worked_at ? formatDateTime(task.last_worked_at) : 'No work recorded yet'}
+    >Last worked {task.last_worked_at ? formatRelativeTime(task.last_worked_at) : 'never'}</span>
+    <span class="date-meta">Idle {idleDays()}d</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
@@ -120,20 +122,41 @@
     <div class="recommended-actions">
       <button
         type="button"
-        class="primary-action"
+        class="action-button finish-action"
         disabled={busy}
         on:click={() => act(() => api.finishTask(task.id))}
       >
-        <span aria-hidden="true">✓</span>
-        Finish
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+        <span>Finish</span>
       </button>
-      <button type="button" disabled={busy} on:click={markWorkedNow}>Worked now</button>
-      <button type="button" disabled={busy} on:click={() => (blockModalOpen = true)}>Block / defer</button>
-      <button type="button" disabled={busy} on:click={() => dispatch('open', task.id)}>Edit task</button>
+      <button type="button" class="action-button worked-action" disabled={busy} on:click={markWorkedNow}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3.2 2" />
+        </svg>
+        <span>Worked now</span>
+      </button>
+      <button type="button" class="action-button block-action" disabled={busy} on:click={() => (blockModalOpen = true)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M6 18 18 6" />
+        </svg>
+        <span>Block</span>
+      </button>
+      <button type="button" class="action-button edit-action" disabled={busy} on:click={() => dispatch('open', task.id)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+        <span>Edit task</span>
+      </button>
     </div>
   {:else}
     <div class="recommended-actions">
-      <button type="button" on:click={() => dispatch('open', task.id)}>View task</button>
+      <button type="button" class="action-button edit-action" on:click={() => dispatch('open', task.id)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+        <span>View task</span>
+      </button>
     </div>
   {/if}
 </article>
@@ -269,7 +292,10 @@
     padding-top: .85rem;
   }
 
-  .recommended-actions button {
+  .action-button {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
     border: 1px solid #cbc8be;
     border-radius: .55rem;
     background: #fff;
@@ -279,32 +305,45 @@
     font-weight: 700;
   }
 
-  .recommended-actions button:hover:not(:disabled) {
+  .action-button svg {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .action-button:hover:not(:disabled) {
     border-color: #9fa9a3;
     background: #fbfaf6;
   }
 
-  .recommended-actions .primary-action {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
+  .finish-action {
     border-color: var(--forest);
     background: var(--forest);
     color: #fff;
   }
 
-  .recommended-actions .primary-action:hover:not(:disabled) {
+  .finish-action:hover:not(:disabled) {
     border-color: var(--forest-2);
     background: var(--forest-2);
   }
+
+  .worked-action { color: var(--forest-2); }
+  .block-action { color: #8a4d36; }
+  .edit-action { color: var(--ink); }
 
   @media (max-width: 600px) {
     .recommended-card {
       padding: 1.05rem;
     }
 
-    .recommended-actions button {
+    .action-button {
       flex: 1 1 calc(50% - .55rem);
+      justify-content: center;
     }
   }
 </style>
