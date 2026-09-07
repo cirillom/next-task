@@ -202,6 +202,7 @@ class TaskRead(ApiModel):
     last_worked_at: datetime | None
     finished_at: datetime | None
     parent_task_id: int | None
+    parent_task: TaskSummary | None
     created_at: datetime
     updated_at: datetime
     score: float
