@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
-  import { daysSince, formatDate, formatDateTime, formatRelativeTime } from '../format';
+  import { daysSince, formatDate, formatDateTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
 
@@ -14,8 +14,13 @@
   let descriptionExpanded = false;
   let blockModalOpen = false;
 
-  function idleDays(): number {
-    return daysSince(task.last_worked_at || task.created_at);
+  function idleAnchor(): string {
+    return task.last_worked_at || task.created_at;
+  }
+
+  function idleLabel(): string {
+    const days = daysSince(idleAnchor());
+    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor())})`;
   }
 
   async function act(action: () => Promise<Task>) {
@@ -77,7 +82,24 @@
       <p class="eyebrow">Recommended next</p>
       <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
     </div>
-    <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    <div class="recommended-card__header-actions">
+      {#if !readOnly}
+        <button
+          type="button"
+          class="edit-button"
+          aria-label="Edit task"
+          title="Edit task"
+          disabled={busy}
+          on:click={() => dispatch('open', task.id)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      {/if}
+      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+    </div>
   </div>
 
   {#if task.description}
@@ -102,11 +124,7 @@
       class="date-meta"
       class:overdue={!!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span
-      class="date-meta"
-      title={task.last_worked_at ? formatDateTime(task.last_worked_at) : 'No work recorded yet'}
-    >Last worked {task.last_worked_at ? formatRelativeTime(task.last_worked_at) : 'never'}</span>
-    <span class="date-meta">Idle {idleDays()}d</span>
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
@@ -142,20 +160,6 @@
           <path d="M6 18 18 6" />
         </svg>
         <span>Block</span>
-      </button>
-      <button type="button" class="action-button edit-action" disabled={busy} on:click={() => dispatch('open', task.id)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-        </svg>
-        <span>Edit task</span>
-      </button>
-    </div>
-  {:else}
-    <div class="recommended-actions">
-      <button type="button" class="action-button edit-action" on:click={() => dispatch('open', task.id)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
-        <span>View task</span>
       </button>
     </div>
   {/if}
@@ -206,6 +210,45 @@
     vertical-align: middle;
   }
 
+  .recommended-card__header-actions {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .edit-button {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--muted);
+    opacity: .35;
+    padding: .3rem;
+    transition: opacity .15s ease, background .15s ease;
+  }
+
+  .edit-button svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .recommended-card:hover .edit-button,
+  .edit-button:focus-visible {
+    opacity: .85;
+  }
+
+  .edit-button:hover:not(:disabled) {
+    background: rgba(0, 0, 0, .04);
+  }
+
   .score {
     flex: 0 0 auto;
     border-radius: .55rem;
@@ -218,24 +261,31 @@
   }
 
   .task-description {
-    max-height: 7rem;
-    margin-top: .85rem;
-    overflow: hidden;
-    border-top: 1px solid #ebe6dc;
-    padding-top: .75rem;
+    width: 100%;
+    height: 7rem;
+    margin-top: .6rem;
+    overflow-y: auto;
+    padding: .65rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: .55rem;
+    background: #faf8f2;
   }
 
   .task-description.expanded {
-    max-height: none;
+    height: auto;
+    overflow-y: visible;
   }
 
   .description-toggle {
+    margin-top: .35rem;
     border: 0;
     background: transparent;
     color: var(--forest-2);
-    padding: .35rem 0 0;
-    font-size: .75rem;
+    padding: .15rem 0;
+    font-size: .8rem;
     font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: .15rem;
   }
 
   .meta-row,
@@ -334,12 +384,13 @@
 
   .worked-action { color: var(--forest-2); }
   .block-action { color: #8a4d36; }
-  .edit-action { color: var(--ink); }
 
   @media (max-width: 600px) {
     .recommended-card {
       padding: 1.05rem;
     }
+
+    .edit-button { opacity: .6; }
 
     .action-button {
       flex: 1 1 calc(50% - .55rem);
