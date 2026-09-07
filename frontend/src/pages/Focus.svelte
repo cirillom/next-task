@@ -3,6 +3,7 @@
   import { api } from '../lib/api/client';
   import type { PomodoroSettings, Status, Tag, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
+  import TaskQueue from '../lib/components/TaskQueue.svelte';
 
   type Phase = 'focus' | 'short-break' | 'long-break';
   type BlockedFilter = '' | 'false' | 'true';
@@ -385,10 +386,7 @@
 
         <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
           <div class="session-tasks__heading">
-            <div>
-              <p class="eyebrow">Session tasks</p>
-              <h2>Tasks</h2>
-            </div>
+            <h2>Queue</h2>
             <label class="blocked-filter">
               <span>Blocked</span>
               <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
@@ -404,45 +402,16 @@
           {:else if sessionTasks.length === 0}
             <p class="task-list-empty">No matching unfinished tasks.</p>
           {:else}
-            <div class="simple-task-list">
-              {#each sessionTasks as task (task.id)}
-                <article class:current={task.id === currentTask?.id} class:blocked={!!task.current_block} class="simple-task-row">
-                  <button class="simple-task-title" on:click={() => dispatch('openTask', task.id)}>{task.title}</button>
-                  <div class="simple-task-meta">
-                    {#if task.id === currentTask?.id}<span class="current-chip">Current</span>{/if}
-                    {#if task.current_block}<span class="blocked-chip">Blocked</span>{/if}
-                    <span>Priority {task.priority}</span>
-                    <span>{task.status.name}</span>
-                    <span>Score {task.score.toFixed(1)}</span>
-                    {#if !task.current_block && task.id !== currentTask?.id}
-                      <button
-                        type="button"
-                        class="focus-task-button"
-                        aria-label={`Focus on ${task.title}`}
-                        title="Make this the current Pomodoro task"
-                        on:click={() => focusTask(task)}
-                      >Focus</button>
-                    {/if}
-                    {#if task.current_block && workspace.role !== 'viewer'}
-                      <button
-                        type="button"
-                        class="unblock-task-button"
-                        disabled={unblockingTaskId !== null}
-                        aria-label={`Unblock ${task.title}`}
-                        title="Unblock task"
-                        on:click={() => unblockListedTask(task)}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M7 10V8a5 5 0 0 1 9.5-2" />
-                          <rect x="5" y="10" width="14" height="10" rx="2" />
-                        </svg>
-                        <span>{unblockingTaskId === task.id ? 'Unblocking…' : 'Unblock'}</span>
-                      </button>
-                    {/if}
-                  </div>
-                </article>
-              {/each}
-            </div>
+            <TaskQueue
+              tasks={sessionTasks}
+              currentTaskId={currentTask?.id ?? null}
+              allowFocus={true}
+              allowUnblock={workspace.role !== 'viewer'}
+              busyTaskId={unblockingTaskId}
+              on:open={(event) => dispatch('openTask', event.detail)}
+              on:focus={(event) => focusTask(event.detail)}
+              on:unblock={(event) => unblockListedTask(event.detail)}
+            />
           {/if}
         </section>
       </section>
@@ -552,9 +521,7 @@
     letter-spacing: .12em;
   }
 
-  .break-mode .phase-chip {
-    color: var(--forest-2);
-  }
+  .break-mode .phase-chip { color: var(--forest-2); }
 
   .timer {
     margin-top: .5rem;
@@ -570,9 +537,7 @@
     margin-top: 1rem;
   }
 
-  .period-button {
-    min-width: 9rem;
-  }
+  .period-button { min-width: 9rem; }
 
   .running-label {
     border-radius: 999px;
@@ -602,9 +567,7 @@
     background: #d4d0c5;
   }
 
-  .cycle-dots span.done {
-    background: #a65038;
-  }
+  .cycle-dots span.done { background: #a65038; }
 
   .cycle-dots .long-dot {
     width: .7rem;
@@ -624,17 +587,9 @@
     font-size: .72rem;
   }
 
-  .session-scope strong {
-    color: var(--forest-2);
-  }
-
-  .session-scope small {
-    opacity: .8;
-  }
-
-  .focus-task-area {
-    text-align: left;
-  }
+  .session-scope strong { color: var(--forest-2); }
+  .session-scope small { opacity: .8; }
+  .focus-task-area { text-align: left; }
 
   .focus-task-heading {
     display: flex;
@@ -646,7 +601,6 @@
 
   .focus-task-heading .eyebrow,
   .focus-task-heading h1,
-  .session-tasks__heading .eyebrow,
   .session-tasks__heading h2 {
     margin: 0;
   }
@@ -683,9 +637,7 @@
     line-height: 1.45;
   }
 
-  .empty-focus {
-    text-align: center;
-  }
+  .empty-focus { text-align: center; }
 
   .session-tasks {
     margin-top: 1.75rem;
@@ -701,10 +653,7 @@
     margin-bottom: .75rem;
   }
 
-  .session-tasks__heading h2 {
-    margin-top: .1rem;
-    font-size: 1.15rem;
-  }
+  .session-tasks__heading h2 { font-size: 1.15rem; }
 
   .blocked-filter {
     display: grid;
@@ -716,114 +665,7 @@
     font-weight: 800;
   }
 
-  .blocked-filter select {
-    min-width: 0;
-  }
-
-  .simple-task-list {
-    display: grid;
-    gap: .45rem;
-  }
-
-  .simple-task-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border: 1px solid rgba(100, 95, 80, .14);
-    border-radius: .65rem;
-    background: rgba(255, 255, 255, .62);
-    padding: .7rem .8rem;
-  }
-
-  .simple-task-row.current {
-    border-color: rgba(45, 105, 80, .35);
-    box-shadow: inset 3px 0 0 var(--forest);
-  }
-
-  .simple-task-row.blocked {
-    opacity: .78;
-  }
-
-  .simple-task-title {
-    overflow: hidden;
-    border: 0;
-    background: transparent;
-    color: var(--ink);
-    padding: 0;
-    font: inherit;
-    font-weight: 750;
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .simple-task-title:hover {
-    color: var(--forest-2);
-    text-decoration: underline;
-    text-underline-offset: .15rem;
-  }
-
-  .simple-task-meta {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: .4rem;
-    color: var(--muted);
-    font-size: .7rem;
-  }
-
-  .simple-task-meta > span {
-    white-space: nowrap;
-  }
-
-  .current-chip,
-  .blocked-chip {
-    border-radius: 999px;
-    padding: .18rem .4rem;
-    font-weight: 800;
-  }
-
-  .current-chip {
-    background: rgba(45, 105, 80, .1);
-    color: var(--forest-2);
-  }
-
-  .blocked-chip {
-    background: rgba(166, 80, 56, .1);
-    color: #8e4b37;
-  }
-
-  .focus-task-button,
-  .unblock-task-button {
-    display: inline-flex;
-    align-items: center;
-    gap: .28rem;
-    border: 1px solid rgba(45, 105, 80, .25);
-    border-radius: .45rem;
-    background: rgba(255, 255, 255, .72);
-    color: var(--forest-2);
-    padding: .26rem .42rem;
-    font-size: .68rem;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .focus-task-button:hover:not(:disabled),
-  .unblock-task-button:hover:not(:disabled) {
-    border-color: rgba(45, 105, 80, .45);
-    background: #fff;
-  }
-
-  .unblock-task-button svg {
-    width: .78rem;
-    height: .78rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.8;
-  }
+  .blocked-filter select { min-width: 0; }
 
   .task-list-empty {
     margin: .6rem 0 0;
@@ -836,13 +678,9 @@
     margin: 2rem auto 0;
   }
 
-  .break-icon {
-    font-size: 2.4rem;
-  }
+  .break-icon { font-size: 2.4rem; }
 
-  .break-card h1 {
-    margin: .5rem 0 .35rem;
-  }
+  .break-card h1 { margin: .5rem 0 .35rem; }
 
   .break-card p {
     margin: 0 auto 1rem;
@@ -878,9 +716,7 @@
 
   .break-prompt .eyebrow,
   .break-prompt h2,
-  .break-prompt p {
-    margin: 0;
-  }
+  .break-prompt p { margin: 0; }
 
   .break-prompt h2 {
     margin-top: .2rem;
@@ -901,33 +737,22 @@
   }
 
   @media (max-width: 640px) {
-    .focus-header {
-      align-items: flex-start;
-    }
+    .focus-header { align-items: flex-start; }
 
     .focus-header-actions {
       flex-wrap: wrap;
       justify-content: flex-end;
     }
 
-    .focus-content {
-      padding-top: 1rem;
-    }
+    .focus-content { padding-top: 1rem; }
 
     .focus-task-heading,
-    .session-tasks__heading,
-    .simple-task-row {
+    .session-tasks__heading {
       align-items: flex-start;
       flex-direction: column;
     }
 
-    .blocked-filter {
-      width: 100%;
-    }
-
-    .simple-task-meta,
-    .break-prompt-actions {
-      flex-wrap: wrap;
-    }
+    .blocked-filter { width: 100%; }
+    .break-prompt-actions { flex-wrap: wrap; }
   }
 </style>
