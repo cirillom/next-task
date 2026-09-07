@@ -25,7 +25,12 @@
   export let busyLabel = 'Saving…';
   export let cancelLabel = 'Cancel';
 
-  const dispatch = createEventDispatcher<{ submit: TaskInput; cancel: void; delete: void }>();
+  const dispatch = createEventDispatcher<{
+    submit: TaskInput;
+    cancel: void;
+    delete: void;
+    openTask: number;
+  }>();
 
   let statuses: Status[] = [];
   let tags: Tag[] = [];
@@ -58,6 +63,8 @@
       ? candidates.filter((item) => item.title.toLowerCase().includes(needle))
       : candidates;
   }
+
+  $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
 
   function parentOptionLabel(item: Task): string {
     return `${item.title} (#${item.id})`;
@@ -216,6 +223,48 @@
       </div>
     </div>
 
+    {#if taskDetails && (taskDetails.parent_task || taskDetails.subtasks.length)}
+      <section class="hierarchy-panel" aria-label="Task hierarchy">
+        {#if taskDetails.parent_task}
+          <div class="hierarchy-section">
+            <span class="field-label">Parent</span>
+            <button
+              type="button"
+              class="hierarchy-parent"
+              on:click={() => dispatch('openTask', taskDetails!.parent_task!.id)}
+            >
+              <span aria-hidden="true">↳</span>
+              <strong>{taskDetails.parent_task.title}</strong>
+              <small>#{taskDetails.parent_task.id}</small>
+            </button>
+          </div>
+        {/if}
+
+        {#if taskDetails.subtasks.length}
+          <div class="hierarchy-section">
+            <div class="subtask-heading">
+              <span class="field-label">Subtasks</span>
+              <small>{completedSubtasks} / {taskDetails.subtasks.length} complete</small>
+            </div>
+            <div class="subtask-list">
+              {#each taskDetails.subtasks as subtask (subtask.id)}
+                <button
+                  type="button"
+                  class:finished={!!subtask.finished_at}
+                  class="subtask-row"
+                  on:click={() => dispatch('openTask', subtask.id)}
+                >
+                  <span class="subtask-state" aria-hidden="true">{subtask.finished_at ? '✓' : '○'}</span>
+                  <span>{subtask.title}</span>
+                  <small>#{subtask.id}</small>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </section>
+    {/if}
+
     <div class="mobile-tabs"><button type="button" class:active={mobileTab === 'edit'} on:click={() => (mobileTab = 'edit')}>Edit</button><button type="button" class:active={mobileTab === 'preview'} on:click={() => (mobileTab = 'preview')}>Preview</button></div>
     <div class="markdown-editor">
       <label class:hidden-mobile={mobileTab !== 'edit'}>Description (Markdown)<textarea bind:value={description} rows="14" disabled={workspace.role === 'viewer'} placeholder="Add details, links, lists, tables, or code…"></textarea></label>
@@ -233,7 +282,6 @@
       <section class="detail-panel">
         <dl><div><dt>Creator</dt><dd>{taskDetails.creator.display_name}</dd></div><div><dt>Created</dt><dd>{formatDateTime(taskDetails.created_at)}</dd></div><div><dt>Finished</dt><dd>{taskDetails.finished_at ? formatDateTime(taskDetails.finished_at) : 'Not finished'}</dd></div></dl>
         {#if taskDetails.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {taskDetails.current_block.reason}</div>{/if}
-        {#if taskDetails.subtasks.length}<h3>Subtasks</h3><ul>{#each taskDetails.subtasks as subtask}<li>{subtask.finished_at ? '✓' : '○'} {subtask.title}</li>{/each}</ul>{/if}
       </section>
     {/if}
 
@@ -256,4 +304,76 @@
   .parent-options button:hover, .parent-options button.selected { background: #f0eee7; }
   .parent-empty { display: block; padding: .55rem .6rem; color: var(--muted); font-size: .85rem; }
   .new-tags { display: block; margin-top: .85rem; }
+
+  .hierarchy-panel {
+    display: grid;
+    gap: .85rem;
+    border: 1px solid var(--line);
+    border-radius: .65rem;
+    background: #faf9f4;
+    padding: .8rem;
+  }
+
+  .hierarchy-section {
+    display: grid;
+    gap: .35rem;
+  }
+
+  .hierarchy-parent {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: baseline;
+    gap: .35rem;
+    border: 0;
+    background: transparent;
+    color: var(--forest-2);
+    padding: 0;
+    font: inherit;
+    text-align: left;
+  }
+
+  .hierarchy-parent:hover,
+  .subtask-row:hover span:nth-child(2) {
+    text-decoration: underline;
+    text-underline-offset: .14rem;
+  }
+
+  .hierarchy-parent small,
+  .subtask-row small,
+  .subtask-heading small {
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 650;
+  }
+
+  .subtask-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .75rem;
+  }
+
+  .subtask-list {
+    display: grid;
+    gap: .25rem;
+  }
+
+  .subtask-row {
+    display: grid;
+    grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .4rem;
+    border: 0;
+    border-radius: .4rem;
+    background: transparent;
+    color: var(--ink);
+    padding: .4rem .45rem;
+    font: inherit;
+    text-align: left;
+  }
+
+  .subtask-row:hover { background: #f0eee7; }
+  .subtask-row.finished { color: var(--muted); }
+  .subtask-state { color: var(--forest-2); font-weight: 850; }
 </style>
