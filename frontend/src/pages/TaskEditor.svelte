@@ -209,7 +209,7 @@
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
-        <p class="eyebrow">{isDraft ? 'Finalize draft' : taskId ? 'Task details' : 'Create task'}</p>
+        <p class="eyebrow">{isDraft ? 'Edit draft' : taskId ? 'Task details' : 'Create task'}</p>
         <h1 id="task-editor-title" class="editor-title">
           {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
           <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
@@ -270,7 +270,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
       {#if isDraft}
-        <p class="notice draft-notice">Choose a priority of 1 or higher and review the task details to move this draft into your normal workflow.</p>
+        <p class="notice draft-notice">Review the draft and choose a priority of 1 or higher before creating the task.</p>
       {/if}
       <TaskForm
         {workspace}
@@ -287,8 +287,8 @@
         taskDetails={task}
         {busy}
         {error}
-        submitLabel={isDraft ? 'Finalize task' : taskId ? 'Save task' : 'Create task'}
-        busyLabel={isDraft ? 'Finalizing…' : taskId ? 'Saving…' : 'Creating…'}
+        submitLabel={isDraft ? 'Create task' : taskId ? 'Save task' : 'Create task'}
+        busyLabel={isDraft ? 'Creating…' : taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
