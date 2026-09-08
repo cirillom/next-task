@@ -94,7 +94,7 @@
     if (task) {
       const offset = Math.min(indentationWidth(task[1]) * .45, 4.5);
       const checked = task[2].toLowerCase() === 'x';
-      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} disabled /><span>${inlineMarkdown(task[3])}</span></div>`;
+      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="${checked ? 'Mark task item incomplete' : 'Mark task item complete'}" /><span>${inlineMarkdown(task[3])}</span></div>`;
     }
 
     const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
@@ -229,6 +229,38 @@
     }
   }
 
+  function handleRenderedMouseDown(index: number, event: MouseEvent) {
+    if (disabled) return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+      event.stopPropagation();
+      return;
+    }
+    event.preventDefault();
+    void activateLine(index);
+  }
+
+  function handleRenderedChange(index: number, event: Event) {
+    if (disabled) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
+
+    const match = lines[index]?.match(/^(\s*[-*+]\s+\[)[ xX](\]\s+.*)$/);
+    if (!match) return;
+
+    const next = [...lines];
+    next[index] = `${match[1]}${target.checked ? 'x' : ' '}${match[2]}`;
+    emitLines(next);
+  }
+
+  function handleRenderedKeydown(index: number, event: KeyboardEvent) {
+    if (event.target instanceof HTMLInputElement) return;
+    if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      void activateLine(index);
+    }
+  }
+
   function handleSurfaceMouseDown(event: MouseEvent) {
     if (disabled || event.target !== root) return;
     event.preventDefault();
@@ -276,13 +308,9 @@
           class:code-end={codeRole === 'end'}
           role={!disabled ? 'button' : undefined}
           tabindex={!disabled ? 0 : undefined}
-          on:mousedown|preventDefault={() => void activateLine(index)}
-          on:keydown={(event) => {
-            if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
-              event.preventDefault();
-              void activateLine(index);
-            }
-          }}
+          on:mousedown={(event) => handleRenderedMouseDown(index, event)}
+          on:change={(event) => handleRenderedChange(index, event)}
+          on:keydown={(event) => handleRenderedKeydown(index, event)}
         >{@html renderedLineHtml(line, index)}</div>
       {/if}
     {/each}
@@ -312,7 +340,7 @@
   .rendered-line :global(.md-list-line) { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: .15rem; margin-left: var(--line-indent); }
   .rendered-line :global(.md-marker) { color: var(--muted); text-align: right; }
   .rendered-line :global(.md-number) { font-variant-numeric: tabular-nums; }
-  .rendered-line :global(.md-task-line input) { width: .95rem; height: .95rem; margin: .24rem 0 0 .08rem; accent-color: var(--forest); pointer-events: none; }
+  .rendered-line :global(.md-task-line input) { width: .95rem; height: .95rem; margin: .24rem 0 0 .08rem; accent-color: var(--forest); cursor: pointer; }
   .rendered-line :global(blockquote) { margin: 0; border-left: 3px solid #c9d3cc; padding-left: .8rem; color: var(--muted); }
   .rendered-line :global(code) { border-radius: .25rem; background: #f0eee7; padding: .08rem .25rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
   .rendered-line :global(a) { color: var(--forest-2); text-decoration: underline; text-underline-offset: .12rem; pointer-events: none; }
