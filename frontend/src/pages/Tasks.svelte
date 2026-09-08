@@ -189,77 +189,81 @@
 </div>
 
 <section class="filter-bar tasks-toolbar">
-  <label class="search-field">Search<input type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" /></label>
+  <div class="filter-row">
+    <label class="search-field">Search<input type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" /></label>
 
-  <label>
-    Completion
-    <select bind:value={finishedFilter} on:change={refreshTasks}>
-      <option value="all">All</option>
-      <option value="unfinished">Unfinished</option>
-      <option value="finished">Finished</option>
-    </select>
-  </label>
+    <label>
+      Completion
+      <select bind:value={finishedFilter} on:change={refreshTasks}>
+        <option value="all">All</option>
+        <option value="unfinished">Unfinished</option>
+        <option value="finished">Finished</option>
+      </select>
+    </label>
 
-  <label>
-    Assignee
-    <select bind:value={assigneeFilter} on:change={refreshTasks}>
-      <option value="">All</option>
-      {#each members as member (member.user_id)}
-        <option value={String(member.user_id)}>{member.display_name}</option>
-      {/each}
-    </select>
-  </label>
+    <label>
+      Assignee
+      <select bind:value={assigneeFilter} on:change={refreshTasks}>
+        <option value="">All</option>
+        {#each members as member (member.user_id)}
+          <option value={String(member.user_id)}>{member.display_name}</option>
+        {/each}
+      </select>
+    </label>
 
-  <label>
-    Blocked
-    <select bind:value={blockedFilter} on:change={refreshTasks}>
-      <option value="all">All</option>
-      <option value="blocked">Blocked</option>
-      <option value="unblocked">Not blocked</option>
-    </select>
-  </label>
+    <label>
+      Blocked
+      <select bind:value={blockedFilter} on:change={refreshTasks}>
+        <option value="all">All</option>
+        <option value="blocked">Blocked</option>
+        <option value="unblocked">Not blocked</option>
+      </select>
+    </label>
 
-  <label>
-    Status
-    <select bind:value={statusFilter} on:change={refreshTasks}>
-      <option value="">All</option>
-      {#each statuses as status (status.id)}
-        <option value={String(status.id)}>{status.name}</option>
-      {/each}
-    </select>
-  </label>
+    <label>
+      Status
+      <select bind:value={statusFilter} on:change={refreshTasks}>
+        <option value="">All</option>
+        {#each statuses as status (status.id)}
+          <option value={String(status.id)}>{status.name}</option>
+        {/each}
+      </select>
+    </label>
 
-  <label>
-    Tag
-    <select bind:value={tagFilter} on:change={refreshTasks}>
-      <option value="">All</option>
-      {#each tags as tag (tag.id)}
-        <option value={String(tag.id)}>{tag.name}</option>
-      {/each}
-    </select>
-  </label>
+    <label>
+      Tag
+      <select bind:value={tagFilter} on:change={refreshTasks}>
+        <option value="">All</option>
+        {#each tags as tag (tag.id)}
+          <option value={String(tag.id)}>{tag.name}</option>
+        {/each}
+      </select>
+    </label>
+  </div>
 
-  <label>
-    Order by
-    <select bind:value={sortField}>
-      <option value="score">Score</option>
-      <option value="finished_at">Done date</option>
-      <option value="last_worked_at">Last worked</option>
-      <option value="due_date">Due date</option>
-      <option value="created_at">Creation date</option>
-    </select>
-  </label>
+  <div class="sort-row">
+    <label class="sort-field">
+      Order by
+      <select bind:value={sortField}>
+        <option value="score">Score</option>
+        <option value="finished_at">Done date</option>
+        <option value="last_worked_at">Last worked</option>
+        <option value="due_date">Due date</option>
+        <option value="created_at">Creation date</option>
+      </select>
+    </label>
 
-  <button
-    type="button"
-    class="sort-direction"
-    aria-label={sortDirection === 'asc' ? 'Sort ascending; click for descending' : 'Sort descending; click for ascending'}
-    title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-    on:click={toggleSortDirection}
-  >
-    <span aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-    {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-  </button>
+    <button
+      type="button"
+      class="sort-direction"
+      aria-label={sortDirection === 'asc' ? 'Sort ascending; click for descending' : 'Sort descending; click for ascending'}
+      title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+      on:click={toggleSortDirection}
+    >
+      <span aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+      {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+    </button>
+  </div>
 </section>
 
 {#if error}<p class="error">{error}</p>{/if}
@@ -280,8 +284,21 @@
 <style>
   .tasks-toolbar {
     display: grid;
-    grid-template-columns: minmax(12rem, 2fr) repeat(6, minmax(8rem, 1fr)) auto;
+    gap: .7rem;
+  }
+
+  .filter-row {
+    display: grid;
+    grid-template-columns: minmax(12rem, 2fr) repeat(5, minmax(7.5rem, 1fr));
     align-items: end;
+    gap: .6rem;
+    min-width: 0;
+  }
+
+  .sort-row {
+    display: flex;
+    align-items: end;
+    justify-content: flex-end;
     gap: .6rem;
   }
 
@@ -292,6 +309,10 @@
   .tasks-toolbar select,
   .tasks-toolbar input {
     width: 100%;
+  }
+
+  .sort-field {
+    width: min(15rem, 100%);
   }
 
   .sort-direction {
@@ -312,9 +333,9 @@
     background: #f7f5ef;
   }
 
-  @media (max-width: 1100px) {
-    .tasks-toolbar {
-      grid-template-columns: repeat(4, minmax(8rem, 1fr));
+  @media (max-width: 1050px) {
+    .filter-row {
+      grid-template-columns: repeat(3, minmax(8rem, 1fr));
     }
 
     .search-field {
@@ -323,7 +344,7 @@
   }
 
   @media (max-width: 640px) {
-    .tasks-toolbar {
+    .filter-row {
       grid-template-columns: 1fr 1fr;
     }
 
@@ -331,8 +352,15 @@
       grid-column: 1 / -1;
     }
 
+    .sort-row {
+      justify-content: stretch;
+    }
+
+    .sort-field,
     .sort-direction {
-      width: 100%;
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
     }
   }
 </style>
