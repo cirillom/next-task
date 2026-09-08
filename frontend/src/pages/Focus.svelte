@@ -41,7 +41,6 @@
   let timer: number;
   let seenTaskVersion = taskVersion;
 
-  let descriptionEditing = false;
   let descriptionDraft = '';
   let descriptionSaveState: DescriptionSaveState = 'idle';
   let descriptionSaveTimer: number;
@@ -114,7 +113,8 @@
   }
 
   function resetDescriptionEditor(task: Task | null) {
-    descriptionEditing = false;
+    window.clearTimeout(descriptionSaveTimer);
+    pendingDescriptionSave = null;
     descriptionDraft = task?.description || '';
     descriptionSaveState = 'idle';
   }
@@ -173,13 +173,6 @@
     } finally {
       unblockingTaskId = null;
     }
-  }
-
-  function toggleDescriptionEditor() {
-    if (!currentTask) return;
-    descriptionEditing = !descriptionEditing;
-    descriptionDraft = currentTask.description || '';
-    descriptionSaveState = 'idle';
   }
 
   function scheduleDescriptionSave(value: string) {
@@ -311,7 +304,9 @@
     }
 
     currentTask = updated;
-    if (!descriptionEditing) descriptionDraft = updated.description || '';
+    if (descriptionSaveState === 'idle' || descriptionSaveState === 'saved') {
+      descriptionDraft = updated.description || '';
+    }
   }
 
   async function handlePinnedTaskChanged(updated: Task) {
@@ -332,7 +327,9 @@
         await handleTaskChanged(refreshed);
       } else {
         currentTask = refreshed;
-        if (!descriptionEditing) descriptionDraft = refreshed.description || '';
+        if (descriptionSaveState === 'idle' || descriptionSaveState === 'saved') {
+          descriptionDraft = refreshed.description || '';
+        }
       }
     } catch {
       currentTask = null;
@@ -378,7 +375,7 @@
 
   onDestroy(() => {
     window.clearTimeout(descriptionSaveTimer);
-    if (descriptionEditing && currentTask && workspace.role !== 'viewer') {
+    if (currentTask && workspace.role !== 'viewer') {
       pendingDescriptionSave = { taskId: currentTask.id, value: descriptionDraft };
       void drainDescriptionSave();
     }
@@ -454,28 +451,23 @@
             on:error={(event) => (error = event.detail)}
           />
 
-          {#if workspace.role !== 'viewer'}
-            <div class="description-tools">
-              <button type="button" class="quiet-button" on:click={toggleDescriptionEditor}>
-                {descriptionEditing ? 'Close description editor' : 'Edit description'}
-              </button>
-              {#if descriptionEditing && descriptionSaveState !== 'idle'}
+          <section class="focus-description-editor" aria-label="Task working notes">
+            <div class="description-heading">
+              <strong>Working notes</strong>
+              {#if workspace.role !== 'viewer' && descriptionSaveState !== 'idle'}
                 <span class:error-state={descriptionSaveState === 'error'} class="save-state" aria-live="polite">
                   {descriptionSaveState === 'saving' ? 'Saving…' : descriptionSaveState === 'saved' ? 'Saved' : 'Save failed'}
                 </span>
               {/if}
             </div>
-
-            {#if descriptionEditing}
-              <section class="focus-description-editor" aria-label="Edit task description">
-                <MarkdownEditor
-                  bind:value={descriptionDraft}
-                  label="Description"
-                  on:input={(event) => scheduleDescriptionSave(event.detail)}
-                />
-              </section>
-            {/if}
-          {/if}
+            <MarkdownEditor
+              bind:value={descriptionDraft}
+              disabled={workspace.role === 'viewer'}
+              label=""
+              placeholder="Take notes, update checklists, paste links, or write Markdown…"
+              on:input={(event) => scheduleDescriptionSave(event.detail)}
+            />
+          </section>
 
           <p class="session-rule">
             This task stays pinned across focus and break periods until you finish it, block it, or choose another task.
@@ -706,24 +698,31 @@
     box-shadow: 0 14px 40px rgba(65, 60, 50, .06);
   }
 
-  .description-tools {
-    display: flex;
-    min-height: 2rem;
-    align-items: center;
-    gap: .65rem;
-    margin: .7rem .2rem 0;
-  }
-
-  .save-state { color: var(--forest-2); font-size: .75rem; font-weight: 750; }
-  .save-state.error-state { color: var(--danger); }
+  .focus-task-area :global(.task-card .task-description),
+  .focus-task-area :global(.task-card .description-toggle) { display: none; }
 
   .focus-description-editor {
-    margin-top: .6rem;
+    margin-top: .7rem;
     border: 1px solid rgba(100, 95, 80, .15);
     border-radius: .8rem;
     background: rgba(255, 255, 255, .68);
-    padding: .8rem;
+    padding: .75rem;
   }
+
+  .description-heading {
+    display: flex;
+    min-height: 1.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: .4rem;
+    color: var(--muted);
+    font-size: .76rem;
+  }
+
+  .description-heading strong { color: var(--ink); font-size: .8rem; }
+  .save-state { color: var(--forest-2); font-size: .72rem; font-weight: 750; }
+  .save-state.error-state { color: var(--danger); }
 
   .session-rule { margin: .65rem .2rem 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
   .empty-focus { text-align: center; }
