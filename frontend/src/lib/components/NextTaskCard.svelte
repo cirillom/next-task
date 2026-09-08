@@ -3,6 +3,7 @@
   import { api } from '../api/client';
   import type { Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime } from '../format';
+  import { confirmTaskCompletion } from '../taskCompletion';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
@@ -75,6 +76,11 @@
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
   }
+
+  function finish() {
+    if (!confirmTaskCompletion(task)) return;
+    void act(() => api.finishTask(task.id));
+  }
 </script>
 
 <article class="recommended-card">
@@ -145,7 +151,7 @@
         type="button"
         class="action-button finish-action"
         disabled={busy}
-        on:click={() => act(() => api.finishTask(task.id))}
+        on:click={finish}
       >
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
         <span>Finish</span>
