@@ -148,6 +148,7 @@
   <div class="meta-row">
     {#if readOnly}<span class="priority" title="Priority">{task.priority}</span><span>{task.status.name}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
+    {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
     <span class="date-meta" class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
