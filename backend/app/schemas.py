@@ -154,6 +154,11 @@ class TaskSummary(ApiModel):
     finished_at: datetime | None
     unfinished_descendant_count: int = 0
 
+    @field_validator("finished_at", mode="before")
+    @classmethod
+    def normalize_finished_at(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc(value)
+
 
 class TaskCreate(ApiModel):
     workspace_id: int
@@ -214,6 +219,11 @@ class TaskRead(ApiModel):
     current_block: BlockRead | None
     blocking_history: list[BlockRead]
     subtasks: list[TaskSummary]
+
+    @field_validator("last_worked_at", "finished_at", "created_at", "updated_at", mode="before")
+    @classmethod
+    def normalize_timestamps(cls, value: datetime | None) -> datetime | None:
+        return ensure_utc(value)
 
 
 class BlockCreate(ApiModel):
