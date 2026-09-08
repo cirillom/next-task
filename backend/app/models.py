@@ -283,7 +283,7 @@ class Tag(Base):
     color: Mapped[str | None] = mapped_column(String(32))
 
     workspace: Mapped[Workspace] = relationship(back_populates="tags")
-    tasks: Mapped[list[Task]] = relationship(secondary="task_tags", back_populates="tasks")
+    tasks: Mapped[list[Task]] = relationship(secondary="task_tags", back_populates="tags")
 
 
 class TaskTag(Base):
