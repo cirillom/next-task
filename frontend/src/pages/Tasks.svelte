@@ -63,8 +63,8 @@
     return Number.isNaN(parsed) ? null : parsed;
   }
 
-  function comparableValue(task: Task): number | null {
-    switch (sortField) {
+  function comparableValue(task: Task, field: SortField): number | null {
+    switch (field) {
       case 'score':
         return task.ranking_score;
       case 'finished_at':
@@ -78,25 +78,31 @@
     }
   }
 
-  function compareValues(a: Task, b: Task): number {
-    const aValue = comparableValue(a);
-    const bValue = comparableValue(b);
+  function compareValues(
+    a: Task,
+    b: Task,
+    field: SortField,
+    directionValue: SortDirection
+  ): number {
+    const aValue = comparableValue(a, field);
+    const bValue = comparableValue(b, field);
 
     if (aValue === null && bValue === null) return a.id - b.id;
     if (aValue === null) return 1;
     if (bValue === null) return -1;
 
-    const direction = sortDirection === 'asc' ? 1 : -1;
+    const direction = directionValue === 'asc' ? 1 : -1;
     if (aValue !== bValue) return (aValue - bValue) * direction;
 
-    if (sortField === 'score' && a.score !== b.score) {
+    if (field === 'score' && a.score !== b.score) {
       return (a.score - b.score) * direction;
     }
     return a.id - b.id;
   }
 
-  function scoreOrdered(source: Task[]): Task[] {
+  function scoreOrdered(source: Task[], direction: SortDirection): Task[] {
     const ids = new Set(source.map((task) => task.id));
+    const byId = new Map(source.map((task) => [task.id, task]));
     const descendantsByTask = new Map<number, Set<number>>();
 
     for (const task of source) descendantsByTask.set(task.id, new Set());
@@ -106,7 +112,7 @@
       while (parentId !== null && ids.has(parentId) && !visited.has(parentId)) {
         visited.add(parentId);
         if (!task.finished_at) descendantsByTask.get(parentId)?.add(task.id);
-        parentId = source.find((candidate) => candidate.id === parentId)?.parent_task_id ?? null;
+        parentId = byId.get(parentId)?.parent_task_id ?? null;
       }
     }
 
@@ -120,7 +126,7 @@
         return !descendants || ![...descendants].some((id) => remainingIds.has(id));
       });
       const candidates = available.length ? available : [...remaining.values()];
-      candidates.sort(compareValues);
+      candidates.sort((a, b) => compareValues(a, b, 'score', direction));
       const chosen = candidates[0];
       ordered.push(chosen);
       remaining.delete(chosen.id);
@@ -128,9 +134,16 @@
     return ordered;
   }
 
-  $: orderedTasks = sortField === 'score'
-    ? scoreOrdered(tasks)
-    : [...tasks].sort(compareValues);
+  function orderedTaskList(
+    source: Task[],
+    field: SortField,
+    direction: SortDirection
+  ): Task[] {
+    if (field === 'score') return scoreOrdered(source, direction);
+    return [...source].sort((a, b) => compareValues(a, b, field, direction));
+  }
+
+  $: orderedTasks = orderedTaskList(tasks, sortField, sortDirection);
 
   async function load() {
     loading = true;
