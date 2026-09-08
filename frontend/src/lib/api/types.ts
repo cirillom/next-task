@@ -75,6 +75,9 @@ export interface Task {
   created_at: string;
   updated_at: string;
   score: number;
+  ranking_score: number;
+  ranking_source_task_id: number | null;
+  ranking_source_score: number | null;
   assignees: User[];
   direct_tags: TagSummary[];
   inherited_tags: TagSummary[];
