@@ -73,11 +73,38 @@ def task_summary(task: Task) -> TaskSummary:
     )
 
 
-def task_read(db: Session, task: Task) -> TaskRead:
+def hierarchy_rank_metadata(task: Task) -> tuple[float, int | None, float | None]:
+    own_score = round(score_task(task), 2)
+    if task.finished_at is not None:
+        return own_score, None, None
+
+    ranking_score = own_score
+    source_task_id: int | None = None
+    source_score: float | None = None
+    ancestor = task.parent
+    while ancestor is not None:
+        if ancestor.finished_at is None:
+            ancestor_score = round(score_task(ancestor), 2)
+            if ancestor_score > ranking_score:
+                ranking_score = ancestor_score
+                source_task_id = ancestor.id
+                source_score = ancestor_score
+        ancestor = ancestor.parent
+    return ranking_score, source_task_id, source_score
+
+
+def task_read(
+    db: Session,
+    task: Task,
+    ranking_score: float | None = None,
+    ranking_source_task_id: int | None = None,
+    ranking_source_score: float | None = None,
+) -> TaskRead:
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
     now = datetime.now(UTC)
     current_block = next((block for block in task.blocks if block_is_active(block, now)), None)
+    own_score = round(score_task(task), 2)
     return TaskRead(
         id=task.id,
         created_by_user_id=task.created_by_user_id,
@@ -95,7 +122,12 @@ def task_read(db: Session, task: Task) -> TaskRead:
         unfinished_descendant_count=unfinished_descendant_count(task),
         created_at=task.created_at,
         updated_at=task.updated_at,
-        score=round(score_task(task), 2),
+        score=own_score,
+        ranking_score=own_score if ranking_score is None else round(ranking_score, 2),
+        ranking_source_task_id=ranking_source_task_id,
+        ranking_source_score=(
+            None if ranking_source_score is None else round(ranking_source_score, 2)
+        ),
         assignees=[UserRead.model_validate(user) for user in task.assignees],
         direct_tags=[TagSummary.model_validate(tag) for tag in task.tags],
         inherited_tags=[TagSummary.model_validate(tag) for tag in inherited],
@@ -103,6 +135,61 @@ def task_read(db: Session, task: Task) -> TaskRead:
         blocking_history=[BlockRead.model_validate(block) for block in task.blocks],
         subtasks=[task_summary(subtask) for subtask in task.subtasks],
     )
+
+
+def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead]:
+    if not tasks:
+        return []
+
+    task_ids = {task.id for task in tasks}
+    own_scores = {task.id: round(score_task(task), 2) for task in tasks}
+    rank_metadata = {task.id: hierarchy_rank_metadata(task) for task in tasks}
+    dependencies = {
+        task.id: (
+            {
+                descendant.id
+                for descendant in descendant_tasks(task)
+                if descendant.id in task_ids and descendant.finished_at is None
+            }
+            if task.finished_at is None
+            else set()
+        )
+        for task in tasks
+    }
+
+    remaining = {task.id: task for task in tasks}
+    ordered: list[Task] = []
+    while remaining:
+        remaining_ids = set(remaining)
+        available = [
+            task
+            for task in remaining.values()
+            if not dependencies[task.id].intersection(remaining_ids)
+        ]
+        if not available:
+            available = list(remaining.values())
+
+        chosen = max(
+            available,
+            key=lambda task: (
+                rank_metadata[task.id][0],
+                own_scores[task.id],
+                -task.id,
+            ),
+        )
+        ordered.append(chosen)
+        del remaining[chosen.id]
+
+    return [
+        task_read(
+            db,
+            task,
+            ranking_score=rank_metadata[task.id][0],
+            ranking_source_task_id=rank_metadata[task.id][1],
+            ranking_source_score=rank_metadata[task.id][2],
+        )
+        for task in ordered
+    ]
 
 
 def apply_task_relations(
@@ -169,8 +256,9 @@ def list_tasks(
     tasks = list(db.scalars(query.order_by(Task.created_at.desc())).unique().all())
     if actionable:
         tasks = [task for task in tasks if unfinished_descendant_count(task) == 0]
-    result = [task_read(db, task) for task in tasks]
-    return sorted(result, key=lambda item: (-item.score, item.id))
+        result = [task_read(db, task) for task in tasks]
+        return sorted(result, key=lambda item: (-item.score, item.id))
+    return hierarchy_ranked_task_reads(db, tasks)
 
 
 @router.post("", response_model=TaskRead, status_code=201)
