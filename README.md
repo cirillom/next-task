@@ -196,15 +196,20 @@ each user can revoke all ChatGPT connections from Next Task Settings.
 ## Gemini text to task
 
 Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
-After selecting a workspace, editors and owners can use **Text to task** in the top
-bar, describe one task naturally, and review an editable draft before anything is
-created. The review includes title, Markdown description, status, priority, due date,
-assignees, existing tags, and suggested new tags.
+After selecting a workspace, editors and owners can use **+ New task**, enter natural
+language in Quick Capture, choose **Text to task**, and review an editable task before
+anything is created. The review includes title, Markdown description, status, priority,
+due date, assignees, existing tags, and suggested new tags.
+
+Quick Capture can also save the text as a lightweight draft. Drafts stay on the dedicated
+**Drafts** page until the user chooses **Edit draft**, reviews the details, assigns a real
+priority, and presses **Create task**. Priority 0 is reserved internally for drafts and
+drafts are excluded from normal task lists, Next, Pomodoro, and MCP task listings.
 
 Drafting sends the entered text plus the selected workspace statuses, members, and tag
 names to Gemini. The personal API key is encrypted in SQLite and is never returned to
-the browser after it is saved. Server-side encryption requires a stable value of at
-least 32 characters:
+the browser after it is saved. Server-side encryption requires a stable value of at least
+32 characters:
 
 ```dotenv
 NEXT_TASK_CREDENTIAL_SECRET=<random value kept outside Git>

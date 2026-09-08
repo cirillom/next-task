@@ -23,6 +23,8 @@
   let completionTarget: TaskSummary | null = null;
   let error = '';
 
+  $: isDraft = task?.priority === 0;
+
   function datetimeLocal(value: string | null): string {
     if (!value) return '';
     const date = new Date(value);
@@ -207,7 +209,7 @@
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
-        <p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p>
+        <p class="eyebrow">{isDraft ? 'Edit draft' : taskId ? 'Task details' : 'Create task'}</p>
         <h1 id="task-editor-title" class="editor-title">
           {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
           <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
@@ -215,36 +217,38 @@
       </div>
       <div class="editor-header-actions">
         {#if task && workspace.role !== 'viewer'}
-          <button
-            type="button"
-            class="finish-action"
-            class:reopen={!!task.finished_at}
-            disabled={busy}
-            on:click={toggleFinished}
-          >
-            {#if task.finished_at}
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>
-              <span>Reopen</span>
-            {:else}
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-              <span>Finish</span>
-            {/if}
-          </button>
-          <button
-            type="button"
-            class="quick-action block-action"
-            class:active={!!task.current_block}
-            disabled={busy}
-            on:click={() => task?.current_block ? unblock() : (blockModalOpen = true)}
-          >
-            {#if task.current_block}
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg>
-              <span>Unblock</span>
-            {:else}
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-              <span>Block</span>
-            {/if}
-          </button>
+          {#if !isDraft}
+            <button
+              type="button"
+              class="finish-action"
+              class:reopen={!!task.finished_at}
+              disabled={busy}
+              on:click={toggleFinished}
+            >
+              {#if task.finished_at}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>
+                <span>Reopen</span>
+              {:else}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+                <span>Finish</span>
+              {/if}
+            </button>
+            <button
+              type="button"
+              class="quick-action block-action"
+              class:active={!!task.current_block}
+              disabled={busy}
+              on:click={() => task?.current_block ? unblock() : (blockModalOpen = true)}
+            >
+              {#if task.current_block}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg>
+                <span>Unblock</span>
+              {:else}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
+                <span>Block</span>
+              {/if}
+            </button>
+          {/if}
           <button
             type="button"
             class="header-icon delete-icon"
@@ -265,13 +269,16 @@
     {:else if taskId && !task}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
+      {#if isDraft}
+        <p class="notice draft-notice">Review the draft and choose a priority of 1 or higher before saving it as a task.</p>
+      {/if}
       <TaskForm
         {workspace}
         {taskId}
         initialTitle={task?.title || ''}
         initialDescription={task?.description || ''}
         initialStatusId={task?.status.id || 0}
-        initialPriority={task?.priority || 1}
+        initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
         initialLastWorked={datetimeLocal(task?.last_worked_at || null)}
         initialParentTaskId={task?.parent_task_id || 0}
@@ -280,8 +287,8 @@
         taskDetails={task}
         {busy}
         {error}
-        submitLabel={taskId ? 'Save task' : 'Create task'}
-        busyLabel={taskId ? 'Saving…' : 'Creating…'}
+        submitLabel={isDraft ? 'Save as task' : taskId ? 'Save task' : 'Create task'}
+        busyLabel={isDraft ? 'Saving…' : taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
@@ -327,6 +334,7 @@
     padding: .8rem 1rem .7rem;
   }
 
+  .draft-notice { margin: 0 0 .65rem; }
   .editor-heading-copy { min-width: 0; }
   .editor-header .eyebrow { margin-bottom: .25rem; }
   .editor-header h1 { font-size: 1.65rem; }
