@@ -195,7 +195,7 @@ class TaskStatus(Base):
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
-        CheckConstraint("priority >= 1", name="task_priority_positive"),
+        CheckConstraint("priority >= 0", name="task_priority_positive"),
         Index("ix_tasks_workspace_id", "workspace_id"),
         Index("ix_tasks_parent_task_id", "parent_task_id"),
         Index("ix_tasks_status_id", "status_id"),
@@ -283,7 +283,7 @@ class Tag(Base):
     color: Mapped[str | None] = mapped_column(String(32))
 
     workspace: Mapped[Workspace] = relationship(back_populates="tags")
-    tasks: Mapped[list[Task]] = relationship(secondary="task_tags", back_populates="tags")
+    tasks: Mapped[list[Task]] = relationship(secondary="task_tags", back_populates="tasks")
 
 
 class TaskTag(Base):
