@@ -80,11 +80,6 @@
   </label>
 </section>
 
-<p class="ranking-note" title="A parent task raises its unfinished descendants to at least its own ranking level. Descendants still keep their real score, and siblings at the same inherited level are ordered by their own score.">
-  <span aria-hidden="true">ⓘ</span>
-  <span><strong>Hierarchy-aware ranking:</strong> subtasks inherit their highest unfinished ancestor's ranking level; siblings at the same level stay ordered by their own score.</span>
-</p>
-
 {#if error}<p class="error">{error}</p>{/if}
 {#if loading}<p class="empty">Loading tasks…</p>{:else if !tasks.length}<p class="empty">No matching tasks.</p>{/if}
 <div class="task-list">
@@ -99,23 +94,3 @@
     />
   {/each}
 </div>
-
-<style>
-  .ranking-note {
-    display: flex;
-    align-items: flex-start;
-    gap: .45rem;
-    margin: -.25rem 0 1rem;
-    color: var(--muted);
-    font-size: .78rem;
-    line-height: 1.45;
-  }
-
-  .ranking-note > span:first-child {
-    flex: 0 0 auto;
-    color: var(--forest-2);
-    font-size: .9rem;
-  }
-
-  .ranking-note strong { color: #45514b; }
-</style>
