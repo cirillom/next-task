@@ -3,6 +3,8 @@
   import type { Block } from '../api/types';
   import { formatDateTime } from '../format';
 
+  type AutoUnblockChoice = 'none' | 'tomorrow' | 'three-days' | 'week' | 'custom';
+
   export let taskTitle = '';
   export let history: Block[] = [];
   export let busy = false;
@@ -15,13 +17,24 @@
   }>();
   let reason = '';
   let autoUnblockAt = '';
+  let autoUnblockChoice: AutoUnblockChoice = 'none';
   let reblockMode = false;
   let autoUnblockInput: HTMLInputElement;
 
-  function datetimeLocalNow(): string {
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  function datetimeLocal(value = new Date()): string {
+    const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
     return local.toISOString().slice(0, 16);
+  }
+
+  function datetimeLocalNow(): string {
+    return datetimeLocal();
+  }
+
+  function offsetLocalDateTime(days: number): string {
+    const target = new Date();
+    target.setDate(target.getDate() + days);
+    target.setSeconds(0, 0);
+    return datetimeLocal(target);
   }
 
   let minimumAutoUnblock = datetimeLocalNow();
@@ -32,6 +45,20 @@
 
   function close() {
     if (!busy) dispatch('close');
+  }
+
+  async function chooseAutoUnblock(choice: AutoUnblockChoice) {
+    autoUnblockChoice = choice;
+    minimumAutoUnblock = datetimeLocalNow();
+    if (choice === 'none') autoUnblockAt = '';
+    if (choice === 'tomorrow') autoUnblockAt = offsetLocalDateTime(1);
+    if (choice === 'three-days') autoUnblockAt = offsetLocalDateTime(3);
+    if (choice === 'week') autoUnblockAt = offsetLocalDateTime(7);
+    if (choice === 'custom') {
+      if (!autoUnblockAt) autoUnblockAt = offsetLocalDateTime(1);
+      await tick();
+      autoUnblockInput?.focus();
+    }
   }
 
   function submit() {
@@ -49,11 +76,10 @@
     if (busy) return;
     reason = block.reason;
     autoUnblockAt = '';
+    autoUnblockChoice = 'none';
     reblockMode = true;
     minimumAutoUnblock = datetimeLocalNow();
     await tick();
-    autoUnblockInput?.focus();
-    autoUnblockInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function deleteBlock(blockId: number) {
@@ -92,18 +118,36 @@
       </label>
       <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
 
-      <label class="auto-unblock-field">
-        <span>Auto-unblock at <span class="optional">(optional)</span></span>
-        <input
-          bind:this={autoUnblockInput}
-          type="datetime-local"
-          lang="pt-BR"
-          bind:value={autoUnblockAt}
-          min={minimumAutoUnblock}
-          disabled={busy}
-          on:focus={() => (minimumAutoUnblock = datetimeLocalNow())}
-        />
-      </label>
+      <section class="auto-unblock-section" aria-label="Auto-unblock">
+        <div class="auto-unblock-heading">
+          <strong>Auto-unblock</strong>
+          <span>Optional</span>
+        </div>
+        <div class="preset-row">
+          <button type="button" class:active={autoUnblockChoice === 'tomorrow'} disabled={busy} on:click={() => chooseAutoUnblock('tomorrow')}>Tomorrow</button>
+          <button type="button" class:active={autoUnblockChoice === 'three-days'} disabled={busy} on:click={() => chooseAutoUnblock('three-days')}>In 3 days</button>
+          <button type="button" class:active={autoUnblockChoice === 'week'} disabled={busy} on:click={() => chooseAutoUnblock('week')}>Next week</button>
+          <button type="button" class:active={autoUnblockChoice === 'custom'} disabled={busy} on:click={() => chooseAutoUnblock('custom')}>Pick date</button>
+          <button type="button" class:active={autoUnblockChoice === 'none'} disabled={busy} on:click={() => chooseAutoUnblock('none')}>No auto-unblock</button>
+        </div>
+
+        {#if autoUnblockChoice === 'custom'}
+          <label class="auto-unblock-field">
+            <span>Auto-unblock at</span>
+            <input
+              bind:this={autoUnblockInput}
+              type="datetime-local"
+              lang="pt-BR"
+              bind:value={autoUnblockAt}
+              min={minimumAutoUnblock}
+              disabled={busy}
+              on:focus={() => (minimumAutoUnblock = datetimeLocalNow())}
+            />
+          </label>
+        {:else if autoUnblockAt}
+          <p class="selected-auto-unblock">Auto-unblocks {formatDateTime(new Date(autoUnblockAt).toISOString())}</p>
+        {/if}
+      </section>
 
       <section class="history-section" aria-labelledby="blocking-history-title">
         <div class="history-heading">
@@ -195,50 +239,60 @@
     padding: 1.35rem 1.4rem 1.1rem;
   }
 
-  .block-modal__header h1 {
-    margin: 0;
-    font-size: 2rem;
-  }
+  .block-modal__header h1 { margin: 0; font-size: 2rem; }
+  .task-title { margin: .45rem 0 0; color: var(--muted); font-weight: 650; }
 
-  .task-title {
-    margin: .45rem 0 0;
-    color: var(--muted);
-    font-weight: 650;
-  }
+  form { display: grid; gap: 0; padding: 1.25rem 1.4rem 0; }
+  textarea { min-height: 7rem; line-height: 1.5; }
+  textarea[readonly] { background: #f5f2ea; color: var(--muted); }
+  .help { margin: .45rem 0 0; }
 
-  form {
+  .auto-unblock-section {
     display: grid;
-    gap: 0;
-    padding: 1.25rem 1.4rem 0;
+    gap: .55rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--line);
+    padding-top: .9rem;
   }
 
-  textarea {
-    min-height: 7rem;
-    line-height: 1.5;
+  .auto-unblock-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
   }
 
-  textarea[readonly] {
-    background: #f5f2ea;
+  .auto-unblock-heading span { color: var(--muted); font-size: .72rem; }
+
+  .preset-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+  .preset-row button {
+    border: 1px solid #cbc8be;
+    border-radius: 999px;
+    background: #fff;
     color: var(--muted);
+    padding: .42rem .65rem;
+    font-size: .75rem;
+    font-weight: 700;
   }
 
-  .help {
-    margin: .45rem 0 0;
+  .preset-row button:hover:not(:disabled),
+  .preset-row button.active {
+    border-color: #9daa9f;
+    background: #eef2ef;
+    color: var(--forest-2);
   }
 
   .auto-unblock-field {
     display: flex;
     align-items: center;
     gap: .75rem;
-    margin-top: .85rem;
     color: var(--muted);
     font-size: .82rem;
     font-weight: 650;
   }
 
-  .auto-unblock-field > span {
-    flex: 0 0 auto;
-  }
+  .auto-unblock-field > span { flex: 0 0 auto; }
 
   .auto-unblock-field input {
     min-width: 0;
@@ -248,40 +302,13 @@
     font-size: .82rem;
   }
 
-  .optional {
-    color: var(--muted);
-    font-weight: 500;
-  }
+  .selected-auto-unblock { margin: 0; color: var(--forest-2); font-size: .78rem; font-weight: 700; }
 
-  .history-section {
-    margin-top: 1rem;
-    border-top: 1px solid var(--line);
-    padding-top: 1.1rem;
-  }
-
-  .history-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .history-heading h2 {
-    margin: 0;
-  }
-
-  .history-heading span {
-    color: var(--muted);
-    font-size: .78rem;
-  }
-
-  .block-history {
-    display: grid;
-    gap: .65rem;
-    margin: .8rem 0 0;
-    padding: 0;
-    list-style: none;
-  }
+  .history-section { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 1.1rem; }
+  .history-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+  .history-heading h2 { margin: 0; }
+  .history-heading span { color: var(--muted); font-size: .78rem; }
+  .block-history { display: grid; gap: .65rem; margin: .8rem 0 0; padding: 0; list-style: none; }
 
   .block-history li {
     display: grid;
@@ -292,34 +319,11 @@
     padding: .7rem .8rem;
   }
 
-  .block-history li.active {
-    border-left-color: #bb623f;
-    background: #f8e6dc;
-  }
-
-  .block-history__top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: .75rem;
-  }
-
-  .block-history__top strong {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .block-history span {
-    color: var(--muted);
-    font-size: .78rem;
-  }
-
-  .history-actions {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: .35rem;
-  }
+  .block-history li.active { border-left-color: #bb623f; background: #f8e6dc; }
+  .block-history__top { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+  .block-history__top strong { min-width: 0; overflow-wrap: anywhere; }
+  .block-history span { color: var(--muted); font-size: .78rem; }
+  .history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .35rem; }
 
   .reblock-button {
     border: 1px solid #bdb7aa;
@@ -344,10 +348,7 @@
   }
 
   .trash-button:hover:not(:disabled),
-  .trash-button:focus-visible {
-    background: #fff;
-    color: #9a4f3f;
-  }
+  .trash-button:focus-visible { background: #fff; color: #9a4f3f; }
 
   .trash-button svg {
     width: 1rem;
@@ -386,21 +387,10 @@
   }
 
   @media (max-width: 600px) {
-    .auto-unblock-field {
-      gap: .5rem;
-      font-size: .76rem;
-    }
-
-    .auto-unblock-field input {
-      font-size: .76rem;
-    }
-
-    .block-history__top {
-      gap: .5rem;
-    }
-
-    .reblock-button {
-      white-space: nowrap;
-    }
+    .preset-row button { flex: 1 1 auto; }
+    .auto-unblock-field { align-items: stretch; flex-direction: column; gap: .35rem; font-size: .76rem; }
+    .auto-unblock-field input { font-size: .76rem; }
+    .block-history__top { gap: .5rem; }
+    .reblock-button { white-space: nowrap; }
   }
 </style>
