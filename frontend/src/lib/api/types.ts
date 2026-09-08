@@ -54,6 +54,7 @@ export interface TaskSummary {
   id: number;
   title: string;
   finished_at: string | null;
+  unfinished_descendant_count: number;
 }
 
 export interface Task {
@@ -70,6 +71,7 @@ export interface Task {
   finished_at: string | null;
   parent_task_id: number | null;
   parent_task: TaskSummary | null;
+  unfinished_descendant_count: number;
   created_at: string;
   updated_at: string;
   score: number;
