@@ -16,13 +16,6 @@
   let loading = true;
   let searchTimer: number;
 
-  function matchesCurrentFilter(task: Task): boolean {
-    return (
-      finishedFilter === 'all' ||
-      (finishedFilter === 'finished' ? Boolean(task.finished_at) : !task.finished_at)
-    );
-  }
-
   function sortTasks(items: Task[]): Task[] {
     return items.sort((a, b) => b.score - a.score || a.id - b.id);
   }
@@ -57,17 +50,18 @@
     }
   }
 
+  async function refreshTasks() {
+    error = '';
+    try {
+      tasks = await loadTasks();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not refresh tasks';
+    }
+  }
+
   function searchSoon() {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(load, 250);
-  }
-
-  function replaceTask(updated: Task) {
-    if (!matchesCurrentFilter(updated)) {
-      tasks = tasks.filter((task) => task.id !== updated.id);
-    } else {
-      tasks = sortTasks(tasks.map((task) => (task.id === updated.id ? updated : task)));
-    }
   }
 
   onMount(load);
@@ -98,7 +92,7 @@
       {task}
       {statuses}
       readOnly={workspace.role === 'viewer'}
-      on:changed={(event) => replaceTask(event.detail)}
+      on:changed={() => void refreshTasks()}
       on:open={(event) => dispatch('openTask', event.detail)}
       on:error={(event) => (error = event.detail)}
     />
