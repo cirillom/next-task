@@ -227,7 +227,7 @@ def list_tasks(
     user: User = Depends(get_current_user),
 ) -> list[TaskRead]:
     get_membership(db, workspace_id, user.id)
-    query = select(Task).where(Task.workspace_id == workspace_id)
+    query = select(Task).where(Task.workspace_id == workspace_id, Task.priority > 0)
     if finished is True:
         query = query.where(Task.finished_at.is_not(None))
     elif finished is False:
@@ -334,6 +334,8 @@ def finish_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    if task.priority == 0:
+        raise HTTPException(status_code=409, detail="Finalize this draft before finishing it")
     now = datetime.now(UTC)
     changed = False
     for candidate in [task, *descendant_tasks(task)]:
@@ -376,6 +378,8 @@ def block_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    if task.priority == 0:
+        raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
     now = datetime.now(UTC)
     if payload.unblocked_at is not None and payload.unblocked_at <= now:
         raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
@@ -436,6 +440,8 @@ def reblock_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    if task.priority == 0:
+        raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
     now = datetime.now(UTC)
     unblocked_at = payload.unblocked_at if payload is not None else None
     if unblocked_at is not None and unblocked_at <= now:
