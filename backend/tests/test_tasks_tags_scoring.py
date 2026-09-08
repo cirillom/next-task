@@ -75,6 +75,7 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
         "id": first["id"],
         "title": "First",
         "finished_at": None,
+        "unfinished_descendant_count": 1,
     }
 
     self_parent = client.patch(f"/api/tasks/{first['id']}", json={"parent_task_id": first["id"]})
@@ -85,6 +86,42 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
         f"/api/tasks/{first['id']}", json={"parent_task_id": other["id"]}
     )
     assert cross_workspace.status_code == 422
+
+
+def test_finishing_parent_cascades_and_reopening_child_reopens_ancestors(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, statuses = make_workspace(client)
+    parent = make_task(client, workspace, statuses, "Parent")
+    child = make_task(client, workspace, statuses, "Child", parent_task_id=parent["id"])
+    grandchild = make_task(
+        client,
+        workspace,
+        statuses,
+        "Grandchild",
+        parent_task_id=child["id"],
+    )
+
+    parent_before = client.get(f"/api/tasks/{parent['id']}").json()
+    child_before = client.get(f"/api/tasks/{child['id']}").json()
+    assert parent_before["unfinished_descendant_count"] == 2
+    assert child_before["unfinished_descendant_count"] == 1
+    assert parent_before["subtasks"][0]["unfinished_descendant_count"] == 1
+
+    finished_parent = client.post(f"/api/tasks/{parent['id']}/finish").json()
+    assert finished_parent["finished_at"] is not None
+    assert finished_parent["unfinished_descendant_count"] == 0
+    assert finished_parent["subtasks"][0]["finished_at"] is not None
+    assert client.get(f"/api/tasks/{child['id']}").json()["finished_at"] is not None
+    assert client.get(f"/api/tasks/{grandchild['id']}").json()["finished_at"] is not None
+
+    reopened_grandchild = client.post(f"/api/tasks/{grandchild['id']}/reopen").json()
+    assert reopened_grandchild["finished_at"] is None
+    assert client.get(f"/api/tasks/{child['id']}").json()["finished_at"] is None
+    reopened_parent = client.get(f"/api/tasks/{parent['id']}").json()
+    assert reopened_parent["finished_at"] is None
+    assert reopened_parent["unfinished_descendant_count"] == 2
 
 
 def test_actionable_tasks_are_leaf_tasks_for_current_user_or_unassigned(
