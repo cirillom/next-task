@@ -50,11 +50,61 @@ def active_block_condition(now: datetime):
     return or_(TaskBlock.unblocked_at.is_(None), TaskBlock.unblocked_at > now)
 
 
-def task_read(db: Session, task: Task) -> TaskRead:
+def descendant_tasks(task: Task) -> list[Task]:
+    descendants: list[Task] = []
+    pending = list(task.subtasks)
+    while pending:
+        child = pending.pop()
+        descendants.append(child)
+        pending.extend(child.subtasks)
+    return descendants
+
+
+def unfinished_descendant_count(task: Task) -> int:
+    return sum(descendant.finished_at is None for descendant in descendant_tasks(task))
+
+
+def task_summary(task: Task) -> TaskSummary:
+    return TaskSummary(
+        id=task.id,
+        title=task.title,
+        finished_at=task.finished_at,
+        unfinished_descendant_count=unfinished_descendant_count(task),
+    )
+
+
+def hierarchy_rank_metadata(task: Task) -> tuple[float, int | None, float | None]:
+    own_score = round(score_task(task), 2)
+    if task.finished_at is not None:
+        return own_score, None, None
+
+    ranking_score = own_score
+    source_task_id: int | None = None
+    source_score: float | None = None
+    ancestor = task.parent
+    while ancestor is not None:
+        if ancestor.finished_at is None:
+            ancestor_score = round(score_task(ancestor), 2)
+            if ancestor_score > ranking_score:
+                ranking_score = ancestor_score
+                source_task_id = ancestor.id
+                source_score = ancestor_score
+        ancestor = ancestor.parent
+    return ranking_score, source_task_id, source_score
+
+
+def task_read(
+    db: Session,
+    task: Task,
+    ranking_score: float | None = None,
+    ranking_source_task_id: int | None = None,
+    ranking_source_score: float | None = None,
+) -> TaskRead:
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
     now = datetime.now(UTC)
     current_block = next((block for block in task.blocks if block_is_active(block, now)), None)
+    own_score = round(score_task(task), 2)
     return TaskRead(
         id=task.id,
         created_by_user_id=task.created_by_user_id,
@@ -68,16 +118,78 @@ def task_read(db: Session, task: Task) -> TaskRead:
         last_worked_at=task.last_worked_at,
         finished_at=task.finished_at,
         parent_task_id=task.parent_task_id,
+        parent_task=task_summary(task.parent) if task.parent else None,
+        unfinished_descendant_count=unfinished_descendant_count(task),
         created_at=task.created_at,
         updated_at=task.updated_at,
-        score=round(score_task(task), 2),
+        score=own_score,
+        ranking_score=own_score if ranking_score is None else round(ranking_score, 2),
+        ranking_source_task_id=ranking_source_task_id,
+        ranking_source_score=(
+            None if ranking_source_score is None else round(ranking_source_score, 2)
+        ),
         assignees=[UserRead.model_validate(user) for user in task.assignees],
         direct_tags=[TagSummary.model_validate(tag) for tag in task.tags],
         inherited_tags=[TagSummary.model_validate(tag) for tag in inherited],
         current_block=BlockRead.model_validate(current_block) if current_block else None,
         blocking_history=[BlockRead.model_validate(block) for block in task.blocks],
-        subtasks=[TaskSummary.model_validate(subtask) for subtask in task.subtasks],
+        subtasks=[task_summary(subtask) for subtask in task.subtasks],
     )
+
+
+def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead]:
+    if not tasks:
+        return []
+
+    task_ids = {task.id for task in tasks}
+    own_scores = {task.id: round(score_task(task), 2) for task in tasks}
+    rank_metadata = {task.id: hierarchy_rank_metadata(task) for task in tasks}
+    dependencies = {
+        task.id: (
+            {
+                descendant.id
+                for descendant in descendant_tasks(task)
+                if descendant.id in task_ids and descendant.finished_at is None
+            }
+            if task.finished_at is None
+            else set()
+        )
+        for task in tasks
+    }
+
+    remaining = {task.id: task for task in tasks}
+    ordered: list[Task] = []
+    while remaining:
+        remaining_ids = set(remaining)
+        available = [
+            task
+            for task in remaining.values()
+            if not dependencies[task.id].intersection(remaining_ids)
+        ]
+        if not available:
+            available = list(remaining.values())
+
+        chosen = max(
+            available,
+            key=lambda task: (
+                rank_metadata[task.id][0],
+                own_scores[task.id],
+                -task.id,
+            ),
+        )
+        ordered.append(chosen)
+        del remaining[chosen.id]
+
+    return [
+        task_read(
+            db,
+            task,
+            ranking_score=rank_metadata[task.id][0],
+            ranking_source_task_id=rank_metadata[task.id][1],
+            ranking_source_score=rank_metadata[task.id][2],
+        )
+        for task in ordered
+    ]
 
 
 def apply_task_relations(
@@ -92,6 +204,15 @@ def apply_task_relations(
         task.tags = validate_tags(db, task.workspace_id, tag_ids)
 
 
+def actionable_ownership_condition(user_id: int):
+    any_assignee = exists().where(TaskAssignee.task_id == Task.id)
+    assigned_to_user = exists().where(
+        TaskAssignee.task_id == Task.id,
+        TaskAssignee.user_id == user_id,
+    )
+    return or_(~any_assignee, assigned_to_user)
+
+
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
     workspace_id: int,
@@ -100,6 +221,7 @@ def list_tasks(
     tag_id: int | None = None,
     assignee_id: int | None = None,
     blocked: bool | None = None,
+    actionable: bool = False,
     search: str | None = Query(default=None, max_length=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -116,6 +238,8 @@ def list_tasks(
         query = query.where(
             exists().where(TaskAssignee.task_id == Task.id, TaskAssignee.user_id == assignee_id)
         )
+    if actionable:
+        query = query.where(actionable_ownership_condition(user.id))
     if tag_id is not None:
         allowed_tag_ids = descendant_ids(db, tag_id)
         query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
@@ -130,8 +254,11 @@ def list_tasks(
         pattern = f"%{search.strip()}%"
         query = query.where(or_(Task.title.ilike(pattern), Task.description.ilike(pattern)))
     tasks = list(db.scalars(query.order_by(Task.created_at.desc())).unique().all())
-    result = [task_read(db, task) for task in tasks]
-    return sorted(result, key=lambda item: (-item.score, item.id))
+    if actionable:
+        tasks = [task for task in tasks if unfinished_descendant_count(task) == 0]
+        result = [task_read(db, task) for task in tasks]
+        return sorted(result, key=lambda item: (-item.score, item.id))
+    return hierarchy_ranked_task_reads(db, tasks)
 
 
 @router.post("", response_model=TaskRead, status_code=201)
@@ -207,9 +334,15 @@ def finish_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
-    if task.finished_at is None:
-        task.finished_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    changed = False
+    for candidate in [task, *descendant_tasks(task)]:
+        if candidate.finished_at is None:
+            candidate.finished_at = now
+            changed = True
+    if changed:
         db.commit()
+        db.refresh(task)
     return task_read(db, task)
 
 
@@ -221,9 +354,16 @@ def reopen_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
-    if task.finished_at is not None:
-        task.finished_at = None
+    changed = False
+    current: Task | None = task
+    while current is not None:
+        if current.finished_at is not None:
+            current.finished_at = None
+            changed = True
+        current = current.parent
+    if changed:
         db.commit()
+        db.refresh(task)
     return task_read(db, task)
 
 

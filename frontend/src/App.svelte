@@ -156,14 +156,17 @@
 {/if}
 
 {#if workspace && editorTaskId !== null}
-  <TaskEditor
-    {workspace}
-    taskId={editorTaskId}
-    on:close={() => (editorTaskId = null)}
-    on:changed={taskEditorChanged}
-    on:saved={taskEditorSaved}
-    on:deleted={taskEditorDeleted}
-  />
+  {#key editorTaskId}
+    <TaskEditor
+      {workspace}
+      taskId={editorTaskId}
+      on:close={() => (editorTaskId = null)}
+      on:changed={taskEditorChanged}
+      on:saved={taskEditorSaved}
+      on:deleted={taskEditorDeleted}
+      on:openTask={(event) => (editorTaskId = event.detail)}
+    />
+  {/key}
 {/if}
 
 <style>

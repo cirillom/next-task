@@ -50,6 +50,13 @@ export interface Block {
   unblocked_at: string | null;
 }
 
+export interface TaskSummary {
+  id: number;
+  title: string;
+  finished_at: string | null;
+  unfinished_descendant_count: number;
+}
+
 export interface Task {
   id: number;
   created_by_user_id: number;
@@ -63,15 +70,20 @@ export interface Task {
   last_worked_at: string | null;
   finished_at: string | null;
   parent_task_id: number | null;
+  parent_task: TaskSummary | null;
+  unfinished_descendant_count: number;
   created_at: string;
   updated_at: string;
   score: number;
+  ranking_score: number;
+  ranking_source_task_id: number | null;
+  ranking_source_score: number | null;
   assignees: User[];
   direct_tags: TagSummary[];
   inherited_tags: TagSummary[];
   current_block: Block | null;
   blocking_history: Block[];
-  subtasks: Array<{ id: number; title: string; finished_at: string | null }>;
+  subtasks: TaskSummary[];
 }
 
 export interface TaskInput {

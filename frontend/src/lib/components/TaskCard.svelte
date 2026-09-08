@@ -5,6 +5,8 @@
   import { daysSince, formatDate, formatDateTime } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
+  import TaskCompletionDialog from './TaskCompletionDialog.svelte';
+  import TaskHierarchy from './TaskHierarchy.svelte';
 
   export let task: Task;
   export let statuses: Status[] = [];
@@ -14,6 +16,7 @@
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
+  let completionOpen = false;
 
   function idleAnchor(): string {
     return task.last_worked_at || task.created_at;
@@ -75,6 +78,31 @@
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
   }
+
+  function toggleFinished() {
+    if (task.finished_at) {
+      void act(() => api.reopenTask(task.id));
+      return;
+    }
+    if (task.unfinished_descendant_count > 0) {
+      completionOpen = true;
+      return;
+    }
+    void act(() => api.finishTask(task.id));
+  }
+
+  async function confirmFinish() {
+    busy = true;
+    try {
+      const updated = await api.finishTask(task.id);
+      completionOpen = false;
+      dispatch('changed', updated);
+    } catch (error) {
+      dispatch('error', error instanceof Error ? error.message : 'Could not finish task');
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
@@ -84,6 +112,14 @@
       <span class="task-id">#{task.id}</span>
     </button>
     <div class="task-card__header-actions">
+      {#if task.ranking_source_task_id !== null && task.ranking_source_score !== null}
+        <button
+          type="button"
+          class="ranking-boost"
+          title={`Open ancestor #${task.ranking_source_task_id}. This task is ranked with that ancestor's score ${task.ranking_source_score.toFixed(1)} because unfinished descendants must appear before their ancestors.`}
+          on:click={() => dispatch('open', task.ranking_source_task_id!)}
+        >↑ from #{task.ranking_source_task_id} · {task.ranking_source_score.toFixed(1)}</button>
+      {/if}
       {#if !readOnly}
         <button
           type="button"
@@ -93,436 +129,136 @@
           disabled={busy}
           on:click={() => dispatch('open', task.id)}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
         </button>
       {/if}
       <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
     </div>
   </div>
 
+  <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
+
   {#if task.description}
-    <div class:expanded={descriptionExpanded} class="task-description">
-      <Markdown source={task.description} />
-    </div>
-    <button
-      type="button"
-      class="description-toggle"
-      aria-expanded={descriptionExpanded}
-      on:click={() => (descriptionExpanded = !descriptionExpanded)}
-    >
+    <div class:expanded={descriptionExpanded} class="task-description"><Markdown source={task.description} /></div>
+    <button type="button" class="description-toggle" aria-expanded={descriptionExpanded} on:click={() => (descriptionExpanded = !descriptionExpanded)}>
       {descriptionExpanded ? 'Collapse description' : 'Expand description'}
     </button>
   {/if}
 
   <div class="meta-row">
-    {#if readOnly}
-      <span class="priority" title="Priority">{task.priority}</span>
-      <span>{task.status.name}</span>
-    {/if}
+    {#if readOnly}<span class="priority" title="Priority">{task.priority}</span><span>{task.status.name}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
-    <span
-      class="date-meta"
-      class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}
-    >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
+    <span class="date-meta" class:overdue={!!task.due_date && !task.finished_at && task.due_date < new Date().toISOString().slice(0, 10)}>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
   {#if task.direct_tags.length}
-    <div class="tag-row">
-      {#each task.direct_tags as tag}
-        <span class="tag" style:--tag-color={tag.color || '#73847c'}>#{tag.name}</span>
-      {/each}
-    </div>
+    <div class="tag-row">{#each task.direct_tags as tag}<span class="tag" style:--tag-color={tag.color || '#73847c'}>#{tag.name}</span>{/each}</div>
   {/if}
 
   {#if task.current_block}
     <div class="blocked-reason">
       <strong>Blocked:</strong> {task.current_block.reason}
-      {#if task.current_block.unblocked_at}
-        <span class="auto-unblock-note">· Auto-unblocks {formatDateTime(task.current_block.unblocked_at)}</span>
-      {/if}
+      {#if task.current_block.unblocked_at}<span class="auto-unblock-note">· Auto-unblocks {formatDateTime(task.current_block.unblocked_at)}</span>{/if}
     </div>
   {/if}
 
   {#if !readOnly}
     <div class="task-actions">
-      <button
-        type="button"
-        class="finish-action"
-        class:reopen={!!task.finished_at}
-        aria-label={task.finished_at ? 'Reopen task' : 'Finish task'}
-        title={task.finished_at ? 'Reopen task' : 'Finish task'}
-        disabled={busy}
-        on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
-      >
+      <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? 'Reopen task' : 'Finish task'} title={task.finished_at ? 'Reopen task' : 'Finish task'} disabled={busy} on:click={toggleFinished}>
         {#if task.finished_at}
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4.8 9A8 8 0 1 1 4 14" />
-            <path d="M4 4v5h5" />
-          </svg>
-          <span>Reopen</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>Reopen</span>
         {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-          <span>Finish</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>Finish</span>
         {/if}
       </button>
 
-      <button
-        type="button"
-        class="quick-action worked-action"
-        disabled={busy}
-        title="Set last worked on to now"
-        on:click={markWorkedNow}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="8.5" />
-          <path d="M12 7.5V12l3.2 2" />
-        </svg>
-        <span>Worked now</span>
+      <button type="button" class="quick-action worked-action" disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>Worked now</span>
       </button>
 
-      <button
-        type="button"
-        class="quick-action block-action"
-        class:active={!!task.current_block}
-        disabled={busy}
-        on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}
-      >
+      <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
         {#if task.current_block}
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M7 10V8a5 5 0 0 1 9.5-2" />
-            <rect x="5" y="10" width="14" height="10" rx="2" />
-          </svg>
-          <span>Unblock</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg><span>Unblock</span>
         {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="8.5" />
-            <path d="M6 18 18 6" />
-          </svg>
-          <span>Block</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>Block</span>
         {/if}
       </button>
 
       <div class="status-select">
-        <select
-          aria-label="Status"
-          disabled={busy}
-          value={task.status.id}
-          on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}
-        >
+        <select aria-label="Status" disabled={busy} value={task.status.id} on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}>
           {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
         </select>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m8 10 4 4 4-4" />
-        </svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
       </div>
 
       <div class="priority-stepper" aria-label="Priority">
-        <button
-          type="button"
-          aria-label="Decrease priority"
-          title="Decrease priority"
-          disabled={busy || task.priority <= 1}
-          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}
-        >−</button>
+        <button type="button" aria-label="Decrease priority" title="Decrease priority" disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
         <span title="Priority">{task.priority}</span>
-        <button
-          type="button"
-          aria-label="Increase priority"
-          title="Increase priority"
-          disabled={busy}
-          on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}
-        >+</button>
+        <button type="button" aria-label="Increase priority" title="Increase priority" disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
       </div>
     </div>
   {/if}
 </article>
 
 {#if blockModalOpen}
-  <BlockTaskModal
-    taskTitle={task.title}
-    history={task.blocking_history}
-    {busy}
-    on:close={() => (blockModalOpen = false)}
-    on:block={(event) => block(event.detail)}
-    on:reblock={(event) => reblock(event.detail)}
-    on:deleteBlock={(event) => deleteBlock(event.detail)}
-  />
+  <BlockTaskModal taskTitle={task.title} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
+{/if}
+
+{#if completionOpen}
+  <TaskCompletionDialog workspaceId={task.workspace_id} taskId={task.id} taskTitle={task.title} {busy} on:close={() => (completionOpen = false)} on:confirm={() => void confirmFinish()} />
 {/if}
 
 <style>
-  .title-button {
-    display: flex;
-    align-items: baseline;
-    gap: .45rem;
-  }
+  .title-button { display: flex; align-items: baseline; gap: .45rem; }
+  .task-id { flex: 0 0 auto; color: var(--muted); font-size: .72rem; font-weight: 700; opacity: .72; }
+  .date-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .meta-row > span + span::before { content: '·'; margin-right: .65rem; color: #b8b3a8; font-weight: 700; }
+  .auto-unblock-note { color: var(--muted); font-size: .82rem; }
+  .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
-  .task-id {
-    flex: 0 0 auto;
-    color: var(--muted);
-    font-size: .72rem;
-    font-weight: 700;
-    opacity: .72;
-  }
+  .ranking-boost { border: 0; border-radius: .4rem; background: transparent; color: var(--forest-2); padding: .25rem .32rem; font-size: .72rem; font-weight: 750; white-space: nowrap; }
+  .ranking-boost:hover, .ranking-boost:focus-visible { background: rgba(36, 88, 68, .08); text-decoration: underline; text-underline-offset: .12rem; }
 
-  .date-meta {
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
+  .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
+  .edit-button svg, .finish-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .edit-button svg { width: 100%; height: 100%; }
+  .task-card:hover .edit-button, .edit-button:focus-visible { opacity: .85; }
+  .edit-button:hover:not(:disabled) { background: rgba(0, 0, 0, .04); }
 
-  .meta-row > span + span::before {
-    content: '·';
-    margin-right: .65rem;
-    color: #b8b3a8;
-    font-weight: 700;
-  }
+  .finish-action { display: inline-flex; height: 2rem; align-items: center; gap: .38rem; border: 1px solid var(--forest); border-radius: .55rem; background: var(--forest); color: #fff; padding: 0 .68rem; font-size: .78rem; font-weight: 800; line-height: 1; }
+  .finish-action:hover:not(:disabled) { border-color: var(--forest-2); background: var(--forest-2); }
+  .finish-action.reopen { border-color: #b9c3bd; background: #fff; color: var(--forest-2); }
+  .finish-action.reopen:hover:not(:disabled) { border-color: #93a29a; background: #f8faf8; }
 
-  .auto-unblock-note {
-    color: var(--muted);
-    font-size: .82rem;
-  }
-
-  .task-card__header-actions {
-    display: flex;
-    align-items: center;
-    gap: .35rem;
-  }
-
-  .edit-button {
-    display: grid;
-    width: 1.75rem;
-    height: 1.75rem;
-    place-items: center;
-    border: 0;
-    border-radius: .4rem;
-    background: transparent;
-    color: var(--muted);
-    opacity: .35;
-    padding: .3rem;
-    transition: opacity .15s ease, background .15s ease;
-  }
-
-  .edit-button svg,
-  .finish-action svg {
-    width: 1rem;
-    height: 1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.8;
-  }
-
-  .edit-button svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  .task-card:hover .edit-button,
-  .edit-button:focus-visible {
-    opacity: .85;
-  }
-
-  .edit-button:hover:not(:disabled) {
-    background: rgba(0, 0, 0, .04);
-  }
-
-  .finish-action {
-    display: inline-flex;
-    height: 2rem;
-    align-items: center;
-    gap: .38rem;
-    border: 1px solid var(--forest);
-    border-radius: .55rem;
-    background: var(--forest);
-    color: #fff;
-    padding: 0 .68rem;
-    font-size: .78rem;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .finish-action:hover:not(:disabled) {
-    border-color: var(--forest-2);
-    background: var(--forest-2);
-  }
-
-  .finish-action.reopen {
-    border-color: #b9c3bd;
-    background: #fff;
-    color: var(--forest-2);
-  }
-
-  .finish-action.reopen:hover:not(:disabled) {
-    border-color: #93a29a;
-    background: #f8faf8;
-  }
-
-  .quick-action {
-    display: inline-flex;
-    height: 2rem;
-    align-items: center;
-    gap: .38rem;
-    border: 1px solid #cfcbc0;
-    border-radius: .55rem;
-    background: #fbfaf6;
-    color: var(--ink);
-    padding: 0 .62rem;
-    font-size: .78rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-
-  .quick-action svg {
-    width: 1rem;
-    height: 1rem;
-    flex: 0 0 1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.8;
-  }
-
-  .quick-action:hover:not(:disabled) {
-    border-color: #aaa69c;
-    background: #fff;
-  }
-
+  .quick-action { display: inline-flex; height: 2rem; align-items: center; gap: .38rem; border: 1px solid #cfcbc0; border-radius: .55rem; background: #fbfaf6; color: var(--ink); padding: 0 .62rem; font-size: .78rem; font-weight: 700; line-height: 1; }
+  .quick-action svg { width: 1rem; height: 1rem; flex: 0 0 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .quick-action:hover:not(:disabled) { border-color: #aaa69c; background: #fff; }
   .worked-action { color: var(--forest-2); }
   .block-action { color: #8a4d36; }
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
-  .status-select {
-    position: relative;
-    display: inline-flex;
-    height: 2rem;
-    align-items: center;
-  }
+  .status-select { position: relative; display: inline-flex; height: 2rem; align-items: center; }
+  .status-select select { height: 100%; max-width: 11rem; appearance: none; border: 1px solid #c8cec6; border-radius: .55rem; background: #f4f7f2; color: var(--forest-2); padding: 0 1.8rem 0 .65rem; font-size: .78rem; font-weight: 750; line-height: 1; cursor: pointer; }
+  .status-select select:hover:not(:disabled) { border-color: #9daa9f; background: #fff; }
+  .status-select select:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+  .status-select > svg { position: absolute; right: .52rem; width: .85rem; height: .85rem; pointer-events: none; fill: none; stroke: var(--forest-2); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 
-  .status-select select {
-    height: 100%;
-    max-width: 11rem;
-    appearance: none;
-    border: 1px solid #c8cec6;
-    border-radius: .55rem;
-    background: #f4f7f2;
-    color: var(--forest-2);
-    padding: 0 1.8rem 0 .65rem;
-    font-size: .78rem;
-    font-weight: 750;
-    line-height: 1;
-    cursor: pointer;
-  }
+  .priority-stepper { display: inline-grid; height: 2rem; grid-template-columns: 1.65rem auto 1.65rem; align-items: stretch; overflow: hidden; border: 1px solid #cfcbc0; border-radius: .5rem; background: #fbfaf6; }
+  .priority-stepper button { min-width: 0; border: 0; border-radius: 0; background: transparent; padding: 0; font-size: .95rem; line-height: 1; }
+  .priority-stepper button:hover:not(:disabled) { background: rgba(0, 0, 0, .045); }
+  .priority-stepper span { display: grid; min-width: 1.65rem; place-items: center; border-right: 1px solid #dedad0; border-left: 1px solid #dedad0; padding: 0 .2rem; color: var(--forest); font-size: .76rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 
-  .status-select select:hover:not(:disabled) {
-    border-color: #9daa9f;
-    background: #fff;
-  }
-
-  .status-select select:focus-visible {
-    outline: 2px solid var(--forest);
-    outline-offset: 2px;
-  }
-
-  .status-select > svg {
-    position: absolute;
-    right: .52rem;
-    width: .85rem;
-    height: .85rem;
-    pointer-events: none;
-    fill: none;
-    stroke: var(--forest-2);
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 2;
-  }
-
-  .priority-stepper {
-    display: inline-grid;
-    height: 2rem;
-    grid-template-columns: 1.65rem auto 1.65rem;
-    align-items: stretch;
-    overflow: hidden;
-    border: 1px solid #cfcbc0;
-    border-radius: .5rem;
-    background: #fbfaf6;
-  }
-
-  .priority-stepper button {
-    min-width: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0;
-    font-size: .95rem;
-    line-height: 1;
-  }
-
-  .priority-stepper button:hover:not(:disabled) {
-    background: rgba(0, 0, 0, .045);
-  }
-
-  .priority-stepper span {
-    display: grid;
-    min-width: 1.65rem;
-    place-items: center;
-    border-right: 1px solid #dedad0;
-    border-left: 1px solid #dedad0;
-    padding: 0 .2rem;
-    color: var(--forest);
-    font-size: .76rem;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .task-description {
-    width: 100%;
-    height: 7rem;
-    margin-top: .6rem;
-    overflow-y: auto;
-    padding: .65rem .75rem;
-    border: 1px solid var(--line);
-    border-radius: .55rem;
-    background: #faf8f2;
-  }
-
-  .task-description.expanded {
-    height: auto;
-    overflow-y: visible;
-  }
-
-  .description-toggle {
-    margin-top: .35rem;
-    border: 0;
-    background: transparent;
-    color: var(--forest-2);
-    padding: .15rem 0;
-    font-size: .8rem;
-    font-weight: 700;
-    text-decoration: underline;
-    text-underline-offset: .15rem;
-  }
+  .task-description { width: 100%; height: 7rem; margin-top: .6rem; overflow-y: auto; padding: .65rem .75rem; border: 1px solid var(--line); border-radius: .55rem; background: #faf8f2; }
+  .task-description.expanded { height: auto; overflow-y: visible; }
+  .description-toggle { margin-top: .35rem; border: 0; background: transparent; color: var(--forest-2); padding: .15rem 0; font-size: .8rem; font-weight: 700; text-decoration: underline; text-underline-offset: .15rem; }
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
-
-    .finish-action span,
-    .quick-action span {
-      display: none;
-    }
-
-    .finish-action,
-    .quick-action {
-      width: 2rem;
-      justify-content: center;
-      padding: 0;
-    }
-
+    .ranking-boost { font-size: .67rem; }
+    .finish-action span, .quick-action span { display: none; }
+    .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
     .status-select select { max-width: 8.5rem; }
   }
 </style>

@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import type { Task } from '../api/types';
   import { daysSince, formatDate } from '../format';
+  import TaskHierarchy from './TaskHierarchy.svelte';
 
   export let tasks: Task[] = [];
   export let currentTaskId: number | null = null;
@@ -29,6 +30,7 @@
           <span>{task.title}</span>
           <span class="task-id">#{task.id}</span>
         </button>
+        <TaskHierarchy {task} compact={true} on:open={(event) => dispatch('open', event.detail)} />
         <div class="queue-meta">
           {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
           {#if task.current_block}<span class="blocked-chip">Blocked</span>{/if}
