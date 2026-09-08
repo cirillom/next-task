@@ -3,7 +3,7 @@
   import { ApiError, api } from '../api/client';
   import type { Member, Status, Tag, Task, TaskInput, TaskSummary, Workspace } from '../api/types';
   import { formatDateTime } from '../format';
-  import Markdown from './Markdown.svelte';
+  import MarkdownEditor from './MarkdownEditor.svelte';
 
   export let workspace: Workspace;
   export let taskId = 0;
@@ -51,7 +51,6 @@
   let assigneeOpen = false;
   let tagIds = [...initialTagIds];
   let newTags = initialNewTags;
-  let mobileTab: 'edit' | 'preview' = 'edit';
   let loading = true;
   let resolving = false;
   let localError = '';
@@ -283,11 +282,7 @@
       {/if}
     </section>
 
-    <div class="mobile-tabs"><button type="button" class:active={mobileTab === 'edit'} on:click={() => (mobileTab = 'edit')}>Edit</button><button type="button" class:active={mobileTab === 'preview'} on:click={() => (mobileTab = 'preview')}>Preview</button></div>
-    <div class="markdown-editor compact-markdown">
-      <label class:hidden-mobile={mobileTab !== 'edit'}>Description (Markdown)<textarea bind:value={description} rows="8" disabled={workspace.role === 'viewer'} placeholder="Add details, links, lists, tables, or code…"></textarea></label>
-      <section class:hidden-mobile={mobileTab !== 'preview'} class="preview"><span class="field-label">Preview</span>{#if description}<Markdown source={description} />{:else}<p class="muted">Nothing to preview yet.</p>{/if}</section>
-    </div>
+    <MarkdownEditor bind:value={description} disabled={workspace.role === 'viewer'} compact />
 
     <section class="assignee-section">
       <span class="field-label">Assignees</span>
@@ -493,10 +488,6 @@
   .subtask-open:hover { text-decoration: underline; text-underline-offset: .14rem; }
   .subtask-state { color: var(--forest-2); font-weight: 850; }
 
-  .compact-markdown { gap: .65rem; margin-top: 0; }
-  .compact-markdown textarea { min-height: 9rem; }
-  .compact-markdown .preview { max-height: 13rem; min-height: 9rem; }
-
   .assignee-section,
   .tags-section { display: grid; gap: .3rem; }
 
@@ -610,7 +601,6 @@
   .tags-line input:focus { outline: 0; }
 
   .compact-details { margin-top: 0; padding-top: .5rem; }
-
   .compact-details dl { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
   .compact-details dl > div { display: flex; grid-template-columns: none; gap: .35rem; padding: 0; font-size: .75rem; }
 
