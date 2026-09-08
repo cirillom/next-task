@@ -6,7 +6,7 @@
   import Markdown from '../lib/components/Markdown.svelte';
 
   export let workspace: Workspace;
-  const dispatch = createEventDispatcher<{ openTask: number; changed: void }>();
+  const dispatch = createEventDispatcher<{ openTask: number }>();
 
   let drafts: Task[] = [];
   let loading = true;
@@ -31,7 +31,7 @@
   <div>
     <p class="eyebrow">Needs your input</p>
     <h1>Drafts</h1>
-    <p class="draft-intro">Priority 0 tasks stay here until you choose a real priority and finalize them.</p>
+    <p class="draft-intro">Quick captures stay here until you review them and choose a priority.</p>
   </div>
 </div>
 
