@@ -3,6 +3,7 @@
   import { api } from '../api/client';
   import type { Status, Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime } from '../format';
+  import { confirmTaskCompletion } from '../taskCompletion';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
@@ -75,6 +76,11 @@
 
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
+  }
+
+  function toggleFinished() {
+    if (!task.finished_at && !confirmTaskCompletion(task)) return;
+    void act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id));
   }
 </script>
 
@@ -160,7 +166,7 @@
         aria-label={task.finished_at ? 'Reopen task' : 'Finish task'}
         title={task.finished_at ? 'Reopen task' : 'Finish task'}
         disabled={busy}
-        on:click={() => act(() => task.finished_at ? api.reopenTask(task.id) : api.finishTask(task.id))}
+        on:click={toggleFinished}
       >
         {#if task.finished_at}
           <svg viewBox="0 0 24 24" aria-hidden="true">
