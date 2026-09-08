@@ -10,6 +10,8 @@
   export let compact = false;
 
   const dispatch = createEventDispatcher<{ input: string }>();
+  const CARET_MARKER = '\uE000';
+
   let editor: HTMLDivElement;
   let focused = false;
   let lastRendered = '';
@@ -132,17 +134,77 @@
     });
   }
 
-  function renderMarkdown(markdown: string) {
-    if (!editor) return;
-    editor.innerHTML = markdown
+  function markdownHtml(markdown: string): string {
+    return markdown
       ? DOMPurify.sanitize(marked.parse(markdown, { gfm: true }) as string)
       : '';
+  }
+
+  function renderMarkdown(markdown: string) {
+    if (!editor) return;
+    editor.innerHTML = markdownHtml(markdown);
     lastRendered = markdown;
     prepareInteractiveContent();
   }
 
-  function emitChange() {
+  function insertCaretMarker(): boolean {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return false;
+
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer)) return false;
+
+    range.collapse(false);
+    const marker = document.createTextNode(CARET_MARKER);
+    range.insertNode(marker);
+    return true;
+  }
+
+  function restoreCaret() {
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode() as Text | null;
+
+    while (node) {
+      const index = node.data.indexOf(CARET_MARKER);
+      if (index !== -1) {
+        node.data = node.data.replace(CARET_MARKER, '');
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.setStart(node, index);
+        range.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        return;
+      }
+      node = walker.nextNode() as Text | null;
+    }
+
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  function rerenderWhileEditing() {
     if (disabled) return;
+
+    const hasCaret = insertCaretMarker();
+    const markdownWithMarker = normalizedMarkdown();
+    const next = markdownWithMarker.replace(CARET_MARKER, '');
+
+    editor.innerHTML = markdownHtml(markdownWithMarker);
+    prepareInteractiveContent();
+    if (hasCaret) restoreCaret();
+
+    value = next;
+    lastRendered = next;
+    dispatch('input', next);
+  }
+
+  function handleCheckboxChange(event: Event) {
+    if (disabled || !(event.target instanceof HTMLInputElement) || event.target.type !== 'checkbox') return;
     const next = normalizedMarkdown();
     value = next;
     lastRendered = next;
@@ -183,8 +245,8 @@
     spellcheck="true"
     on:focus={handleFocus}
     on:blur={handleBlur}
-    on:input={emitChange}
-    on:change={emitChange}
+    on:input={rerenderWhileEditing}
+    on:change={handleCheckboxChange}
     on:click={handleClick}
   ></div>
 </div>
@@ -238,6 +300,10 @@
   .live-surface :global(h1),
   .live-surface :global(h2),
   .live-surface :global(h3) { margin: 1rem 0 .45rem; line-height: 1.25; }
+
+  .live-surface :global(strong) { font-weight: 800; }
+  .live-surface :global(em) { font-style: italic; }
+  .live-surface :global(del) { color: var(--muted); }
 
   .live-surface :global(ul),
   .live-surface :global(ol) { padding-left: 1.4rem; }
