@@ -107,9 +107,7 @@ export const api = {
     for (const [key, value] of Object.entries(params)) {
       if (value !== null && value !== '') query.set(key, String(value));
     }
-    return request<Task[]>(`/api/tasks?${query}`).then((tasks) =>
-      tasks.filter((task) => task.priority > 0)
-    );
+    return request<Task[]>(`/api/tasks?${query}`);
   },
   drafts: (workspaceId: number) =>
     request<Task[]>(`/api/drafts?workspace_id=${encodeURIComponent(String(workspaceId))}`),
