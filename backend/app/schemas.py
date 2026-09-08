@@ -213,6 +213,9 @@ class TaskRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     score: float
+    ranking_score: float
+    ranking_source_task_id: int | None
+    ranking_source_score: float | None
     assignees: list[UserRead]
     direct_tags: list[TagSummary]
     inherited_tags: list[TagSummary]
