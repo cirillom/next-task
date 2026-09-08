@@ -152,6 +152,7 @@ class TaskSummary(ApiModel):
     id: int
     title: str
     finished_at: datetime | None
+    unfinished_descendant_count: int = 0
 
 
 class TaskCreate(ApiModel):
@@ -203,6 +204,7 @@ class TaskRead(ApiModel):
     finished_at: datetime | None
     parent_task_id: int | None
     parent_task: TaskSummary | None
+    unfinished_descendant_count: int
     created_at: datetime
     updated_at: datetime
     score: float
