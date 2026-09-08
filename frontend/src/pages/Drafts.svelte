@@ -58,9 +58,9 @@
           <div class="draft-meta">Captured {formatDateTime(draft.created_at)} · {draft.status.name}</div>
         </div>
         {#if workspace.role !== 'viewer'}
-          <button class="primary finalize-button" on:click={() => dispatch('openTask', draft.id)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 9.2 16.7 19 7" /></svg>
-            Finalize
+          <button class="primary edit-draft-button" on:click={() => dispatch('openTask', draft.id)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>
+            Edit draft
           </button>
         {/if}
       </article>
@@ -93,7 +93,7 @@
   .draft-description :global(.markdown > :last-child) { margin-bottom: 0; }
   .draft-meta { margin-top: .45rem; color: var(--muted); font-size: .72rem; }
 
-  .finalize-button {
+  .edit-draft-button {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
@@ -101,7 +101,7 @@
     white-space: nowrap;
   }
 
-  .finalize-button svg {
+  .edit-draft-button svg {
     width: 1rem;
     height: 1rem;
     fill: none;
@@ -113,6 +113,6 @@
 
   @media (max-width: 640px) {
     .draft-card { align-items: stretch; flex-direction: column; }
-    .finalize-button { justify-content: center; }
+    .edit-draft-button { justify-content: center; }
   }
 </style>
