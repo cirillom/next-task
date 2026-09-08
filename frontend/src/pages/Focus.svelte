@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { PomodoroSettings, Status, Tag, Task, Workspace } from '../lib/api/types';
+  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
 
   type Phase = 'focus' | 'short-break' | 'long-break';
   type BlockedFilter = '' | 'false' | 'true';
   type TaskResolution = 'finished' | 'blocked';
+  type DescriptionSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
   export let workspace: Workspace;
   export let taskVersion = 0;
@@ -23,6 +25,7 @@
   let currentTask: Task | null = null;
   let sessionTasks: Task[] = [];
   let taskListBlocked: BlockedFilter = '';
+  let queueOpen = false;
   let phase: Phase = 'focus';
   let running = false;
   let remainingSeconds = 0;
@@ -37,6 +40,13 @@
   let error = '';
   let timer: number;
   let seenTaskVersion = taskVersion;
+
+  let descriptionEditing = false;
+  let descriptionDraft = '';
+  let descriptionSaveState: DescriptionSaveState = 'idle';
+  let descriptionSaveTimer: number;
+  let descriptionSaveInFlight = false;
+  let pendingDescriptionSave: { taskId: number; value: string } | null = null;
 
   function durationSeconds(targetPhase: Phase = phase): number {
     if (!settings) return 0;
@@ -103,6 +113,12 @@
     });
   }
 
+  function resetDescriptionEditor(task: Task | null) {
+    descriptionEditing = false;
+    descriptionDraft = task?.description || '';
+    descriptionSaveState = 'idle';
+  }
+
   async function selectNextTask() {
     selecting = true;
     error = '';
@@ -114,6 +130,7 @@
         tag_id: sessionTagId
       });
       currentTask = ranked[0] ?? null;
+      resetDescriptionEditor(currentTask);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not select the next task';
     } finally {
@@ -124,6 +141,7 @@
   function focusTask(task: Task) {
     if (task.finished_at || task.current_block) return;
     currentTask = task;
+    resetDescriptionEditor(task);
     error = '';
   }
 
@@ -157,6 +175,45 @@
     }
   }
 
+  function toggleDescriptionEditor() {
+    if (!currentTask) return;
+    descriptionEditing = !descriptionEditing;
+    descriptionDraft = currentTask.description || '';
+    descriptionSaveState = 'idle';
+  }
+
+  function scheduleDescriptionSave(value: string) {
+    if (!currentTask || workspace.role === 'viewer') return;
+    descriptionDraft = value;
+    descriptionSaveState = 'saving';
+    window.clearTimeout(descriptionSaveTimer);
+    const taskId = currentTask.id;
+    descriptionSaveTimer = window.setTimeout(() => {
+      pendingDescriptionSave = { taskId, value };
+      void drainDescriptionSave();
+    }, 650);
+  }
+
+  async function drainDescriptionSave() {
+    if (descriptionSaveInFlight || !pendingDescriptionSave) return;
+    const request = pendingDescriptionSave;
+    pendingDescriptionSave = null;
+    descriptionSaveInFlight = true;
+    descriptionSaveState = 'saving';
+    try {
+      const updated = await api.updateTask(request.taskId, { description: request.value || null });
+      if (currentTask?.id === request.taskId) currentTask = updated;
+      sessionTasks = sessionTasks.map((task) => task.id === request.taskId ? updated : task);
+      descriptionSaveState = 'saved';
+    } catch (reason) {
+      descriptionSaveState = 'error';
+      error = reason instanceof Error ? reason.message : 'Could not save description';
+    } finally {
+      descriptionSaveInFlight = false;
+      if (pendingDescriptionSave) void drainDescriptionSave();
+    }
+  }
+
   async function prepareFocus() {
     if (!settings) return;
     const completedLongBreak = phase === 'long-break';
@@ -187,17 +244,27 @@
     if (!settings || running) return;
     ensureAudioContext();
     if (phase === 'focus' && !currentTask) await selectNextTask();
+
+    if (phase === 'focus' && currentTask && workspace.role !== 'viewer') {
+      try {
+        const updated = await api.updateTask(currentTask.id, { last_worked_at: new Date().toISOString() });
+        currentTask = updated;
+        sessionTasks = sessionTasks.map((task) => task.id === updated.id ? updated : task);
+        void loadSessionTasks();
+      } catch (reason) {
+        error = reason instanceof Error ? reason.message : 'Could not record task work';
+        return;
+      }
+    }
+
     running = true;
     deadline = Date.now() + durationSeconds() * 1000;
     remainingSeconds = durationSeconds();
   }
 
   async function advancePeriod() {
-    if (phase === 'focus') {
-      prepareBreak();
-    } else {
-      await prepareFocus();
-    }
+    if (phase === 'focus') prepareBreak();
+    else await prepareFocus();
   }
 
   function cutPeriodShort() {
@@ -237,12 +304,14 @@
       const shouldAskForBreak = running && phase === 'focus';
       const resolution: TaskResolution = updated.current_block ? 'blocked' : 'finished';
       currentTask = null;
+      resetDescriptionEditor(null);
       await selectNextTask();
       if (shouldAskForBreak) breakPrompt = resolution;
       return;
     }
 
     currentTask = updated;
+    if (!descriptionEditing) descriptionDraft = updated.description || '';
   }
 
   async function handlePinnedTaskChanged(updated: Task) {
@@ -263,9 +332,11 @@
         await handleTaskChanged(refreshed);
       } else {
         currentTask = refreshed;
+        if (!descriptionEditing) descriptionDraft = refreshed.description || '';
       }
     } catch {
       currentTask = null;
+      resetDescriptionEditor(null);
       await selectNextTask();
     }
     await loadSessionTasks();
@@ -303,6 +374,14 @@
       document.title = baseDocumentTitle;
       if (audioContext) void audioContext.close();
     };
+  });
+
+  onDestroy(() => {
+    window.clearTimeout(descriptionSaveTimer);
+    if (descriptionEditing && currentTask && workspace.role !== 'viewer') {
+      pendingDescriptionSave = { taskId: currentTask.id, value: descriptionDraft };
+      void drainDescriptionSave();
+    }
   });
 </script>
 
@@ -374,8 +453,32 @@
             on:open={(event) => dispatch('openTask', event.detail)}
             on:error={(event) => (error = event.detail)}
           />
+
+          {#if workspace.role !== 'viewer'}
+            <div class="description-tools">
+              <button type="button" class="quiet-button" on:click={toggleDescriptionEditor}>
+                {descriptionEditing ? 'Close description editor' : 'Edit description'}
+              </button>
+              {#if descriptionEditing && descriptionSaveState !== 'idle'}
+                <span class:error-state={descriptionSaveState === 'error'} class="save-state" aria-live="polite">
+                  {descriptionSaveState === 'saving' ? 'Saving…' : descriptionSaveState === 'saved' ? 'Saved' : 'Save failed'}
+                </span>
+              {/if}
+            </div>
+
+            {#if descriptionEditing}
+              <section class="focus-description-editor" aria-label="Edit task description">
+                <MarkdownEditor
+                  bind:value={descriptionDraft}
+                  label="Description"
+                  on:input={(event) => scheduleDescriptionSave(event.detail)}
+                />
+              </section>
+            {/if}
+          {/if}
+
           <p class="session-rule">
-            This task stays pinned across focus and break periods until you finish it, block it, or choose another task below.
+            This task stays pinned across focus and break periods until you finish it, block it, or choose another task.
           </p>
         {:else}
           <div class="empty-focus">
@@ -386,36 +489,46 @@
           </div>
         {/if}
 
-        <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
-          <div class="session-tasks__heading">
-            <h2>Queue</h2>
-            <label class="blocked-filter">
-              <span>Blocked</span>
-              <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
-                <option value="">Either</option>
-                <option value="false">Not blocked</option>
-                <option value="true">Blocked</option>
-              </select>
-            </label>
-          </div>
+        <div class="choose-task-row">
+          <button type="button" class="choose-task-toggle" aria-expanded={queueOpen} on:click={() => (queueOpen = !queueOpen)}>
+            <span>{queueOpen ? 'Hide task queue' : 'Choose another task'}</span>
+            <span class="queue-count">{sessionTasks.length}</span>
+            <span aria-hidden="true">{queueOpen ? '▴' : '▾'}</span>
+          </button>
+        </div>
 
-          {#if listLoading}
-            <p class="task-list-empty">Loading tasks…</p>
-          {:else if sessionTasks.length === 0}
-            <p class="task-list-empty">No matching unfinished tasks.</p>
-          {:else}
-            <TaskQueue
-              tasks={sessionTasks}
-              currentTaskId={currentTask?.id ?? null}
-              allowFocus={true}
-              allowUnblock={workspace.role !== 'viewer'}
-              busyTaskId={unblockingTaskId}
-              on:open={(event) => dispatch('openTask', event.detail)}
-              on:focus={(event) => focusTask(event.detail)}
-              on:unblock={(event) => unblockListedTask(event.detail)}
-            />
-          {/if}
-        </section>
+        {#if queueOpen}
+          <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
+            <div class="session-tasks__heading">
+              <h2>Queue</h2>
+              <label class="blocked-filter">
+                <span>Blocked</span>
+                <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
+                  <option value="">Either</option>
+                  <option value="false">Not blocked</option>
+                  <option value="true">Blocked</option>
+                </select>
+              </label>
+            </div>
+
+            {#if listLoading}
+              <p class="task-list-empty">Loading tasks…</p>
+            {:else if sessionTasks.length === 0}
+              <p class="task-list-empty">No matching unfinished tasks.</p>
+            {:else}
+              <TaskQueue
+                tasks={sessionTasks}
+                currentTaskId={currentTask?.id ?? null}
+                allowFocus={true}
+                allowUnblock={workspace.role !== 'viewer'}
+                busyTaskId={unblockingTaskId}
+                on:open={(event) => dispatch('openTask', event.detail)}
+                on:focus={(event) => focusTask(event.detail)}
+                on:unblock={(event) => unblockListedTask(event.detail)}
+              />
+            {/if}
+          </section>
+        {/if}
       </section>
     {:else}
       <section class="break-card">
@@ -459,9 +572,7 @@
     color: var(--ink);
   }
 
-  .focus-screen.break-mode {
-    background: radial-gradient(circle at top, #e8f0ec 0, #f4f6f2 42%, #ecefe9 100%);
-  }
+  .focus-screen.break-mode { background: radial-gradient(circle at top, #e8f0ec 0, #f4f6f2 42%, #ecefe9 100%); }
 
   .focus-header {
     display: flex;
@@ -475,11 +586,7 @@
 
   .focus-brand,
   .focus-header-actions,
-  .period-controls {
-    display: flex;
-    align-items: center;
-    gap: .65rem;
-  }
+  .period-controls { display: flex; align-items: center; gap: .65rem; }
 
   .focus-dot {
     width: .72rem;
@@ -499,10 +606,7 @@
     font-weight: 700;
   }
 
-  .quiet-button:hover {
-    background: rgba(255, 255, 255, .8);
-    color: var(--ink);
-  }
+  .quiet-button:hover { background: rgba(255, 255, 255, .8); color: var(--ink); }
 
   .focus-content {
     width: min(900px, calc(100% - 2rem));
@@ -534,11 +638,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .period-controls {
-    justify-content: center;
-    margin-top: 1rem;
-  }
-
+  .period-controls { justify-content: center; margin-top: 1rem; }
   .period-button { min-width: 9rem; }
 
   .running-label {
@@ -550,32 +650,12 @@
     font-weight: 800;
   }
 
-  .break-mode .running-label {
-    background: rgba(55, 95, 75, .1);
-    color: var(--forest-2);
-  }
+  .break-mode .running-label { background: rgba(55, 95, 75, .1); color: var(--forest-2); }
 
-  .cycle-dots {
-    display: flex;
-    justify-content: center;
-    gap: .4rem;
-    margin: .85rem 0 .8rem;
-  }
-
-  .cycle-dots span {
-    width: .48rem;
-    height: .48rem;
-    border-radius: 50%;
-    background: #d4d0c5;
-  }
-
+  .cycle-dots { display: flex; justify-content: center; gap: .4rem; margin: .85rem 0 .8rem; }
+  .cycle-dots span { width: .48rem; height: .48rem; border-radius: 50%; background: #d4d0c5; }
   .cycle-dots span.done { background: #a65038; }
-
-  .cycle-dots .long-dot {
-    width: .7rem;
-    border-radius: .2rem;
-    background: #9daf9f;
-  }
+  .cycle-dots .long-dot { width: .7rem; border-radius: .2rem; background: #9daf9f; }
 
   .session-scope {
     display: inline-flex;
@@ -603,14 +683,8 @@
 
   .focus-task-heading .eyebrow,
   .focus-task-heading h1,
-  .session-tasks__heading h2 {
-    margin: 0;
-  }
-
-  .focus-task-heading h1 {
-    margin-top: .15rem;
-    font-size: 1.45rem;
-  }
+  .session-tasks__heading h2 { margin: 0; }
+  .focus-task-heading h1 { margin-top: .15rem; font-size: 1.45rem; }
 
   .locked-task {
     border-radius: 999px;
@@ -632,20 +706,47 @@
     box-shadow: 0 14px 40px rgba(65, 60, 50, .06);
   }
 
-  .session-rule {
-    margin: .65rem .2rem 0;
-    color: var(--muted);
-    font-size: .78rem;
-    line-height: 1.45;
+  .description-tools {
+    display: flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: .65rem;
+    margin: .7rem .2rem 0;
   }
 
+  .save-state { color: var(--forest-2); font-size: .75rem; font-weight: 750; }
+  .save-state.error-state { color: var(--danger); }
+
+  .focus-description-editor {
+    margin-top: .6rem;
+    border: 1px solid rgba(100, 95, 80, .15);
+    border-radius: .8rem;
+    background: rgba(255, 255, 255, .68);
+    padding: .8rem;
+  }
+
+  .session-rule { margin: .65rem .2rem 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
   .empty-focus { text-align: center; }
 
-  .session-tasks {
-    margin-top: 1.75rem;
-    padding-top: 1.4rem;
-    border-top: 1px solid rgba(100, 95, 80, .16);
+  .choose-task-row { display: flex; justify-content: center; margin-top: 1.5rem; }
+
+  .choose-task-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    border: 1px solid rgba(80, 75, 65, .18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .55);
+    color: var(--forest-2);
+    padding: .48rem .75rem;
+    font-size: .8rem;
+    font-weight: 750;
   }
+
+  .choose-task-toggle:hover { background: #fff; }
+  .queue-count { min-width: 1.35rem; border-radius: 999px; background: #e8ede9; padding: .08rem .35rem; text-align: center; font-size: .7rem; }
+
+  .session-tasks { margin-top: .85rem; padding-top: 1rem; border-top: 1px solid rgba(100, 95, 80, .16); }
 
   .session-tasks__heading {
     display: flex;
@@ -668,33 +769,13 @@
   }
 
   .blocked-filter select { min-width: 0; }
+  .task-list-empty { margin: .6rem 0 0; color: var(--muted); font-size: .82rem; }
 
-  .task-list-empty {
-    margin: .6rem 0 0;
-    color: var(--muted);
-    font-size: .82rem;
-  }
-
-  .break-card {
-    max-width: 540px;
-    margin: 2rem auto 0;
-  }
-
+  .break-card { max-width: 540px; margin: 2rem auto 0; }
   .break-icon { font-size: 2.4rem; }
-
   .break-card h1 { margin: .5rem 0 .35rem; }
-
-  .break-card p {
-    margin: 0 auto 1rem;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  .pinned-note {
-    border-radius: .65rem;
-    background: rgba(55, 95, 75, .07);
-    padding: .7rem .8rem;
-  }
+  .break-card p { margin: 0 auto 1rem; color: var(--muted); line-height: 1.5; }
+  .pinned-note { border-radius: .65rem; background: rgba(55, 95, 75, .07); padding: .7rem .8rem; }
 
   .break-prompt-backdrop {
     position: fixed;
@@ -719,41 +800,16 @@
   .break-prompt .eyebrow,
   .break-prompt h2,
   .break-prompt p { margin: 0; }
-
-  .break-prompt h2 {
-    margin-top: .2rem;
-    font-size: 1.45rem;
-  }
-
-  .break-prompt p:not(.eyebrow) {
-    margin-top: .5rem;
-    color: var(--muted);
-    line-height: 1.45;
-  }
-
-  .break-prompt-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: .65rem;
-    margin-top: 1.15rem;
-  }
+  .break-prompt h2 { margin-top: .2rem; font-size: 1.45rem; }
+  .break-prompt p:not(.eyebrow) { margin-top: .5rem; color: var(--muted); line-height: 1.45; }
+  .break-prompt-actions { display: flex; justify-content: flex-end; gap: .65rem; margin-top: 1.15rem; }
 
   @media (max-width: 640px) {
     .focus-header { align-items: flex-start; }
-
-    .focus-header-actions {
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
+    .focus-header-actions { flex-wrap: wrap; justify-content: flex-end; }
     .focus-content { padding-top: 1rem; }
-
     .focus-task-heading,
-    .session-tasks__heading {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
+    .session-tasks__heading { align-items: flex-start; flex-direction: column; }
     .blocked-filter { width: 100%; }
     .break-prompt-actions { flex-wrap: wrap; }
   }
