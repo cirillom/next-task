@@ -72,9 +72,7 @@
       return `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
     }
 
-    if (/^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(line)) {
-      return '<hr />';
-    }
+    if (/^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(line)) return '<hr />';
 
     const task = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/);
     if (task) {
@@ -158,13 +156,10 @@
   function continuationPrefix(line: string): string {
     const task = line.match(/^(\s*[-*+]\s+)\[[ xX]\]\s+/);
     if (task) return `${task[1]}[ ] `;
-
     const bullet = line.match(/^(\s*[-*+]\s+)/);
     if (bullet) return bullet[1];
-
     const ordered = line.match(/^(\s*)(\d+)([.)]\s+)/);
     if (ordered) return `${ordered[1]}${Number(ordered[2]) + 1}${ordered[3]}`;
-
     const quote = line.match(/^(\s*>\s?)/);
     return quote?.[1] || '';
   }
@@ -238,44 +233,12 @@
 
 <div class:compact class="markdown-editor-live">
   {#if label}<span class="field-label">{label}</span>{/if}
-  <div
-    bind:this={root}
-    class="live-surface"
-    class:disabled
-    class:empty={lines.length === 1 && !lines[0]}
-    role="textbox"
-    aria-multiline="true"
-    aria-label={label || 'Markdown editor'}
-    data-placeholder={placeholder}
-    on:mousedown={handleSurfaceMouseDown}
-  >
+  <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={label || 'Markdown editor'} data-placeholder={placeholder} on:mousedown={handleSurfaceMouseDown}>
     {#each lines as line, index (index)}
       {#if activeLine === index && !disabled}
-        <textarea
-          bind:this={activeTextarea}
-          class="source-line"
-          rows="1"
-          value={line}
-          spellcheck="true"
-          aria-label={`Markdown source line ${index + 1}`}
-          on:input={(event) => void handleLineInput(index, event)}
-          on:keydown={(event) => void handleLineKeydown(index, event)}
-          on:blur={handleActiveBlur}
-        ></textarea>
+        <textarea bind:this={activeTextarea} class="source-line" rows="1" value={line} spellcheck="true" aria-label={`Markdown source line ${index + 1}`} on:input={(event) => void handleLineInput(index, event)} on:keydown={(event) => void handleLineKeydown(index, event)} on:blur={handleActiveBlur}></textarea>
       {:else}
-        <div
-          class="rendered-line"
-          class:interactive={!disabled}
-          role={!disabled ? 'button' : undefined}
-          tabindex={!disabled ? 0 : undefined}
-          on:mousedown|preventDefault={() => void activateLine(index)}
-          on:keydown={(event) => {
-            if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
-              event.preventDefault();
-              void activateLine(index);
-            }
-          }}
-        >{@html renderedLineHtml(line, index)}</div>
+        <div class="rendered-line" class:interactive={!disabled} role={!disabled ? 'button' : undefined} tabindex={!disabled ? 0 : undefined} on:mousedown|preventDefault={() => void activateLine(index)} on:keydown={(event) => { if (!disabled && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); void activateLine(index); } }}>{@html renderedLineHtml(line, index)}</div>
       {/if}
     {/each}
   </div>
@@ -283,153 +246,35 @@
 
 <style>
   .markdown-editor-live { display: grid; gap: .35rem; }
-
-  .live-surface {
-    width: 100%;
-    min-height: 15rem;
-    max-height: 32rem;
-    overflow: auto;
-    border: 1px solid #cfcbbf;
-    border-radius: .6rem;
-    background: #fff;
-    padding: .7rem .8rem;
-    color: var(--ink);
-    line-height: 1.55;
-    outline: 0;
-  }
-
-  .live-surface:focus-within {
-    border-color: #8ca095;
-    box-shadow: 0 0 0 2px rgba(70, 105, 85, .1);
-  }
-
-  .live-surface.empty:not(:focus-within)::before {
-    content: attr(data-placeholder);
-    display: block;
-    color: var(--muted);
-    pointer-events: none;
-  }
-
-  .live-surface.disabled {
-    background: #faf8f2;
-    color: var(--muted);
-  }
-
-  .rendered-line {
-    min-height: 1.55em;
-    border-radius: .3rem;
-    padding: .06rem .2rem;
-  }
-
+  .live-surface { width: 100%; min-height: 15rem; max-height: 32rem; overflow: auto; border: 1px solid #cfcbbf; border-radius: .6rem; background: #fff; padding: .7rem .8rem; color: var(--ink); line-height: 1.55; outline: 0; }
+  .live-surface:focus-within { border-color: #8ca095; box-shadow: 0 0 0 2px rgba(70, 105, 85, .1); }
+  .live-surface.empty:not(:focus-within)::before { content: attr(data-placeholder); display: block; color: var(--muted); pointer-events: none; }
+  .live-surface.disabled { background: #faf8f2; color: var(--muted); }
+  .rendered-line { min-height: 1.55em; border-radius: .3rem; padding: .06rem .2rem; }
   .rendered-line.interactive { cursor: text; }
   .rendered-line.interactive:hover { background: rgba(66, 91, 76, .045); }
   .rendered-line:focus-visible { outline: 1px solid #9bada2; outline-offset: 1px; }
-
-  .source-line {
-    display: block;
-    width: 100%;
-    min-height: 1.7rem;
-    overflow: hidden;
-    resize: none;
-    border: 0;
-    border-radius: .3rem;
-    background: #f4f6f3;
-    color: var(--ink);
-    padding: .14rem .28rem;
-    box-shadow: inset 2px 0 0 #8ca095;
-    font: inherit;
-    line-height: 1.55;
-    outline: 0;
-  }
-
+  .source-line { display: block; width: 100%; min-height: 1.7rem; overflow: hidden; resize: none; border: 0; border-radius: .3rem; background: #f4f6f3; color: var(--ink); padding: .14rem .28rem; box-shadow: inset 2px 0 0 #8ca095; font: inherit; line-height: 1.55; outline: 0; }
   .rendered-line :global(.md-blank) { min-height: .85rem; }
   .rendered-line :global(.md-paragraph) { min-height: 1.55em; }
-
-  .rendered-line :global(h1),
-  .rendered-line :global(h2),
-  .rendered-line :global(h3),
-  .rendered-line :global(h4),
-  .rendered-line :global(h5),
-  .rendered-line :global(h6) {
-    margin: .1rem 0;
-    line-height: 1.3;
-  }
-
+  .rendered-line :global(h1), .rendered-line :global(h2), .rendered-line :global(h3), .rendered-line :global(h4), .rendered-line :global(h5), .rendered-line :global(h6) { margin: .1rem 0; line-height: 1.3; }
   .rendered-line :global(h1) { font-size: 1.55rem; }
   .rendered-line :global(h2) { font-size: 1.3rem; }
   .rendered-line :global(h3) { font-size: 1.12rem; }
-  .rendered-line :global(h4),
-  .rendered-line :global(h5),
-  .rendered-line :global(h6) { font-size: 1rem; }
-
+  .rendered-line :global(h4), .rendered-line :global(h5), .rendered-line :global(h6) { font-size: 1rem; }
   .rendered-line :global(strong) { font-weight: 800; }
   .rendered-line :global(em) { font-style: italic; }
   .rendered-line :global(del) { color: var(--muted); }
-
-  .rendered-line :global(.md-list-line) {
-    display: grid;
-    grid-template-columns: 1.2rem minmax(0, 1fr);
-    gap: .15rem;
-    margin-left: var(--line-indent);
-  }
-
+  .rendered-line :global(.md-list-line) { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: .15rem; margin-left: var(--line-indent); }
   .rendered-line :global(.md-marker) { color: var(--muted); text-align: right; }
   .rendered-line :global(.md-number) { font-variant-numeric: tabular-nums; }
-
-  .rendered-line :global(.md-task-line input) {
-    width: .95rem;
-    height: .95rem;
-    margin: .24rem 0 0 .08rem;
-    accent-color: var(--forest);
-    pointer-events: none;
-  }
-
-  .rendered-line :global(blockquote) {
-    margin: 0;
-    border-left: 3px solid #c9d3cc;
-    padding-left: .8rem;
-    color: var(--muted);
-  }
-
-  .rendered-line :global(code) {
-    border-radius: .25rem;
-    background: #f0eee7;
-    padding: .08rem .25rem;
-    font-size: .9em;
-  }
-
-  .rendered-line :global(a) {
-    color: var(--forest-2);
-    text-decoration: underline;
-    text-underline-offset: .12rem;
-    pointer-events: none;
-  }
-
-  .rendered-line :global(hr) {
-    border: 0;
-    border-top: 1px solid var(--line);
-    margin: .65rem .15rem;
-  }
-
-  .rendered-line :global(.md-code-fence),
-  .rendered-line :global(.md-code-line) {
-    margin: 0 -.05rem;
-    background: #f0eee7;
-    padding: .12rem .55rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: .88em;
-  }
-
-  .rendered-line :global(.md-code-fence) {
-    min-height: .35rem;
-    color: var(--muted);
-    font-size: .7rem;
-  }
-
+  .rendered-line :global(.md-task-line input) { width: .95rem; height: .95rem; margin: .24rem 0 0 .08rem; accent-color: var(--forest); pointer-events: none; }
+  .rendered-line :global(blockquote) { margin: 0; border-left: 3px solid #c9d3cc; padding-left: .8rem; color: var(--muted); }
+  .rendered-line :global(code) { border-radius: .25rem; background: #f0eee7; padding: .08rem .25rem; font-size: .9em; }
+  .rendered-line :global(a) { color: var(--forest-2); text-decoration: underline; text-underline-offset: .12rem; pointer-events: none; }
+  .rendered-line :global(hr) { border: 0; border-top: 1px solid var(--line); margin: .65rem .15rem; }
+  .rendered-line :global(.md-code-fence), .rendered-line :global(.md-code-line) { margin: 0 -.05rem; background: #f0eee7; padding: .12rem .55rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; }
+  .rendered-line :global(.md-code-fence) { min-height: .35rem; color: var(--muted); font-size: .7rem; }
   .compact .live-surface { min-height: 9rem; max-height: 18rem; }
-
-  @media (max-width: 640px) {
-    .live-surface,
-    .compact .live-surface { min-height: 12rem; max-height: 24rem; }
-  }
+  @media (max-width: 640px) { .live-surface, .compact .live-surface { min-height: 12rem; max-height: 24rem; } }
 </style>
