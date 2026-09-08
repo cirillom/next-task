@@ -2,8 +2,8 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Task, TaskInput, TaskSummary, Workspace } from '../lib/api/types';
-  import { confirmTaskCompletion } from '../lib/taskCompletion';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
+  import TaskCompletionDialog from '../lib/components/TaskCompletionDialog.svelte';
   import TaskForm from '../lib/components/TaskForm.svelte';
 
   export let workspace: Workspace;
@@ -20,6 +20,7 @@
   let loading = true;
   let busy = false;
   let blockModalOpen = false;
+  let completionTarget: TaskSummary | null = null;
   let error = '';
 
   function datetimeLocal(value: string | null): string {
@@ -27,6 +28,15 @@
     const date = new Date(value);
     const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
     return local.toISOString().slice(0, 16);
+  }
+
+  function taskSummary(item: Task): TaskSummary {
+    return {
+      id: item.id,
+      title: item.title,
+      finished_at: item.finished_at,
+      unfinished_descendant_count: item.unfinished_descendant_count
+    };
   }
 
   onMount(async () => {
@@ -100,27 +110,57 @@
     }
   }
 
+  async function finishTarget(target: TaskSummary) {
+    if (!task) return;
+    busy = true;
+    error = '';
+    try {
+      if (target.id === task.id) {
+        task = await api.finishTask(task.id);
+      } else {
+        await api.finishTask(target.id);
+        task = await api.task(task.id);
+      }
+      completionTarget = null;
+      dispatch('changed', task);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not finish task';
+    } finally {
+      busy = false;
+    }
+  }
+
   function toggleFinished() {
     if (!task) return;
-    if (!task.finished_at && !confirmTaskCompletion(task)) return;
-    void runTaskAction(
-      () => task!.finished_at ? api.reopenTask(task!.id) : api.finishTask(task!.id),
-      task.finished_at ? 'Could not reopen task' : 'Could not finish task'
-    );
+    if (task.finished_at) {
+      void runTaskAction(() => api.reopenTask(task!.id), 'Could not reopen task');
+      return;
+    }
+
+    const target = taskSummary(task);
+    if (target.unfinished_descendant_count > 0) completionTarget = target;
+    else void finishTarget(target);
   }
 
   async function toggleSubtask(subtask: TaskSummary) {
     if (!task) return;
-    if (!subtask.finished_at && !confirmTaskCompletion(subtask)) return;
+    if (!subtask.finished_at && subtask.unfinished_descendant_count > 0) {
+      completionTarget = subtask;
+      return;
+    }
+    if (!subtask.finished_at) {
+      await finishTarget(subtask);
+      return;
+    }
+
     busy = true;
     error = '';
     try {
-      if (subtask.finished_at) await api.reopenTask(subtask.id);
-      else await api.finishTask(subtask.id);
+      await api.reopenTask(subtask.id);
       task = await api.task(task.id);
       dispatch('changed', task);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not update subtask';
+      error = reason instanceof Error ? reason.message : 'Could not reopen subtask';
     } finally {
       busy = false;
     }
@@ -166,7 +206,7 @@
 <div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
-      <div>
+      <div class="editor-heading-copy">
         <p class="eyebrow">{taskId ? 'Task details' : 'Create task'}</p>
         <h1 id="task-editor-title" class="editor-title">
           {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
@@ -183,10 +223,7 @@
             on:click={toggleFinished}
           >
             {#if task.finished_at}
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4.8 9A8 8 0 1 1 4 14" />
-                <path d="M4 4v5h5" />
-              </svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>
               <span>Reopen</span>
             {:else}
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
@@ -208,8 +245,18 @@
               <span>Block</span>
             {/if}
           </button>
+          <button
+            type="button"
+            class="header-icon delete-icon"
+            aria-label="Delete task"
+            title="Delete task"
+            disabled={busy}
+            on:click={remove}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></svg>
+          </button>
         {/if}
-        <button class="icon-button" aria-label="Close" on:click={() => dispatch('close')}>×</button>
+        <button class="header-icon close-icon" aria-label="Close" title="Close" on:click={() => dispatch('close')}>×</button>
       </div>
     </header>
 
@@ -231,13 +278,11 @@
         initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
         initialTagIds={task?.direct_tags.map((item) => item.id) || []}
         taskDetails={task}
-        allowDelete={!!task && workspace.role !== 'viewer'}
         {busy}
         {error}
         submitLabel={taskId ? 'Save task' : 'Create task'}
         busyLabel={taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
-        on:delete={remove}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
         on:submit={(event) => save(event.detail)}
@@ -258,6 +303,17 @@
   />
 {/if}
 
+{#if completionTarget}
+  <TaskCompletionDialog
+    workspaceId={workspace.id}
+    taskId={completionTarget.id}
+    taskTitle={completionTarget.title}
+    {busy}
+    on:close={() => (completionTarget = null)}
+    on:confirm={() => void finishTarget(completionTarget!)}
+  />
+{/if}
+
 <style>
   .task-editor {
     width: min(100%, 60rem);
@@ -266,25 +322,32 @@
 
   .editor-header {
     top: -1rem;
+    align-items: center;
     margin: -1rem -1rem .8rem;
     padding: .8rem 1rem .7rem;
   }
 
-  .editor-header .eyebrow {
-    margin-bottom: .25rem;
-  }
-
-  .editor-header h1 {
-    font-size: 1.65rem;
-  }
+  .editor-heading-copy { min-width: 0; }
+  .editor-header .eyebrow { margin-bottom: .25rem; }
+  .editor-header h1 { font-size: 1.65rem; }
 
   .editor-title {
     display: flex;
+    min-width: 0;
     align-items: baseline;
     gap: .5rem;
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .editor-title > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .header-task-id {
+    flex: 0 0 auto;
     color: var(--muted);
     font-size: .52em;
     font-weight: 750;
@@ -293,8 +356,9 @@
 
   .editor-header-actions {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    gap: .45rem;
+    gap: .4rem;
   }
 
   .finish-action,
@@ -317,25 +381,14 @@
     font-weight: 800;
   }
 
-  .finish-action:hover:not(:disabled) {
-    border-color: var(--forest-2);
-    background: var(--forest-2);
-  }
+  .finish-action:hover:not(:disabled) { border-color: var(--forest-2); background: var(--forest-2); }
+  .finish-action.reopen { border-color: #b9c3bd; background: #fff; color: var(--forest-2); }
 
-  .finish-action.reopen {
-    border-color: #b9c3bd;
-    background: #fff;
-    color: var(--forest-2);
-  }
-
-  .quick-action {
-    border: 1px solid #cfcbc0;
-    background: #fbfaf6;
-    color: var(--ink);
-  }
+  .quick-action { border: 1px solid #cfcbc0; background: #fbfaf6; color: var(--ink); }
 
   .finish-action svg,
-  .quick-action svg {
+  .quick-action svg,
+  .header-icon svg {
     width: 1rem;
     height: 1rem;
     flex: 0 0 1rem;
@@ -346,13 +399,26 @@
     stroke-width: 1.8;
   }
 
-  .quick-action:hover:not(:disabled) {
-    border-color: #aaa69c;
-    background: #fff;
-  }
-
+  .quick-action:hover:not(:disabled) { border-color: #aaa69c; background: #fff; }
   .block-action { color: #8a4d36; }
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
+
+  .header-icon {
+    display: grid;
+    width: 2.1rem;
+    height: 2.1rem;
+    place-items: center;
+    border: 1px solid #cbc8be;
+    border-radius: .5rem;
+    background: #fff;
+    color: var(--muted);
+    padding: 0;
+  }
+
+  .header-icon:hover:not(:disabled) { background: #f7f5ef; color: var(--ink); }
+  .delete-icon { color: var(--danger); }
+  .delete-icon:hover:not(:disabled) { border-color: #d8aaa5; background: #fff2f0; color: var(--danger); }
+  .close-icon { font-size: 1.35rem; line-height: 1; }
 
   @media (max-width: 600px) {
     .task-editor { padding: .75rem; }
