@@ -270,7 +270,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
       {#if isDraft}
-        <p class="notice draft-notice">Review the draft and choose a priority of 1 or higher before creating the task.</p>
+        <p class="notice draft-notice">Review the draft and choose a priority of 1 or higher before saving it as a task.</p>
       {/if}
       <TaskForm
         {workspace}
@@ -287,8 +287,8 @@
         taskDetails={task}
         {busy}
         {error}
-        submitLabel={isDraft ? 'Create task' : taskId ? 'Save task' : 'Create task'}
-        busyLabel={isDraft ? 'Creating…' : taskId ? 'Saving…' : 'Creating…'}
+        submitLabel={isDraft ? 'Save as task' : taskId ? 'Save task' : 'Create task'}
+        busyLabel={isDraft ? 'Saving…' : taskId ? 'Saving…' : 'Creating…'}
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
