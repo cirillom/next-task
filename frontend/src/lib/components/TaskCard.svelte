@@ -124,7 +124,15 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
         </button>
       {/if}
-      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+      <div class="ranking-score">
+        <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+        {#if task.ranking_source_task_id !== null && task.ranking_source_score !== null}
+          <span
+            class="ranking-boost"
+            title={`Ranked with ancestor #${task.ranking_source_task_id}'s score ${task.ranking_source_score.toFixed(1)} because unfinished descendants must appear before their ancestors.`}
+          >↑ from #{task.ranking_source_task_id} · {task.ranking_source_score.toFixed(1)}</span>
+        {/if}
+      </div>
     </div>
   </div>
 
@@ -210,6 +218,9 @@
   .auto-unblock-note { color: var(--muted); font-size: .82rem; }
   .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
+  .ranking-score { display: inline-flex; align-items: center; gap: .45rem; }
+  .ranking-boost { color: var(--forest-2); font-size: .72rem; font-weight: 750; white-space: nowrap; }
+
   .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
   .edit-button svg, .finish-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .edit-button svg { width: 100%; height: 100%; }
@@ -245,6 +256,8 @@
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
+    .ranking-score { align-items: flex-end; flex-direction: column; gap: .18rem; }
+    .ranking-boost { font-size: .67rem; }
     .finish-action span, .quick-action span { display: none; }
     .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
     .status-select select { max-width: 8.5rem; }
