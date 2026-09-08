@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import DOMPurify from 'dompurify';
   import { marked } from 'marked';
 
@@ -10,245 +10,275 @@
   export let compact = false;
 
   const dispatch = createEventDispatcher<{ input: string }>();
-  const CARET_MARKER = '\uE000';
 
-  let editor: HTMLDivElement;
-  let focused = false;
-  let lastRendered = '';
+  let root: HTMLDivElement;
+  let activeTextarea: HTMLTextAreaElement;
+  let activeLine: number | null = null;
+  let lines = splitLines(value);
+  let internalValue = value;
 
-  function serializeChildren(node: ParentNode): string {
-    return Array.from(node.childNodes).map(serializeNode).join('');
+  function splitLines(markdown: string): string[] {
+    const next = markdown.split('\n');
+    return next.length ? next : [''];
   }
 
-  function indent(text: string, spaces = 2): string {
-    const prefix = ' '.repeat(spaces);
+  function escapeHtml(text: string): string {
     return text
-      .split('\n')
-      .filter((line, index, lines) => line || index < lines.length - 1)
-      .map((line) => line ? `${prefix}${line}` : line)
-      .join('\n');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
-  function serializeList(list: Element): string {
-    const ordered = list.tagName === 'OL';
-    const items = Array.from(list.children).filter((child) => child.tagName === 'LI');
-    let output = '';
-
-    items.forEach((item, index) => {
-      let body = '';
-      let nested = '';
-      for (const child of Array.from(item.childNodes)) {
-        if (child instanceof Element && (child.tagName === 'UL' || child.tagName === 'OL')) {
-          nested += indent(serializeList(child).trimEnd()) + '\n';
-        } else {
-          body += serializeNode(child);
-        }
-      }
-      const prefix = ordered ? `${index + 1}. ` : '- ';
-      output += `${prefix}${body.trim()}\n${nested}`;
-    });
-
-    return `${output.trimEnd()}\n\n`;
+  function inlineMarkdown(source: string): string {
+    return DOMPurify.sanitize(marked.parseInline(source, { gfm: true }) as string);
   }
 
-  function serializeNode(node: Node): string {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
-    if (!(node instanceof HTMLElement)) return '';
+  function indentationWidth(indent: string): number {
+    return indent.replace(/\t/g, '    ').length;
+  }
 
-    const children = () => serializeChildren(node);
-    switch (node.tagName) {
-      case 'P':
-        return `${children().trimEnd()}\n\n`;
-      case 'BR':
-        return '\n';
-      case 'STRONG':
-      case 'B':
-        return `**${children()}**`;
-      case 'EM':
-      case 'I':
-        return `*${children()}*`;
-      case 'DEL':
-      case 'S':
-        return `~~${children()}~~`;
-      case 'CODE':
-        if (node.parentElement?.tagName === 'PRE') return node.textContent || '';
-        return `\`${node.textContent || ''}\``;
-      case 'PRE': {
-        const code = (node.textContent || '').replace(/\n$/, '');
-        return `\`\`\`\n${code}\n\`\`\`\n\n`;
-      }
-      case 'H1':
-      case 'H2':
-      case 'H3':
-      case 'H4':
-      case 'H5':
-      case 'H6': {
-        const level = Number(node.tagName.slice(1));
-        return `${'#'.repeat(level)} ${children().trim()}\n\n`;
-      }
-      case 'UL':
-      case 'OL':
-        return serializeList(node);
-      case 'LI':
-        return children();
-      case 'BLOCKQUOTE': {
-        const quote = children().trim().split('\n').map((line) => `> ${line}`).join('\n');
-        return `${quote}\n\n`;
-      }
-      case 'A': {
-        const href = node.getAttribute('href') || '';
-        return `[${children()}](${href})`;
-      }
-      case 'IMG': {
-        const src = node.getAttribute('src') || '';
-        const alt = node.getAttribute('alt') || '';
-        return `![${alt}](${src})`;
-      }
-      case 'HR':
-        return '---\n\n';
-      case 'INPUT': {
-        const input = node as HTMLInputElement;
-        if (input.type === 'checkbox') return `[${input.checked ? 'x' : ' '}] `;
-        return '';
-      }
-      case 'TABLE':
-        return `${node.outerHTML}\n\n`;
-      case 'DIV':
-        return `${children().trimEnd()}\n`;
-      default:
-        return children();
+  function fenceMarker(line: string): RegExpMatchArray | null {
+    return line.match(/^\s*(`{3,}|~{3,})/);
+  }
+
+  function insideFence(index: number): boolean {
+    let fenceCharacter = '';
+    for (let lineIndex = 0; lineIndex < index; lineIndex += 1) {
+      const marker = fenceMarker(lines[lineIndex] || '');
+      if (!marker) continue;
+      const character = marker[1][0];
+      if (!fenceCharacter) fenceCharacter = character;
+      else if (fenceCharacter === character) fenceCharacter = '';
     }
+    return !!fenceCharacter;
   }
 
-  function normalizedMarkdown(): string {
-    return serializeChildren(editor)
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trimEnd();
-  }
+  function renderedLineHtml(line: string, index: number): string {
+    if (!line) return '<div class="md-blank">&nbsp;</div>';
 
-  function prepareInteractiveContent() {
-    if (!editor) return;
-    editor.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((checkbox) => {
-      checkbox.disabled = disabled;
-    });
-  }
-
-  function markdownHtml(markdown: string): string {
-    return markdown
-      ? DOMPurify.sanitize(marked.parse(markdown, { gfm: true }) as string)
-      : '';
-  }
-
-  function renderMarkdown(markdown: string) {
-    if (!editor) return;
-    editor.innerHTML = markdownHtml(markdown);
-    lastRendered = markdown;
-    prepareInteractiveContent();
-  }
-
-  function insertCaretMarker(): boolean {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return false;
-
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.startContainer)) return false;
-
-    range.collapse(false);
-    const marker = document.createTextNode(CARET_MARKER);
-    range.insertNode(marker);
-    return true;
-  }
-
-  function restoreCaret() {
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode() as Text | null;
-
-    while (node) {
-      const index = node.data.indexOf(CARET_MARKER);
-      if (index !== -1) {
-        node.data = node.data.replace(CARET_MARKER, '');
-        const range = document.createRange();
-        const selection = window.getSelection();
-        range.setStart(node, index);
-        range.collapse(true);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        return;
-      }
-      node = walker.nextNode() as Text | null;
+    const marker = fenceMarker(line);
+    if (marker) {
+      const language = line.slice(line.indexOf(marker[1]) + marker[1].length).trim();
+      return `<div class="md-code-fence">${language ? escapeHtml(language) : '&nbsp;'}</div>`;
     }
 
-    const range = document.createRange();
-    const selection = window.getSelection();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    if (insideFence(index)) return `<div class="md-code-line">${escapeHtml(line) || '&nbsp;'}</div>`;
+
+    const heading = line.match(/^\s*(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      return `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
+    }
+
+    if (/^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(line)) {
+      return '<hr />';
+    }
+
+    const task = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/);
+    if (task) {
+      const offset = Math.min(indentationWidth(task[1]) * .45, 4.5);
+      const checked = task[2].toLowerCase() === 'x';
+      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} disabled /><span>${inlineMarkdown(task[3])}</span></div>`;
+    }
+
+    const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
+    if (bullet) {
+      const offset = Math.min(indentationWidth(bullet[1]) * .45, 4.5);
+      return `<div class="md-list-line" style="--line-indent:${offset}rem"><span class="md-marker">•</span><span>${inlineMarkdown(bullet[2])}</span></div>`;
+    }
+
+    const ordered = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
+    if (ordered) {
+      const offset = Math.min(indentationWidth(ordered[1]) * .45, 4.5);
+      return `<div class="md-list-line" style="--line-indent:${offset}rem"><span class="md-marker md-number">${ordered[2]}.</span><span>${inlineMarkdown(ordered[3])}</span></div>`;
+    }
+
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (quote) return `<blockquote>${inlineMarkdown(quote[1])}</blockquote>`;
+
+    return `<div class="md-paragraph">${inlineMarkdown(line)}</div>`;
   }
 
-  function rerenderWhileEditing() {
+  function emitLines(nextLines: string[]) {
+    lines = nextLines.length ? nextLines : [''];
+    const next = lines.join('\n');
+    internalValue = next;
+    value = next;
+    dispatch('input', next);
+  }
+
+  function resizeActiveTextarea() {
+    if (!activeTextarea) return;
+    activeTextarea.style.height = 'auto';
+    activeTextarea.style.height = `${Math.max(activeTextarea.scrollHeight, 26)}px`;
+  }
+
+  async function activateLine(index: number, column?: number) {
     if (disabled) return;
-
-    const hasCaret = insertCaretMarker();
-    const markdownWithMarker = normalizedMarkdown();
-    const next = markdownWithMarker.replace(CARET_MARKER, '');
-
-    editor.innerHTML = markdownHtml(markdownWithMarker);
-    prepareInteractiveContent();
-    if (hasCaret) restoreCaret();
-
-    value = next;
-    lastRendered = next;
-    dispatch('input', next);
+    activeLine = Math.max(0, Math.min(index, lines.length - 1));
+    await tick();
+    if (!activeTextarea) return;
+    resizeActiveTextarea();
+    activeTextarea.focus();
+    const position = Math.min(column ?? lines[activeLine].length, lines[activeLine].length);
+    activeTextarea.setSelectionRange(position, position);
   }
 
-  function handleCheckboxChange(event: Event) {
-    if (disabled || !(event.target instanceof HTMLInputElement) || event.target.type !== 'checkbox') return;
-    const next = normalizedMarkdown();
-    value = next;
-    lastRendered = next;
-    dispatch('input', next);
+  function updateLine(index: number, text: string) {
+    const next = [...lines];
+    next[index] = text;
+    emitLines(next);
   }
 
-  function handleFocus() {
-    focused = true;
+  async function handleLineInput(index: number, event: Event) {
+    const textarea = event.currentTarget as HTMLTextAreaElement;
+    const text = textarea.value;
+
+    if (!text.includes('\n')) {
+      updateLine(index, text);
+      await tick();
+      resizeActiveTextarea();
+      return;
+    }
+
+    const cursor = textarea.selectionStart;
+    const beforeCursor = text.slice(0, cursor).split('\n');
+    const replacement = text.split('\n');
+    const next = [...lines];
+    next.splice(index, 1, ...replacement);
+    emitLines(next);
+
+    const nextIndex = index + beforeCursor.length - 1;
+    const nextColumn = beforeCursor[beforeCursor.length - 1].length;
+    await activateLine(nextIndex, nextColumn);
   }
 
-  function handleBlur() {
-    focused = false;
-    renderMarkdown(value);
+  function continuationPrefix(line: string): string {
+    const task = line.match(/^(\s*[-*+]\s+)\[[ xX]\]\s+/);
+    if (task) return `${task[1]}[ ] `;
+
+    const bullet = line.match(/^(\s*[-*+]\s+)/);
+    if (bullet) return bullet[1];
+
+    const ordered = line.match(/^(\s*)(\d+)([.)]\s+)/);
+    if (ordered) return `${ordered[1]}${Number(ordered[2]) + 1}${ordered[3]}`;
+
+    const quote = line.match(/^(\s*>\s?)/);
+    return quote?.[1] || '';
   }
 
-  function handleClick(event: MouseEvent) {
-    const target = event.target as HTMLElement;
-    if (!disabled && target.closest('a')) event.preventDefault();
+  async function handleLineKeydown(index: number, event: KeyboardEvent) {
+    const textarea = event.currentTarget as HTMLTextAreaElement;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const line = lines[index] || '';
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const prefix = continuationPrefix(line.slice(0, start));
+      const before = line.slice(0, start);
+      const after = line.slice(end);
+      const next = [...lines];
+      next.splice(index, 1, before, `${prefix}${after}`);
+      emitLines(next);
+      await activateLine(index + 1, prefix.length);
+      return;
+    }
+
+    if (event.key === 'Backspace' && start === 0 && end === 0 && index > 0) {
+      event.preventDefault();
+      const previous = lines[index - 1];
+      const next = [...lines];
+      next.splice(index - 1, 2, `${previous}${line}`);
+      emitLines(next);
+      await activateLine(index - 1, previous.length);
+      return;
+    }
+
+    if (event.key === 'Delete' && start === line.length && end === line.length && index < lines.length - 1) {
+      event.preventDefault();
+      const next = [...lines];
+      next.splice(index, 2, `${line}${lines[index + 1]}`);
+      emitLines(next);
+      await activateLine(index, start);
+      return;
+    }
+
+    if (event.key === 'ArrowUp' && !event.shiftKey && index > 0) {
+      event.preventDefault();
+      await activateLine(index - 1, start);
+      return;
+    }
+
+    if (event.key === 'ArrowDown' && !event.shiftKey && index < lines.length - 1) {
+      event.preventDefault();
+      await activateLine(index + 1, start);
+    }
   }
 
-  onMount(() => renderMarkdown(value));
+  function handleSurfaceMouseDown(event: MouseEvent) {
+    if (disabled || event.target !== root) return;
+    event.preventDefault();
+    void activateLine(lines.length - 1);
+  }
 
-  $: if (editor && !focused && value !== lastRendered) renderMarkdown(value);
-  $: if (editor) prepareInteractiveContent();
+  function handleActiveBlur() {
+    window.setTimeout(() => {
+      if (!root?.contains(document.activeElement)) activeLine = null;
+    }, 0);
+  }
+
+  $: if (activeLine === null && value !== internalValue) {
+    internalValue = value;
+    lines = splitLines(value);
+  }
 </script>
 
 <div class:compact class="markdown-editor-live">
   {#if label}<span class="field-label">{label}</span>{/if}
   <div
-    bind:this={editor}
+    bind:this={root}
     class="live-surface"
     class:disabled
-    contenteditable={!disabled}
+    class:empty={lines.length === 1 && !lines[0]}
     role="textbox"
     aria-multiline="true"
     aria-label={label || 'Markdown editor'}
     data-placeholder={placeholder}
-    spellcheck="true"
-    on:focus={handleFocus}
-    on:blur={handleBlur}
-    on:input={rerenderWhileEditing}
-    on:change={handleCheckboxChange}
-    on:click={handleClick}
-  ></div>
+    on:mousedown={handleSurfaceMouseDown}
+  >
+    {#each lines as line, index (index)}
+      {#if activeLine === index && !disabled}
+        <textarea
+          bind:this={activeTextarea}
+          class="source-line"
+          rows="1"
+          value={line}
+          spellcheck="true"
+          aria-label={`Markdown source line ${index + 1}`}
+          on:input={(event) => void handleLineInput(index, event)}
+          on:keydown={(event) => void handleLineKeydown(index, event)}
+          on:blur={handleActiveBlur}
+        ></textarea>
+      {:else}
+        <div
+          class="rendered-line"
+          class:interactive={!disabled}
+          role={!disabled ? 'button' : undefined}
+          tabindex={!disabled ? 0 : undefined}
+          on:mousedown|preventDefault={() => void activateLine(index)}
+          on:keydown={(event) => {
+            if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              void activateLine(index);
+            }
+          }}
+        >{@html renderedLineHtml(line, index)}</div>
+      {/if}
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -262,19 +292,20 @@
     border: 1px solid #cfcbbf;
     border-radius: .6rem;
     background: #fff;
-    padding: .75rem .85rem;
+    padding: .7rem .8rem;
     color: var(--ink);
     line-height: 1.55;
     outline: 0;
   }
 
-  .live-surface:focus {
+  .live-surface:focus-within {
     border-color: #8ca095;
     box-shadow: 0 0 0 2px rgba(70, 105, 85, .1);
   }
 
-  .live-surface:empty::before {
+  .live-surface.empty:not(:focus-within)::before {
     content: attr(data-placeholder);
+    display: block;
     color: var(--muted);
     pointer-events: none;
   }
@@ -284,62 +315,116 @@
     color: var(--muted);
   }
 
-  .live-surface :global(p:first-child),
-  .live-surface :global(h1:first-child),
-  .live-surface :global(h2:first-child),
-  .live-surface :global(h3:first-child) { margin-top: 0; }
-
-  .live-surface :global(p:last-child),
-  .live-surface :global(ul:last-child),
-  .live-surface :global(ol:last-child),
-  .live-surface :global(pre:last-child) { margin-bottom: 0; }
-
-  .live-surface :global(h1) { font-size: 1.55rem; }
-  .live-surface :global(h2) { font-size: 1.3rem; }
-  .live-surface :global(h3) { font-size: 1.12rem; }
-  .live-surface :global(h1),
-  .live-surface :global(h2),
-  .live-surface :global(h3) { margin: 1rem 0 .45rem; line-height: 1.25; }
-
-  .live-surface :global(strong) { font-weight: 800; }
-  .live-surface :global(em) { font-style: italic; }
-  .live-surface :global(del) { color: var(--muted); }
-
-  .live-surface :global(ul),
-  .live-surface :global(ol) { padding-left: 1.4rem; }
-
-  .live-surface :global(li:has(> input[type='checkbox'])) { list-style: none; }
-  .live-surface :global(input[type='checkbox']) {
-    width: .95rem;
-    height: .95rem;
-    margin: 0 .45rem 0 -1.3rem;
-    vertical-align: -.12rem;
-    accent-color: var(--forest);
+  .rendered-line {
+    min-height: 1.55em;
+    border-radius: .3rem;
+    padding: .06rem .2rem;
   }
 
-  .live-surface :global(blockquote) {
-    margin-left: 0;
+  .rendered-line.interactive { cursor: text; }
+  .rendered-line.interactive:hover { background: rgba(66, 91, 76, .045); }
+  .rendered-line:focus-visible { outline: 1px solid #9bada2; outline-offset: 1px; }
+
+  .source-line {
+    display: block;
+    width: 100%;
+    min-height: 1.7rem;
+    overflow: hidden;
+    resize: none;
+    border: 0;
+    border-radius: .3rem;
+    background: #f4f6f3;
+    color: var(--ink);
+    padding: .14rem .28rem;
+    box-shadow: inset 2px 0 0 #8ca095;
+    font: inherit;
+    line-height: 1.55;
+    outline: 0;
+  }
+
+  .rendered-line :global(.md-blank) { min-height: .85rem; }
+  .rendered-line :global(.md-paragraph) { min-height: 1.55em; }
+
+  .rendered-line :global(h1),
+  .rendered-line :global(h2),
+  .rendered-line :global(h3),
+  .rendered-line :global(h4),
+  .rendered-line :global(h5),
+  .rendered-line :global(h6) {
+    margin: .1rem 0;
+    line-height: 1.3;
+  }
+
+  .rendered-line :global(h1) { font-size: 1.55rem; }
+  .rendered-line :global(h2) { font-size: 1.3rem; }
+  .rendered-line :global(h3) { font-size: 1.12rem; }
+  .rendered-line :global(h4),
+  .rendered-line :global(h5),
+  .rendered-line :global(h6) { font-size: 1rem; }
+
+  .rendered-line :global(strong) { font-weight: 800; }
+  .rendered-line :global(em) { font-style: italic; }
+  .rendered-line :global(del) { color: var(--muted); }
+
+  .rendered-line :global(.md-list-line) {
+    display: grid;
+    grid-template-columns: 1.2rem minmax(0, 1fr);
+    gap: .15rem;
+    margin-left: var(--line-indent);
+  }
+
+  .rendered-line :global(.md-marker) { color: var(--muted); text-align: right; }
+  .rendered-line :global(.md-number) { font-variant-numeric: tabular-nums; }
+
+  .rendered-line :global(.md-task-line input) {
+    width: .95rem;
+    height: .95rem;
+    margin: .24rem 0 0 .08rem;
+    accent-color: var(--forest);
+    pointer-events: none;
+  }
+
+  .rendered-line :global(blockquote) {
+    margin: 0;
     border-left: 3px solid #c9d3cc;
     padding-left: .8rem;
     color: var(--muted);
   }
 
-  .live-surface :global(code) {
+  .rendered-line :global(code) {
     border-radius: .25rem;
     background: #f0eee7;
     padding: .08rem .25rem;
     font-size: .9em;
   }
 
-  .live-surface :global(pre) {
-    overflow: auto;
-    border-radius: .45rem;
-    background: #f0eee7;
-    padding: .7rem;
+  .rendered-line :global(a) {
+    color: var(--forest-2);
+    text-decoration: underline;
+    text-underline-offset: .12rem;
+    pointer-events: none;
   }
 
-  .live-surface :global(pre code) { background: transparent; padding: 0; }
-  .live-surface :global(a) { color: var(--forest-2); text-decoration: underline; text-underline-offset: .12rem; }
+  .rendered-line :global(hr) {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: .65rem .15rem;
+  }
+
+  .rendered-line :global(.md-code-fence),
+  .rendered-line :global(.md-code-line) {
+    margin: 0 -.05rem;
+    background: #f0eee7;
+    padding: .12rem .55rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+
+  .rendered-line :global(.md-code-fence) {
+    min-height: .35rem;
+    color: var(--muted);
+    font-size: .7rem;
+  }
 
   .compact .live-surface { min-height: 9rem; max-height: 18rem; }
 
