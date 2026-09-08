@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Task, TaskInput, Workspace } from '../lib/api/types';
+  import type { Task, TaskInput, TaskSummary, Workspace } from '../lib/api/types';
+  import { confirmTaskCompletion } from '../lib/taskCompletion';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
   import TaskForm from '../lib/components/TaskForm.svelte';
 
@@ -99,6 +100,32 @@
     }
   }
 
+  function toggleFinished() {
+    if (!task) return;
+    if (!task.finished_at && !confirmTaskCompletion(task)) return;
+    void runTaskAction(
+      () => task!.finished_at ? api.reopenTask(task!.id) : api.finishTask(task!.id),
+      task.finished_at ? 'Could not reopen task' : 'Could not finish task'
+    );
+  }
+
+  async function toggleSubtask(subtask: TaskSummary) {
+    if (!task) return;
+    if (!subtask.finished_at && !confirmTaskCompletion(subtask)) return;
+    busy = true;
+    error = '';
+    try {
+      if (subtask.finished_at) await api.reopenTask(subtask.id);
+      else await api.finishTask(subtask.id);
+      task = await api.task(task.id);
+      dispatch('changed', task);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not update subtask';
+    } finally {
+      busy = false;
+    }
+  }
+
   function block(request: { reason: string; unblocked_at: string | null }) {
     if (!task) return;
     void runBlockingAction(
@@ -150,6 +177,24 @@
         {#if task && workspace.role !== 'viewer'}
           <button
             type="button"
+            class="finish-action"
+            class:reopen={!!task.finished_at}
+            disabled={busy}
+            on:click={toggleFinished}
+          >
+            {#if task.finished_at}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.8 9A8 8 0 1 1 4 14" />
+                <path d="M4 4v5h5" />
+              </svg>
+              <span>Reopen</span>
+            {:else}
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+              <span>Finish</span>
+            {/if}
+          </button>
+          <button
+            type="button"
             class="quick-action block-action"
             class:active={!!task.current_block}
             disabled={busy}
@@ -194,6 +239,7 @@
         on:cancel={() => dispatch('close')}
         on:delete={remove}
         on:openTask={(event) => dispatch('openTask', event.detail)}
+        on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
         on:submit={(event) => save(event.detail)}
       />
     {/if}
@@ -213,6 +259,25 @@
 {/if}
 
 <style>
+  .task-editor {
+    width: min(100%, 60rem);
+    padding: 1rem;
+  }
+
+  .editor-header {
+    top: -1rem;
+    margin: -1rem -1rem .8rem;
+    padding: .8rem 1rem .7rem;
+  }
+
+  .editor-header .eyebrow {
+    margin-bottom: .25rem;
+  }
+
+  .editor-header h1 {
+    font-size: 1.65rem;
+  }
+
   .editor-title {
     display: flex;
     align-items: baseline;
@@ -229,24 +294,47 @@
   .editor-header-actions {
     display: flex;
     align-items: center;
-    gap: .55rem;
+    gap: .45rem;
   }
 
+  .finish-action,
   .quick-action {
     display: inline-flex;
     height: 2.1rem;
     align-items: center;
     gap: .38rem;
-    border: 1px solid #cfcbc0;
     border-radius: .55rem;
-    background: #fbfaf6;
-    color: var(--ink);
     padding: 0 .65rem;
     font-size: .78rem;
     font-weight: 700;
     line-height: 1;
   }
 
+  .finish-action {
+    border: 1px solid var(--forest);
+    background: var(--forest);
+    color: #fff;
+    font-weight: 800;
+  }
+
+  .finish-action:hover:not(:disabled) {
+    border-color: var(--forest-2);
+    background: var(--forest-2);
+  }
+
+  .finish-action.reopen {
+    border-color: #b9c3bd;
+    background: #fff;
+    color: var(--forest-2);
+  }
+
+  .quick-action {
+    border: 1px solid #cfcbc0;
+    background: #fbfaf6;
+    color: var(--ink);
+  }
+
+  .finish-action svg,
   .quick-action svg {
     width: 1rem;
     height: 1rem;
@@ -267,7 +355,11 @@
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
   @media (max-width: 600px) {
+    .task-editor { padding: .75rem; }
+    .editor-header { top: -.75rem; margin: -.75rem -.75rem .7rem; padding: .7rem .75rem; }
+    .finish-action span,
     .quick-action span { display: none; }
+    .finish-action,
     .quick-action { width: 2.1rem; justify-content: center; padding: 0; }
   }
 </style>
