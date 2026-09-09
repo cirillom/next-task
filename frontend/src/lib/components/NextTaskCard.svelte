@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
-  import { daysSince, formatDate, formatDateTime } from '../format';
+  import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
@@ -148,7 +148,7 @@
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     <span
       class="date-meta"
-      class:overdue={!!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)}
+      class:overdue={!!task.due_date && task.due_date < localDate()}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}

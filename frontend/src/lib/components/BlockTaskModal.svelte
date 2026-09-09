@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, tick } from 'svelte';
   import type { Block } from '../api/types';
-  import { formatDateTime } from '../format';
+  import { formatDateTime, localDateTime } from '../format';
+  import DateTimeInput from './DateTimeInput.svelte';
 
   type AutoUnblockChoice = 'none' | 'tomorrow' | 'three-days' | 'week' | 'custom';
 
@@ -19,25 +20,16 @@
   let autoUnblockAt = '';
   let autoUnblockChoice: AutoUnblockChoice = 'none';
   let reblockMode = false;
-  let autoUnblockInput: HTMLInputElement;
-
-  function datetimeLocal(value = new Date()): string {
-    const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
-    return local.toISOString().slice(0, 16);
-  }
-
-  function datetimeLocalNow(): string {
-    return datetimeLocal();
-  }
+  let autoUnblockInput: DateTimeInput;
 
   function offsetLocalDateTime(days: number): string {
     const target = new Date();
     target.setDate(target.getDate() + days);
     target.setSeconds(0, 0);
-    return datetimeLocal(target);
+    return localDateTime(target);
   }
 
-  let minimumAutoUnblock = datetimeLocalNow();
+  let minimumAutoUnblock = localDateTime();
 
   function isActive(block: Block): boolean {
     return !block.unblocked_at || new Date(block.unblocked_at).getTime() > Date.now();
@@ -49,7 +41,7 @@
 
   async function chooseAutoUnblock(choice: AutoUnblockChoice) {
     autoUnblockChoice = choice;
-    minimumAutoUnblock = datetimeLocalNow();
+    minimumAutoUnblock = localDateTime();
     if (choice === 'none') autoUnblockAt = '';
     if (choice === 'tomorrow') autoUnblockAt = offsetLocalDateTime(1);
     if (choice === 'three-days') autoUnblockAt = offsetLocalDateTime(3);
@@ -78,7 +70,7 @@
     autoUnblockAt = '';
     autoUnblockChoice = 'none';
     reblockMode = true;
-    minimumAutoUnblock = datetimeLocalNow();
+    minimumAutoUnblock = localDateTime();
     await tick();
   }
 
@@ -134,14 +126,13 @@
         {#if autoUnblockChoice === 'custom'}
           <label class="auto-unblock-field">
             <span>Auto-unblock at</span>
-            <input
+            <DateTimeInput
               bind:this={autoUnblockInput}
-              type="datetime-local"
-              lang="pt-BR"
+              includeTime
               bind:value={autoUnblockAt}
               min={minimumAutoUnblock}
               disabled={busy}
-              on:focus={() => (minimumAutoUnblock = datetimeLocalNow())}
+              on:focus={() => (minimumAutoUnblock = localDateTime())}
             />
           </label>
         {:else if autoUnblockAt}
@@ -294,7 +285,7 @@
 
   .auto-unblock-field > span { flex: 0 0 auto; }
 
-  .auto-unblock-field input {
+  .auto-unblock-field :global(input) {
     min-width: 0;
     flex: 1 1 auto;
     height: 2.35rem;
@@ -389,7 +380,7 @@
   @media (max-width: 600px) {
     .preset-row button { flex: 1 1 auto; }
     .auto-unblock-field { align-items: stretch; flex-direction: column; gap: .35rem; font-size: .76rem; }
-    .auto-unblock-field input { font-size: .76rem; }
+    .auto-unblock-field :global(input) { font-size: .76rem; }
     .block-history__top { gap: .5rem; }
     .reblock-button { white-space: nowrap; }
   }
