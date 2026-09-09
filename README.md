@@ -10,6 +10,13 @@ built Svelte PWA, and a separate isolated process serves the authenticated MCP
 gateway. Both use SQLite in a mounted `/data` directory. There is no offline
 synchronization; the service worker caches only the application shell.
 
+Dates throughout the UI use `dd/mm/yyyy`, and date/time fields use
+`dd/mm/yyyy HH:mm` with a 24-hour clock in the device's timezone. API timestamps
+are stored and returned in UTC; due dates remain calendar dates without timezone
+conversion. Date/time fields accept this explicit format regardless of browser
+language. Times skipped by a daylight-saving change are rejected; repeated times
+use the device's first occurrence.
+
 ## Docker development
 
 The repository's `docker-compose.yml` builds the current checkout, publishes port

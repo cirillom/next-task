@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
+  import { localDateTime } from '../lib/format';
   import type { Task, TaskInput, TaskSummary, Workspace } from '../lib/api/types';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
   import TaskCompletionDialog from '../lib/components/TaskCompletionDialog.svelte';
@@ -24,13 +25,6 @@
   let error = '';
 
   $: isDraft = task?.priority === 0;
-
-  function datetimeLocal(value: string | null): string {
-    if (!value) return '';
-    const date = new Date(value);
-    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-    return local.toISOString().slice(0, 16);
-  }
 
   function taskSummary(item: Task): TaskSummary {
     return {
@@ -280,7 +274,7 @@
         initialStatusId={task?.status.id || 0}
         initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
-        initialLastWorked={datetimeLocal(task?.last_worked_at || null)}
+        initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}
         initialParentTaskId={task?.parent_task_id || 0}
         initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
         initialTagIds={task?.direct_tags.map((item) => item.id) || []}

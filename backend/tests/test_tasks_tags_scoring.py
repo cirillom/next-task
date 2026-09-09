@@ -32,6 +32,46 @@ def make_task(
     return response.json()
 
 
+@pytest.mark.parametrize(
+    "timestamp",
+    ["2026-09-09T14:30:00-03:00", "2026-09-09T23:00:00+05:30", "2026-09-09T17:30:00"],
+)
+def test_timestamps_round_trip_as_utc_without_shifting_due_dates(
+    logged_in_client: Callable[[str], TestClient], timestamp: str,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, statuses = make_workspace(client)
+    task = make_task(
+        client, workspace, statuses, last_worked_at=timestamp, due_date="2026-09-09"
+    )
+    expected = datetime(2026, 9, 9, 17, 30, tzinfo=UTC)
+
+    def assert_utc_timestamps(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key.endswith("_at") and item is not None:
+                    assert datetime.fromisoformat(item).utcoffset() == timedelta(0), (key, item)
+                assert_utc_timestamps(item)
+        elif isinstance(value, list):
+            for item in value:
+                assert_utc_timestamps(item)
+
+    assert_utc_timestamps(workspace)
+    assert_utc_timestamps(client.get("/api/auth/me").json())
+    assert_utc_timestamps(task)
+    assert datetime.fromisoformat(task["last_worked_at"]) == expected
+    fetched = client.get(f"/api/tasks/{task['id']}").json()
+    assert datetime.fromisoformat(fetched["last_worked_at"]) == expected
+    assert fetched["due_date"] == "2026-09-09"
+    updated = client.patch(f"/api/tasks/{task['id']}", json={"last_worked_at": timestamp})
+    assert updated.status_code == 200, updated.text
+    assert datetime.fromisoformat(updated.json()["last_worked_at"]) == expected
+    assert_utc_timestamps(updated.json())
+    cleared = client.patch(f"/api/tasks/{task['id']}", json={"last_worked_at": None})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["last_worked_at"] is None
+
+
 def test_assignee_must_belong_to_task_workspace(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable,

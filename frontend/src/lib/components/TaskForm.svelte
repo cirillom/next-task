@@ -3,6 +3,7 @@
   import { ApiError, api } from '../api/client';
   import type { Member, Status, Tag, Task, TaskInput, TaskSummary, Workspace } from '../api/types';
   import { formatDateTime } from '../format';
+  import DateTimeInput from './DateTimeInput.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
 
   export let workspace: Workspace;
@@ -208,8 +209,8 @@
     <div class="metadata-row">
       <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
       <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
-      <label>Due date<input type="date" lang="pt-BR" bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
-      <label>Last worked<input type="datetime-local" lang="pt-BR" bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
+      <label>Due date<DateTimeInput bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
+      <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
     </div>
 
     <section class="hierarchy-panel" aria-label="Task hierarchy">

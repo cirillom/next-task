@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 from app.models import WorkspaceRole
 
@@ -20,6 +21,10 @@ def ensure_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC)
 
 
+# SQLite returns naive datetimes; API timestamps always identify a UTC instant.
+UtcDateTime = Annotated[datetime, AfterValidator(ensure_utc)]
+
+
 class ApiModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -32,7 +37,7 @@ class UserRead(ApiModel):
     id: int
     email: str
     display_name: str
-    created_at: datetime
+    created_at: UtcDateTime
 
 
 class LoginRequest(ApiModel):
@@ -83,7 +88,7 @@ class WorkspaceRead(ApiModel):
     id: int
     name: str
     scoring_formula: str | None
-    created_at: datetime
+    created_at: UtcDateTime
     role: WorkspaceRole
 
 
@@ -139,25 +144,15 @@ class TagSummary(ApiModel):
 class BlockRead(ApiModel):
     id: int
     reason: str
-    blocked_at: datetime
-    unblocked_at: datetime | None
-
-    @field_validator("blocked_at", "unblocked_at", mode="before")
-    @classmethod
-    def normalize_timestamps(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
+    blocked_at: UtcDateTime
+    unblocked_at: UtcDateTime | None
 
 
 class TaskSummary(ApiModel):
     id: int
     title: str
-    finished_at: datetime | None
+    finished_at: UtcDateTime | None
     unfinished_descendant_count: int = 0
-
-    @field_validator("finished_at", mode="before")
-    @classmethod
-    def normalize_finished_at(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
 
 
 class TaskCreate(ApiModel):
@@ -167,7 +162,7 @@ class TaskCreate(ApiModel):
     status_id: int
     priority: int = Field(default=1, ge=1)
     due_date: date | None = None
-    last_worked_at: datetime | None = None
+    last_worked_at: UtcDateTime | None = None
     parent_task_id: int | None = None
     assignee_ids: list[int] = Field(default_factory=list)
     tag_ids: list[int] = Field(default_factory=list)
@@ -184,7 +179,7 @@ class TaskUpdate(ApiModel):
     status_id: int | None = None
     priority: int | None = Field(default=None, ge=1)
     due_date: date | None = None
-    last_worked_at: datetime | None = None
+    last_worked_at: UtcDateTime | None = None
     parent_task_id: int | None = None
     assignee_ids: list[int] | None = None
     tag_ids: list[int] | None = None
@@ -205,13 +200,13 @@ class TaskRead(ApiModel):
     status: StatusRead
     priority: int
     due_date: date | None
-    last_worked_at: datetime | None
-    finished_at: datetime | None
+    last_worked_at: UtcDateTime | None
+    finished_at: UtcDateTime | None
     parent_task_id: int | None
     parent_task: TaskSummary | None
     unfinished_descendant_count: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
     score: float
     ranking_score: float
     ranking_source_task_id: int | None
@@ -223,34 +218,19 @@ class TaskRead(ApiModel):
     blocking_history: list[BlockRead]
     subtasks: list[TaskSummary]
 
-    @field_validator("last_worked_at", "finished_at", "created_at", "updated_at", mode="before")
-    @classmethod
-    def normalize_timestamps(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
-
 
 class BlockCreate(ApiModel):
     reason: str = Field(min_length=1, max_length=4000)
-    unblocked_at: datetime | None = None
+    unblocked_at: UtcDateTime | None = None
 
     @field_validator("reason")
     @classmethod
     def clean_reason(cls, value: str) -> str:
         return clean_required(value)
 
-    @field_validator("unblocked_at")
-    @classmethod
-    def normalize_unblocked_at(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
-
 
 class BlockReblock(ApiModel):
-    unblocked_at: datetime | None = None
-
-    @field_validator("unblocked_at")
-    @classmethod
-    def normalize_unblocked_at(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
+    unblocked_at: UtcDateTime | None = None
 
 
 class TagCreate(ApiModel):
