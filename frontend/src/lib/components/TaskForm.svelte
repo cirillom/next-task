@@ -51,9 +51,10 @@
   let assigneeIds = [...initialAssigneeIds];
   let assigneeOpen = false;
   let tagIds = [...initialTagIds];
-  let newTags = initialNewTags;
+  let tagSearch = '';
+  let suggestedNewTags = normalizedTagNames(initialNewTags);
   let loading = true;
-  let resolving = false;
+  let creatingTag = false;
   let localError = '';
 
   $: {
@@ -66,6 +67,10 @@
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedMembers = members.filter((member) => assigneeIds.includes(member.user_id));
+  $: normalizedTagSearch = normalizeTagName(tagSearch);
+  $: filteredTags = normalizedTagSearch
+    ? tags.filter((tag) => tag.name.toLowerCase().includes(normalizedTagSearch))
+    : tags;
 
   function parentOptionLabel(item: Task): string {
     return `${item.title} (#${item.id})`;
@@ -143,58 +148,58 @@
     }
   });
 
-  function normalizedNewTags(): string[] {
-    const values = newTags
+  function normalizeTagName(value: string): string {
+    return value.trim().replace(/^#/, '').trim().toLowerCase();
+  }
+
+  function normalizedTagNames(value: string): string[] {
+    const values = value
       .split(/[\n,]+/)
-      .map((value) => value.trim().replace(/^#/, '').trim().toLowerCase())
+      .map(normalizeTagName)
       .filter(Boolean);
     return [...new Set(values)];
   }
 
-  async function resolveTagIds(): Promise<number[]> {
-    const resolved = new Set(tagIds);
-    for (const name of normalizedNewTags()) {
-      const existing = tags.find((tag) => tag.name.toLowerCase() === name);
-      if (existing) {
-        resolved.add(existing.id);
-        continue;
-      }
-
+  async function createAndSelectTag() {
+    const name = normalizedTagSearch;
+    if (!name || creatingTag) return;
+    creatingTag = true;
+    localError = '';
+    try {
+      let created: Tag;
       try {
-        const created = await api.createTag(workspace.id, { name });
-        tags = [...tags, created];
-        resolved.add(created.id);
+        created = await api.createTag(workspace.id, { name });
+        tags = [...tags, created].sort((left, right) => left.name.localeCompare(right.name));
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
         tags = await api.tags(workspace.id);
         const concurrent = tags.find((tag) => tag.name.toLowerCase() === name);
         if (!concurrent) throw reason;
-        resolved.add(concurrent.id);
+        created = concurrent;
       }
+      if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
+      suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion !== name);
+      tagSearch = '';
+    } catch (reason) {
+      localError = reason instanceof Error ? reason.message : 'Could not create tag';
+    } finally {
+      creatingTag = false;
     }
-    return [...resolved];
   }
 
-  async function submit() {
-    resolving = true;
+  function submit() {
     localError = '';
-    try {
-      dispatch('submit', {
-        title,
-        description: description || null,
-        status_id: statusId,
-        priority,
-        due_date: dueDate || null,
-        last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
-        parent_task_id: parentTaskId || null,
-        assignee_ids: assigneeIds,
-        tag_ids: await resolveTagIds()
-      });
-    } catch (reason) {
-      localError = reason instanceof Error ? reason.message : 'Could not prepare task';
-    } finally {
-      resolving = false;
-    }
+    dispatch('submit', {
+      title,
+      description: description || null,
+      status_id: statusId,
+      priority,
+      due_date: dueDate || null,
+      last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
+      parent_task_id: parentTaskId || null,
+      assignee_ids: assigneeIds,
+      tag_ids: tagIds
+    });
   }
 </script>
 
@@ -267,7 +272,7 @@
                   type="button"
                   class="subtask-toggle"
                   class:finished={!!subtask.finished_at}
-                  disabled={busy || resolving}
+                  disabled={busy || creatingTag}
                   aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`}
                   title={subtask.finished_at ? 'Reopen subtask' : 'Finish subtask'}
                   on:click={() => dispatch('toggleSubtask', subtask)}
@@ -324,8 +329,23 @@
 
     <section class="tags-section">
       <span class="field-label">Direct tags</span>
+      {#if suggestedNewTags.length && workspace.role !== 'viewer'}
+        <div class="tag-suggestions">
+          <small>Suggested new tags</small>
+          {#each suggestedNewTags as suggestion}
+            <button type="button" on:click={() => (tagSearch = suggestion)}>#{suggestion}</button>
+          {/each}
+        </div>
+      {/if}
       <div class="tags-line">
-        {#each tags as tag (tag.id)}
+        <input
+          bind:value={tagSearch}
+          aria-label="Search tags"
+          placeholder="Search tags"
+          autocomplete="off"
+          on:keydown={(event) => event.key === 'Enter' && event.preventDefault()}
+        />
+        {#each filteredTags as tag (tag.id)}
           <button
             type="button"
             class:selected={tagIds.includes(tag.id)}
@@ -334,8 +354,13 @@
             on:click={() => toggleTag(tag.id)}
           >#{tag.name}</button>
         {/each}
-        {#if workspace.role !== 'viewer'}
-          <input bind:value={newTags} aria-label="Add new tags" placeholder="+ new tags" />
+        {#if normalizedTagSearch && !filteredTags.length && workspace.role !== 'viewer'}
+          <button
+            type="button"
+            class="create-tag-button"
+            disabled={creatingTag}
+            on:click={createAndSelectTag}
+          >{creatingTag ? 'Creating…' : `Create #${normalizedTagSearch}`}</button>
         {/if}
       </div>
     </section>
@@ -368,8 +393,8 @@
     {#if localError || error}<p class="error" role="alert">{localError || error}</p>{/if}
     <footer class="editor-actions">
       <span></span>
-      <button type="button" disabled={busy || resolving} on:click={() => dispatch('cancel')}>{cancelLabel}</button>
-      {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || resolving || !statusId || !title.trim()}>{busy || resolving ? busyLabel : submitLabel}</button>{/if}
+      <button type="button" disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</button>
+      {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</button>{/if}
     </footer>
   </form>
 {/if}
@@ -598,8 +623,13 @@
   }
 
   .tags-line button.selected { background: color-mix(in srgb, var(--tag-color) 23%, white); font-weight: 800; }
-  .tags-line input { width: 8rem; min-width: 8rem; flex: 1 0 8rem; border: 0; padding: .2rem .35rem; box-shadow: none; }
+  .tags-line input { width: 8rem; min-width: 8rem; flex: 1 0 8rem; order: -1; border: 0; padding: .2rem .35rem; box-shadow: none; }
   .tags-line input:focus { outline: 0; }
+  .tags-line .create-tag-button { border-style: dashed; font-weight: 750; }
+
+  .tag-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+  .tag-suggestions small { margin-right: .15rem; color: var(--muted); }
+  .tag-suggestions button { border: 1px dashed #aeb9b2; border-radius: 999px; background: #f7f8f5; color: var(--forest-2); padding: .18rem .45rem; font-size: .72rem; }
 
   .compact-details { margin-top: 0; padding-top: .5rem; }
   .compact-details dl { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
