@@ -13,7 +13,9 @@
 
   let root: HTMLDivElement;
   let activeTextarea: HTMLTextAreaElement;
+  let sourceTextarea: HTMLTextAreaElement;
   let activeLine: number | null = null;
+  let sourceMode = false;
   let lines = splitLines(value);
   let internalValue = value;
 
@@ -32,7 +34,8 @@
   }
 
   function inlineMarkdown(source: string): string {
-    return DOMPurify.sanitize(marked.parseInline(source, { gfm: true }) as string);
+    return DOMPurify.sanitize(marked.parseInline(source, { gfm: true }) as string)
+      .replace(/<a /g, '<a rel="noopener noreferrer" ');
   }
 
   function indentationWidth(indent: string): number {
@@ -130,7 +133,7 @@
   }
 
   async function activateLine(index: number, column?: number) {
-    if (disabled) return;
+    if (disabled || sourceMode) return;
     activeLine = Math.max(0, Math.min(index, lines.length - 1));
     await tick();
     if (!activeTextarea) return;
@@ -229,14 +232,24 @@
     }
   }
 
-  function handleRenderedMouseDown(index: number, event: MouseEvent) {
+  function renderedLink(target: EventTarget | null): HTMLAnchorElement | null {
+    return target instanceof Element ? target.closest('a') : null;
+  }
+
+  function handleRenderedClick(index: number, event: MouseEvent) {
     if (disabled) return;
     const target = event.target;
     if (target instanceof HTMLInputElement && target.type === 'checkbox') {
       event.stopPropagation();
       return;
     }
-    event.preventDefault();
+
+    const link = renderedLink(target);
+    if (link && (event.ctrlKey || event.metaKey)) return;
+    if (link) event.preventDefault();
+
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
     void activateLine(index);
   }
 
@@ -255,6 +268,7 @@
 
   function handleRenderedKeydown(index: number, event: KeyboardEvent) {
     if (event.target instanceof HTMLInputElement) return;
+    if (renderedLink(event.target)) return;
     if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
       void activateLine(index);
@@ -273,6 +287,23 @@
     }, 0);
   }
 
+  async function toggleSourceMode() {
+    sourceMode = !sourceMode;
+    activeLine = null;
+    lines = splitLines(value);
+    if (!sourceMode) return;
+    await tick();
+    sourceTextarea?.focus();
+  }
+
+  function handleSourceInput(event: Event) {
+    const next = (event.currentTarget as HTMLTextAreaElement).value;
+    value = next;
+    internalValue = next;
+    lines = splitLines(next);
+    dispatch('input', next);
+  }
+
   $: if (activeLine === null && value !== internalValue) {
     internalValue = value;
     lines = splitLines(value);
@@ -280,45 +311,68 @@
 </script>
 
 <div class:compact class="markdown-editor-live">
-  {#if label}<span class="field-label">{label}</span>{/if}
-  <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={label || 'Markdown editor'} data-placeholder={placeholder} on:mousedown={handleSurfaceMouseDown}>
-    {#each lines as line, index (index)}
-      {@const codeRole = codeBlockRole(index)}
-      {#if activeLine === index && !disabled}
-        <textarea
-          bind:this={activeTextarea}
-          class="source-line"
-          class:code-source={codeRole !== null}
-          class:code-start={codeRole === 'start'}
-          class:code-end={codeRole === 'end'}
-          rows="1"
-          value={line}
-          spellcheck="true"
-          aria-label={`Markdown source line ${index + 1}`}
-          on:input={(event) => void handleLineInput(index, event)}
-          on:keydown={(event) => void handleLineKeydown(index, event)}
-          on:blur={handleActiveBlur}
-        ></textarea>
-      {:else}
-        <div
-          class="rendered-line"
-          class:interactive={!disabled}
-          class:code-block={codeRole !== null}
-          class:code-start={codeRole === 'start'}
-          class:code-end={codeRole === 'end'}
-          role={!disabled ? 'button' : undefined}
-          tabindex={!disabled ? 0 : undefined}
-          on:mousedown={(event) => handleRenderedMouseDown(index, event)}
-          on:change={(event) => handleRenderedChange(index, event)}
-          on:keydown={(event) => handleRenderedKeydown(index, event)}
-        >{@html renderedLineHtml(line, index)}</div>
-      {/if}
-    {/each}
+  <div class="editor-heading">
+    {#if label}<span class="field-label">{label}</span>{/if}
+    {#if !disabled}
+      <button type="button" class="source-toggle" aria-pressed={sourceMode} on:click={toggleSourceMode}>
+        {sourceMode ? 'Live editor' : 'Edit full text'}
+      </button>
+    {/if}
   </div>
+  {#if sourceMode && !disabled}
+    <textarea
+      bind:this={sourceTextarea}
+      class="full-source"
+      value={value}
+      rows="10"
+      spellcheck="true"
+      aria-label={`${label || 'Description'} full text`}
+      {placeholder}
+      on:input={handleSourceInput}
+    ></textarea>
+  {:else}
+    <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={label || 'Markdown editor'} data-placeholder={placeholder} on:mousedown={handleSurfaceMouseDown}>
+      {#each lines as line, index (index)}
+        {@const codeRole = codeBlockRole(index)}
+        {#if activeLine === index && !disabled}
+          <textarea
+            bind:this={activeTextarea}
+            class="source-line"
+            class:code-source={codeRole !== null}
+            class:code-start={codeRole === 'start'}
+            class:code-end={codeRole === 'end'}
+            rows="1"
+            value={line}
+            spellcheck="true"
+            aria-label={`Markdown source line ${index + 1}`}
+            on:input={(event) => void handleLineInput(index, event)}
+            on:keydown={(event) => void handleLineKeydown(index, event)}
+            on:blur={handleActiveBlur}
+          ></textarea>
+        {:else}
+          <div
+            class="rendered-line"
+            class:interactive={!disabled}
+            class:code-block={codeRole !== null}
+            class:code-start={codeRole === 'start'}
+            class:code-end={codeRole === 'end'}
+            role={!disabled ? 'button' : undefined}
+            tabindex={!disabled ? 0 : undefined}
+            on:click={(event) => handleRenderedClick(index, event)}
+            on:change={(event) => handleRenderedChange(index, event)}
+            on:keydown={(event) => handleRenderedKeydown(index, event)}
+          >{@html renderedLineHtml(line, index)}</div>
+        {/if}
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
   .markdown-editor-live { display: grid; gap: .35rem; }
+  .editor-heading { display: flex; min-height: 1.6rem; align-items: center; justify-content: space-between; gap: .75rem; }
+  .source-toggle { border: 0; background: transparent; color: var(--forest-2); padding: .12rem .2rem; font-size: .72rem; font-weight: 750; }
+  .source-toggle:hover { text-decoration: underline; text-underline-offset: .14rem; }
   .live-surface { width: 100%; min-height: 15rem; max-height: 32rem; overflow: auto; border: 1px solid #cfcbbf; border-radius: .6rem; background: #fff; padding: .7rem .8rem; color: var(--ink); line-height: 1.55; outline: 0; }
   .live-surface:focus-within { border-color: #8ca095; box-shadow: 0 0 0 2px rgba(70, 105, 85, .1); }
   .live-surface.empty:not(:focus-within)::before { content: attr(data-placeholder); display: block; color: var(--muted); pointer-events: none; }
@@ -327,6 +381,7 @@
   .rendered-line.interactive { cursor: text; }
   .rendered-line:focus-visible { outline: 1px solid #9bada2; outline-offset: 1px; }
   .source-line { display: block; width: 100%; min-height: 1.7rem; overflow: hidden; resize: none; border: 0; border-radius: 0; background: transparent; color: var(--ink); padding: .14rem .2rem; box-shadow: none; font: inherit; line-height: 1.55; outline: 0; }
+  .full-source { width: 100%; min-height: 15rem; max-height: 32rem; resize: vertical; padding: .7rem .8rem; font: inherit; line-height: 1.55; tab-size: 2; white-space: pre-wrap; }
   .rendered-line :global(.md-blank) { min-height: .85rem; }
   .rendered-line :global(.md-paragraph) { min-height: 1.55em; }
   .rendered-line :global(h1), .rendered-line :global(h2), .rendered-line :global(h3), .rendered-line :global(h4), .rendered-line :global(h5), .rendered-line :global(h6) { margin: .1rem 0; line-height: 1.3; }
@@ -343,7 +398,7 @@
   .rendered-line :global(.md-task-line input) { width: .95rem; height: .95rem; margin: .24rem 0 0 .08rem; accent-color: var(--forest); cursor: pointer; }
   .rendered-line :global(blockquote) { margin: 0; border-left: 3px solid #c9d3cc; padding-left: .8rem; color: var(--muted); }
   .rendered-line :global(code) { border-radius: .25rem; background: #f0eee7; padding: .08rem .25rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
-  .rendered-line :global(a) { color: var(--forest-2); text-decoration: underline; text-underline-offset: .12rem; pointer-events: none; }
+  .rendered-line :global(a) { color: var(--forest-2); cursor: pointer; text-decoration: underline; text-underline-offset: .12rem; }
   .rendered-line :global(hr) { border: 0; border-top: 1px solid var(--line); margin: .65rem .15rem; }
 
   .rendered-line.code-block,
@@ -387,6 +442,6 @@
 
   .rendered-line.code-block :global(.md-code-fence-end) { min-height: .25rem; }
 
-  .compact .live-surface { min-height: 9rem; max-height: 18rem; }
-  @media (max-width: 640px) { .live-surface, .compact .live-surface { min-height: 12rem; max-height: 24rem; } }
+  .compact .live-surface, .compact .full-source { min-height: 9rem; max-height: 18rem; }
+  @media (max-width: 640px) { .live-surface, .full-source, .compact .live-surface, .compact .full-source { min-height: 12rem; max-height: 24rem; } }
 </style>
