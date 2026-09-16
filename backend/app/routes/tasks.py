@@ -392,6 +392,7 @@ def block_task(
     if active is not None:
         raise HTTPException(status_code=409, detail="Task is already blocked")
 
+    task.last_worked_at = now
     db.add(
         TaskBlock(
             task_id=task.id,
@@ -466,6 +467,7 @@ def reblock_task(
         raise HTTPException(status_code=409, detail="Task has no previous block to restore")
 
     previous.unblocked_at = unblocked_at
+    task.last_worked_at = now
     try:
         db.commit()
     except IntegrityError as error:

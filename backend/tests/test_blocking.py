@@ -68,6 +68,44 @@ def test_reblock_restores_existing_block_and_serializes_times_as_utc(
     assert already_blocked.status_code == 409
 
 
+def test_block_and_reblock_mark_the_task_worked_now(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    task = make_task(client)
+    old_timestamp = datetime(2020, 1, 1, tzinfo=UTC).isoformat()
+
+    updated = client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"last_worked_at": old_timestamp},
+    )
+    assert updated.status_code == 200
+
+    block_started = datetime.now(UTC)
+    blocked = client.post(
+        f"/api/tasks/{task['id']}/block",
+        json={"reason": "Waiting on a decision"},
+    )
+    block_finished = datetime.now(UTC)
+    assert blocked.status_code == 201
+    blocked_last_worked = datetime.fromisoformat(blocked.json()["last_worked_at"])
+    assert block_started <= blocked_last_worked <= block_finished
+
+    assert client.post(f"/api/tasks/{task['id']}/unblock").status_code == 200
+    updated = client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"last_worked_at": old_timestamp},
+    )
+    assert updated.status_code == 200
+
+    reblock_started = datetime.now(UTC)
+    reblocked = client.post(f"/api/tasks/{task['id']}/reblock")
+    reblock_finished = datetime.now(UTC)
+    assert reblocked.status_code == 200
+    reblocked_last_worked = datetime.fromisoformat(reblocked.json()["last_worked_at"])
+    assert reblock_started <= reblocked_last_worked <= reblock_finished
+
+
 def test_delete_block_history_only_allows_inactive_entries(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
