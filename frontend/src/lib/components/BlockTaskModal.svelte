@@ -19,6 +19,7 @@
   let reason = '';
   let autoUnblockAt = '';
   let autoUnblockChoice: AutoUnblockChoice = 'none';
+  let autoUnblockChoiceSelected = false;
   let reblockMode = false;
   let autoUnblockInput: DateTimeInput;
 
@@ -41,6 +42,7 @@
 
   async function chooseAutoUnblock(choice: AutoUnblockChoice) {
     autoUnblockChoice = choice;
+    autoUnblockChoiceSelected = true;
     minimumAutoUnblock = localDateTime();
     if (choice === 'none') autoUnblockAt = '';
     if (choice === 'tomorrow') autoUnblockAt = offsetLocalDateTime(1);
@@ -66,6 +68,11 @@
 
   async function prepareReblock(block: Block) {
     if (busy) return;
+    if (autoUnblockChoiceSelected) {
+      const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
+      dispatch('reblock', { unblocked_at: unblockedAt });
+      return;
+    }
     reason = block.reason;
     autoUnblockAt = '';
     autoUnblockChoice = 'none';
