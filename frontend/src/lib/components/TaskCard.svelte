@@ -4,6 +4,7 @@
   import type { Status, Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
+  import DateTimeInput from './DateTimeInput.svelte';
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
@@ -17,6 +18,11 @@
   let descriptionExpanded = false;
   let blockModalOpen = false;
   let completionOpen = false;
+  let dueDateDraft = task.due_date || '';
+
+  $: if (!busy && dueDateDraft !== (task.due_date || '')) {
+    dueDateDraft = task.due_date || '';
+  }
 
   function idleAnchor(): string {
     return task.last_worked_at || task.created_at;
@@ -77,6 +83,20 @@
 
   function markWorkedNow() {
     void act(() => api.updateTask(task.id, { last_worked_at: new Date().toISOString() }));
+  }
+
+  async function updateDueDate(value: string) {
+    busy = true;
+    try {
+      const updated = await api.updateTask(task.id, { due_date: value || null });
+      dueDateDraft = updated.due_date || '';
+      dispatch('changed', updated);
+    } catch (error) {
+      dueDateDraft = task.due_date || '';
+      dispatch('error', error instanceof Error ? error.message : 'Could not update due date');
+    } finally {
+      busy = false;
+    }
   }
 
   function toggleFinished() {
@@ -149,7 +169,6 @@
     {#if readOnly}<span class="priority" title="Priority">{task.priority}</span><span>{task.status.name}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
-    <span class="date-meta" class:overdue={!!task.due_date && !task.finished_at && task.due_date < localDate()}>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
@@ -192,6 +211,17 @@
           {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
         </select>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+      </div>
+
+      <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
+        <DateTimeInput
+          bind:value={dueDateDraft}
+          pickerOnly
+          pickerText={dueDateDraft ? `Due ${formatDate(dueDateDraft)}` : 'Due date'}
+          pickerLabel={dueDateDraft ? `Change due date from ${formatDate(dueDateDraft)}` : 'Set due date'}
+          disabled={busy}
+          on:change={(event) => void updateDueDate(event.detail)}
+        />
       </div>
 
       <div class="priority-stepper" aria-label="Priority">
@@ -237,6 +267,9 @@
   .quick-action svg { width: 1rem; height: 1rem; flex: 0 0 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .quick-action:hover:not(:disabled) { border-color: #aaa69c; background: #fff; }
   .worked-action { color: var(--forest-2); }
+  .due-date-action { color: var(--forest-2); }
+  .due-date-action.overdue { color: #9b422d; }
+  .due-date-action :global(.picker-trigger) { color: inherit; }
   .block-action { color: #8a4d36; }
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import { dateInputError, formatDateInput, parseDateInput } from '../format';
 
   export let value = '';
@@ -6,6 +7,10 @@
   export let disabled = false;
   export let min = '';
   export let required = false;
+  export let pickerOnly = false;
+  export let pickerText = '';
+  export let pickerLabel = '';
+  const dispatch = createEventDispatcher<{ change: string }>();
   let input: HTMLInputElement;
   let textValue = '';
 
@@ -26,7 +31,8 @@
   function selectFromPicker(event: Event) {
     value = (event.currentTarget as HTMLInputElement).value;
     textValue = formatDateInput(value, includeTime);
-    input.setCustomValidity(dateInputError(textValue, includeTime, min));
+    input?.setCustomValidity(dateInputError(textValue, includeTime, min));
+    dispatch('change', value);
   }
 
   function openPicker(event: MouseEvent) {
@@ -41,21 +47,23 @@
   }
 </script>
 
-<div class="date-time-input">
+<div class:picker-only={pickerOnly} class="date-time-input">
   <!-- Keep the explicit text format; the native control is used only as a visual picker. -->
-  <input
-    bind:this={input}
-    class="text-input"
-    type="text"
-    value={textValue}
-    placeholder={includeTime ? 'dd/mm/yyyy HH:mm' : 'dd/mm/yyyy'}
-    title={includeTime ? 'dd/mm/yyyy HH:mm · 24-hour time in your device timezone' : 'dd/mm/yyyy'}
-    {disabled}
-    {required}
-    on:input={update}
-    on:focus
-  />
-  <label class="picker-trigger" class:disabled title={includeTime ? 'Choose date and time' : 'Choose date'}>
+  {#if !pickerOnly}
+    <input
+      bind:this={input}
+      class="text-input"
+      type="text"
+      value={textValue}
+      placeholder={includeTime ? 'dd/mm/yyyy HH:mm' : 'dd/mm/yyyy'}
+      title={includeTime ? 'dd/mm/yyyy HH:mm · 24-hour time in your device timezone' : 'dd/mm/yyyy'}
+      {disabled}
+      {required}
+      on:input={update}
+      on:focus
+    />
+  {/if}
+  <label class="picker-trigger" class:disabled title={pickerLabel || (includeTime ? 'Choose date and time' : 'Choose date')}>
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
       <path d="M8 3v5M16 3v5M3.5 10h17" />
@@ -67,12 +75,13 @@
       {min}
       step={includeTime ? 60 : undefined}
       lang="pt-BR"
-      aria-label={includeTime ? 'Choose date and time' : 'Choose date'}
+      aria-label={pickerLabel || (includeTime ? 'Choose date and time' : 'Choose date')}
       {disabled}
       on:click={openPicker}
       on:change={selectFromPicker}
       on:focus
     />
+    {#if pickerOnly && pickerText}<span class="picker-text">{pickerText}</span>{/if}
   </label>
 </div>
 
@@ -88,6 +97,26 @@
     min-width: 0;
     border-radius: .55rem 0 0 .55rem;
   }
+
+  .date-time-input.picker-only {
+    display: inline-flex;
+    width: auto;
+  }
+
+  .picker-only .picker-trigger {
+    display: inline-flex;
+    height: 2rem;
+    gap: .38rem;
+    border-left: 1px solid #cfcbbf;
+    border-radius: .55rem;
+    background: #fbfaf6;
+    padding: 0 .62rem;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .picker-text { white-space: nowrap; }
 
   .picker-trigger {
     position: relative;
