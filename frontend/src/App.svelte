@@ -61,6 +61,13 @@
     try {
       user = await api.me();
       await loadWorkspaces();
+      if (view === 'focus') {
+        const activeSession = await api.pomodoroSession();
+        if (activeSession) {
+          selectWorkspace(activeSession.workspace_id);
+          focusTagId = activeSession.tag_id;
+        }
+      }
       await loadDraftCount();
     } catch (reason) {
       if (!(reason instanceof ApiError) || reason.status !== 401) error = reason instanceof Error ? reason.message : 'Could not start Next Task';
@@ -128,10 +135,20 @@
     void loadDraftCount();
   }
 
-  function startFocus(tagId: number | null) {
-    focusTagId = tagId;
-    focusTaskVersion = 0;
-    navigate('focus');
+  async function startFocus(tagId: number | null) {
+    try {
+      const activeSession = await api.pomodoroSession();
+      if (activeSession) {
+        selectWorkspace(activeSession.workspace_id);
+        focusTagId = activeSession.tag_id;
+      } else {
+        focusTagId = tagId;
+      }
+      focusTaskVersion = 0;
+      navigate('focus');
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not open the Pomodoro session';
+    }
   }
 
   function endFocus() {

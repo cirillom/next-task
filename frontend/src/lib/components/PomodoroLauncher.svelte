@@ -1,22 +1,68 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
-  import type { PomodoroSettings, Tag } from '../api/types';
+  import type { PomodoroSession, PomodoroSettings, Tag } from '../api/types';
 
   export let tags: Tag[] = [];
   export let recommendedTaskTitle = '';
 
   const dispatch = createEventDispatcher<{ start: number | null; scopeChange: number | null }>();
   let settings: PomodoroSettings | null = null;
+  let activeSession: PomodoroSession | null = null;
+  let activeRemainingSeconds = 0;
+  let serverClockOffset = 0;
+  let refreshTicks = 0;
+  let timer: number;
   let selectedTagId = '';
   let error = '';
 
-  onMount(async () => {
+  function updateRemaining() {
+    if (activeSession?.state !== 'running' || !activeSession.ends_at) {
+      activeRemainingSeconds = 0;
+      return;
+    }
+    activeRemainingSeconds = Math.max(
+      0,
+      Math.ceil((Date.parse(activeSession.ends_at) - (Date.now() + serverClockOffset)) / 1000)
+    );
+  }
+
+  async function refreshSession() {
     try {
-      settings = await api.pomodoroSettings();
+      activeSession = await api.pomodoroSession();
+      if (activeSession) serverClockOffset = Date.parse(activeSession.server_now) - Date.now();
+      updateRemaining();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load Pomodoro settings';
     }
+  }
+
+  function activePhaseLabel(): string {
+    if (!activeSession) return '';
+    if (activeSession.phase === 'focus') return 'Focus';
+    if (activeSession.phase === 'long-break') return 'Long break';
+    return 'Short break';
+  }
+
+  function formatTime(total: number): string {
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  onMount(() => {
+    void (async () => {
+      try {
+        settings = await api.pomodoroSettings();
+        await refreshSession();
+      } catch (reason) {
+        error = reason instanceof Error ? reason.message : 'Could not load Pomodoro settings';
+      }
+    })();
+    timer = window.setInterval(() => {
+      updateRemaining();
+      refreshTicks += 1;
+      if (refreshTicks % 5 === 0) void refreshSession();
+    }, 1000);
+    return () => window.clearInterval(timer);
   });
 
   function selectedScope(): number | null {
@@ -32,7 +78,7 @@
   }
 </script>
 
-<section class="pomodoro-launcher" aria-label="Start Pomodoro on the recommended task">
+<section class="pomodoro-launcher" aria-label="Pomodoro session">
   <div class="pomodoro-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24">
       <circle cx="12" cy="13" r="7.5" />
@@ -43,7 +89,13 @@
 
   <div class="pomodoro-copy">
     <p class="eyebrow">Pomodoro</p>
-    {#if settings}
+    {#if activeSession?.state === 'running'}
+      <p>{activePhaseLabel()} · {formatTime(activeRemainingSeconds)} remaining · synced across devices</p>
+    {:else if activeSession?.state === 'ringing'}
+      <p>Alarm ringing · continue to dismiss it</p>
+    {:else if activeSession}
+      <p>{activePhaseLabel()} ready · synced across devices</p>
+    {:else if settings}
       <p>{settings.focus_minutes} min focus · {settings.short_break_minutes} min break · {settings.long_break_minutes} min long break</p>
     {:else if error}
       <p class="error">{error}</p>
@@ -54,24 +106,24 @@
 
   <label class="tag-filter">
     <span>Session tag</span>
-    <select bind:value={selectedTagId} on:change={changeScope}>
+    <select bind:value={selectedTagId} disabled={!!activeSession} on:change={changeScope}>
       <option value="">All tags</option>
       {#each tags as tag}
         <option value={tag.id}>#{tag.name}</option>
       {/each}
     </select>
-    <small>Includes child tags.</small>
+    <small>{activeSession ? 'The active session keeps its original scope.' : 'Includes child tags.'}</small>
   </label>
 
   <button
     class="primary start-button"
-    disabled={!settings || !recommendedTaskTitle}
-    aria-label={recommendedTaskTitle ? `Start Pomodoro with ${recommendedTaskTitle}` : 'Start Pomodoro'}
-    title={recommendedTaskTitle ? `Start with ${recommendedTaskTitle}` : 'No recommended task in this scope'}
+    disabled={!settings || (!activeSession && !recommendedTaskTitle)}
+    aria-label={activeSession ? 'Continue active Pomodoro' : recommendedTaskTitle ? `Start Pomodoro with ${recommendedTaskTitle}` : 'Start Pomodoro'}
+    title={activeSession ? 'Continue the Pomodoro active on your account' : recommendedTaskTitle ? `Start with ${recommendedTaskTitle}` : 'No recommended task in this scope'}
     on:click={startSession}
   >
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
-    Start Pomodoro
+    {activeSession ? 'Continue Pomodoro' : 'Start Pomodoro'}
   </button>
 </section>
 

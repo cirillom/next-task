@@ -17,6 +17,11 @@ conversion. Date/time fields accept this explicit format regardless of browser
 language. Times skipped by a daylight-saving change are rejected; repeated times
 use the device's first occurrence.
 
+Pomodoro sessions keep one active state per account. Starting, skipping, dismissing,
+or ending a period on one signed-in device is reflected on the others. The timer uses
+a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
+be a one-time notification or a repeating alarm that must be dismissed on any device.
+
 ## Docker development
 
 The repository's `docker-compose.yml` builds the current checkout, publishes port

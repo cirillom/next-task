@@ -1,5 +1,6 @@
 import type {
   Member,
+  PomodoroSession,
   PomodoroSettings,
   Status,
   Tag,
@@ -58,6 +59,21 @@ export const api = {
   pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
   updatePomodoroSettings: (body: PomodoroSettings) =>
     request<PomodoroSettings>('/api/pomodoro/settings', json('PUT', body)),
+  pomodoroSession: () => request<PomodoroSession | null>('/api/pomodoro/session'),
+  createPomodoroSession: (body: {
+    workspace_id: number;
+    tag_id: number | null;
+    task_id?: number | null;
+  }) => request<PomodoroSession>('/api/pomodoro/session', json('POST', body)),
+  updatePomodoroSessionTask: (task_id: number | null) =>
+    request<PomodoroSession>('/api/pomodoro/session/task', json('PUT', { task_id })),
+  startPomodoroPeriod: () =>
+    request<PomodoroSession>('/api/pomodoro/session/start', json('POST')),
+  skipPomodoroPeriod: () =>
+    request<PomodoroSession>('/api/pomodoro/session/skip', json('POST')),
+  dismissPomodoroAlarm: () =>
+    request<PomodoroSession>('/api/pomodoro/session/dismiss', json('POST')),
+  endPomodoroSession: () => request<void>('/api/pomodoro/session', json('DELETE')),
 
   workspaces: () => request<Workspace[]>('/api/workspaces'),
   createWorkspace: (name: string) =>

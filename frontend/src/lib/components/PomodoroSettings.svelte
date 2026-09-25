@@ -7,7 +7,8 @@
     focus_minutes: 25,
     short_break_minutes: 5,
     long_break_minutes: 15,
-    short_breaks_before_long: 3
+    short_breaks_before_long: 3,
+    alert_mode: 'notification'
   };
   let loading = true;
   let saving = false;
@@ -72,6 +73,17 @@
           <span class="number-field"><input type="number" min="1" max="12" bind:value={settings.short_breaks_before_long} required /><small>breaks</small></span>
         </label>
       </div>
+      <fieldset class="alert-mode">
+        <legend>When a period ends</legend>
+        <label>
+          <input type="radio" bind:group={settings.alert_mode} value="notification" />
+          <span><strong>Notification</strong><small>Play one short chime and prepare the next period.</small></span>
+        </label>
+        <label>
+          <input type="radio" bind:group={settings.alert_mode} value="alarm" />
+          <span><strong>Alarm</strong><small>Keep ringing until you dismiss it on any device.</small></span>
+        </label>
+      </fieldset>
       {#if error}<p class="error">{error}</p>{/if}
       {#if notice}<p class="notice">{notice}</p>{/if}
       <button class="primary" disabled={saving}>{saving ? 'Saving…' : 'Save Pomodoro settings'}</button>
@@ -131,6 +143,21 @@
     color: var(--muted);
     white-space: nowrap;
   }
+
+  .alert-mode {
+    display: grid;
+    gap: .55rem;
+    margin: 0 0 1rem;
+    padding: .85rem;
+    border: 1px solid var(--line);
+    border-radius: .7rem;
+  }
+
+  .alert-mode legend { padding: 0 .3rem; font-weight: 800; }
+  .alert-mode label { display: flex; align-items: flex-start; gap: .6rem; margin: 0; }
+  .alert-mode input { width: auto; margin-top: .2rem; }
+  .alert-mode span { display: grid; gap: .12rem; }
+  .alert-mode small { color: var(--muted); font-weight: 500; }
 
   @media (max-width: 620px) {
     .pomodoro-grid {

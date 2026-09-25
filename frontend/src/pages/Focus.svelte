@@ -1,12 +1,19 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { PomodoroSettings, Status, Tag, Task, Workspace } from '../lib/api/types';
+  import type {
+    PomodoroPhase,
+    PomodoroSession,
+    PomodoroSettings,
+    Status,
+    Tag,
+    Task,
+    Workspace
+  } from '../lib/api/types';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
 
-  type Phase = 'focus' | 'short-break' | 'long-break';
   type BlockedFilter = '' | 'false' | 'true';
   type TaskResolution = 'finished' | 'blocked';
   type DescriptionSaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -19,6 +26,7 @@
   const baseDocumentTitle = typeof document === 'undefined' ? 'Next Task' : document.title;
 
   let settings: PomodoroSettings | null = null;
+  let session: PomodoroSession | null = null;
   let statuses: Status[] = [];
   let tags: Tag[] = [];
   let sessionTag: Tag | null = null;
@@ -26,10 +34,12 @@
   let sessionTasks: Task[] = [];
   let taskListBlocked: BlockedFilter = '';
   let queueOpen = false;
-  let phase: Phase = 'focus';
+  let phase: PomodoroPhase = 'focus';
   let running = false;
+  let ringing = false;
   let remainingSeconds = 0;
   let deadline = 0;
+  let serverClockOffset = 0;
   let shortBreaksTaken = 0;
   let loading = true;
   let selecting = false;
@@ -39,6 +49,10 @@
   let audioContext: AudioContext | null = null;
   let error = '';
   let timer: number;
+  let pollTimer: number;
+  let syncInFlight = false;
+  let initializedSession = false;
+  let lastAlarmAt = 0;
   let seenTaskVersion = taskVersion;
 
   let descriptionDraft = '';
@@ -47,7 +61,7 @@
   let descriptionSaveInFlight = false;
   let pendingDescriptionSave: { taskId: number; value: string } | null = null;
 
-  function durationSeconds(targetPhase: Phase = phase): number {
+  function durationSeconds(targetPhase: PomodoroPhase = phase): number {
     if (!settings) return 0;
     if (targetPhase === 'focus') return settings.focus_minutes * 60;
     if (targetPhase === 'short-break') return settings.short_break_minutes * 60;
@@ -73,6 +87,7 @@
   }
 
   function tabStateLabel(): string {
+    if (ringing) return 'Alarm';
     if (phase === 'focus') return running ? 'Focus' : 'Focus ready';
     if (phase === 'long-break') return running ? 'Long break' : 'Long break ready';
     return running ? 'Break' : 'Break ready';
@@ -90,7 +105,7 @@
     return audioContext;
   }
 
-  function playNotificationSound(completedPhase: Phase) {
+  function playNotificationSound(completedPhase: PomodoroPhase) {
     const context = ensureAudioContext();
     if (!context) return;
 
@@ -112,6 +127,88 @@
     });
   }
 
+  function playAlarmSound(completedPhase: PomodoroPhase) {
+    const context = ensureAudioContext();
+    if (!context) return;
+
+    const base = completedPhase === 'focus' ? 740 : 620;
+    const now = context.currentTime;
+    [0, .16, .32].forEach((offset, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = now + offset;
+      oscillator.type = index % 2 === 0 ? 'square' : 'sine';
+      oscillator.frequency.setValueAtTime(base + (index % 2) * 180, start);
+      gain.gain.setValueAtTime(.0001, start);
+      gain.gain.exponentialRampToValueAtTime(.2, start + .015);
+      gain.gain.exponentialRampToValueAtTime(.0001, start + .13);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + .14);
+    });
+  }
+
+  async function applySession(next: PomodoroSession, announceCompletion = true) {
+    const previousSession = session;
+    session = next;
+    phase = next.phase;
+    running = next.state === 'running';
+    ringing = next.state === 'ringing';
+    shortBreaksTaken = next.short_breaks_taken;
+    serverClockOffset = Date.parse(next.server_now) - Date.now();
+    deadline = next.ends_at ? Date.parse(next.ends_at) : 0;
+    remainingSeconds = running && deadline
+      ? Math.max(0, Math.ceil((deadline - (Date.now() + serverClockOffset)) / 1000))
+      : ringing ? 0 : durationSeconds(next.phase);
+    sessionTag = next.tag_id === null ? null : tags.find((tag) => tag.id === next.tag_id) ?? null;
+
+    if (next.task_id !== currentTask?.id) {
+      if (next.task_id === null) {
+        currentTask = null;
+        resetDescriptionEditor(null);
+      } else {
+        try {
+          currentTask = await api.task(next.task_id);
+          resetDescriptionEditor(currentTask);
+        } catch {
+          currentTask = null;
+          resetDescriptionEditor(null);
+        }
+      }
+    }
+
+    if (
+      announceCompletion &&
+      initializedSession &&
+      previousSession?.state === 'running' &&
+      previousSession.ends_at !== null &&
+      Date.parse(previousSession.ends_at) <= Date.parse(next.server_now) &&
+      next.state === 'ready' &&
+      previousSession.phase !== next.phase
+    ) {
+      playNotificationSound(previousSession.phase);
+    }
+    initializedSession = true;
+  }
+
+  async function syncSession() {
+    if (syncInFlight) return;
+    syncInFlight = true;
+    try {
+      const latest = await api.pomodoroSession();
+      if (!latest) {
+        dispatch('end');
+        return;
+      }
+      await applySession(latest);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not synchronize the Pomodoro session';
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
   function resetDescriptionEditor(task: Task | null) {
     window.clearTimeout(descriptionSaveTimer);
     pendingDescriptionSave = null;
@@ -127,10 +224,11 @@
         finished: false,
         blocked: false,
         actionable: true,
-        tag_id: sessionTagId
+        tag_id: session?.tag_id ?? sessionTagId
       });
       currentTask = ranked[0] ?? null;
       resetDescriptionEditor(currentTask);
+      if (session) session = await api.updatePomodoroSessionTask(currentTask?.id ?? null);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not select the next task';
     } finally {
@@ -138,11 +236,17 @@
     }
   }
 
-  function focusTask(task: Task) {
+  async function focusTask(task: Task) {
     if (task.finished_at || task.current_block) return;
-    currentTask = task;
-    resetDescriptionEditor(task);
-    error = '';
+    try {
+      const updatedSession = await api.updatePomodoroSessionTask(task.id);
+      session = updatedSession;
+      currentTask = task;
+      resetDescriptionEditor(task);
+      error = '';
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not change the Pomodoro task';
+    }
   }
 
   async function loadSessionTasks() {
@@ -152,7 +256,7 @@
         finished: false,
         blocked: taskListBlocked,
         actionable: true,
-        tag_id: sessionTagId
+        tag_id: session?.tag_id ?? sessionTagId
       });
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load session tasks';
@@ -207,34 +311,8 @@
     }
   }
 
-  async function prepareFocus() {
-    if (!settings) return;
-    const completedLongBreak = phase === 'long-break';
-    phase = 'focus';
-    running = false;
-    deadline = 0;
-    remainingSeconds = durationSeconds('focus');
-    if (completedLongBreak) shortBreaksTaken = 0;
-    if (!currentTask) await selectNextTask();
-  }
-
-  function prepareBreak() {
-    if (!settings || phase !== 'focus') return;
-    breakPrompt = null;
-    running = false;
-    deadline = 0;
-
-    if (shortBreaksTaken >= settings.short_breaks_before_long) {
-      phase = 'long-break';
-    } else {
-      phase = 'short-break';
-      shortBreaksTaken += 1;
-    }
-    remainingSeconds = durationSeconds();
-  }
-
   async function startCurrentPeriod() {
-    if (!settings || running) return;
+    if (!settings || running || ringing) return;
     ensureAudioContext();
     if (phase === 'focus' && !currentTask) await selectNextTask();
 
@@ -250,40 +328,67 @@
       }
     }
 
-    running = true;
-    deadline = Date.now() + durationSeconds() * 1000;
-    remainingSeconds = durationSeconds();
+    try {
+      await applySession(await api.startPomodoroPeriod(), false);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not start the Pomodoro period';
+    }
   }
 
-  async function advancePeriod() {
-    if (phase === 'focus') prepareBreak();
-    else await prepareFocus();
-  }
-
-  function cutPeriodShort() {
+  async function cutPeriodShort() {
     if (!running) return;
-    running = false;
-    deadline = 0;
-    void advancePeriod();
+    try {
+      await applySession(await api.skipPomodoroPeriod(), false);
+      breakPrompt = null;
+      if (phase === 'focus' && !currentTask) await selectNextTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not end the Pomodoro period';
+    }
   }
 
   function tick() {
+    if (ringing && session) {
+      if (Date.now() - lastAlarmAt >= 1100) {
+        lastAlarmAt = Date.now();
+        playAlarmSound(session.phase);
+      }
+      return;
+    }
     if (!running || !deadline) return;
-    remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    if (remainingSeconds > 0) return;
-
-    const completedPhase = phase;
-    running = false;
-    deadline = 0;
-    breakPrompt = null;
-    playNotificationSound(completedPhase);
-    void advancePeriod();
+    remainingSeconds = Math.max(
+      0,
+      Math.ceil((deadline - (Date.now() + serverClockOffset)) / 1000)
+    );
+    if (remainingSeconds === 0) void syncSession();
   }
 
   async function startBreakAfterTask() {
     breakPrompt = null;
-    prepareBreak();
-    await startCurrentPeriod();
+    try {
+      await applySession(await api.skipPomodoroPeriod(), false);
+      await startCurrentPeriod();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not start the break';
+    }
+  }
+
+  async function dismissAlarm() {
+    try {
+      await applySession(await api.dismissPomodoroAlarm(), false);
+      lastAlarmAt = 0;
+      if (phase === 'focus' && !currentTask) await selectNextTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not dismiss the alarm';
+    }
+  }
+
+  async function endSession() {
+    try {
+      await api.endPomodoroSession();
+      dispatch('end');
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not end the Pomodoro session';
+    }
   }
 
   function keepFocusingAfterTask() {
@@ -350,15 +455,25 @@
 
   onMount(() => {
     timer = window.setInterval(tick, 250);
+    pollTimer = window.setInterval(() => void syncSession(), 1500);
     void (async () => {
       try {
-        [settings, statuses, tags] = await Promise.all([
+        const [loadedSettings, loadedStatuses, loadedTags, existingSession] = await Promise.all([
           api.pomodoroSettings(),
           api.statuses(workspace.id),
-          api.tags(workspace.id)
+          api.tags(workspace.id),
+          api.pomodoroSession()
         ]);
-        sessionTag = sessionTagId === null ? null : tags.find((tag) => tag.id === sessionTagId) ?? null;
-        await Promise.all([prepareFocus(), loadSessionTasks()]);
+        settings = loadedSettings;
+        statuses = loadedStatuses;
+        tags = loadedTags;
+        const activeSession = existingSession ?? await api.createPomodoroSession({
+          workspace_id: workspace.id,
+          tag_id: sessionTagId
+        });
+        await applySession(activeSession, false);
+        if (phase === 'focus' && !currentTask) await selectNextTask();
+        await loadSessionTasks();
       } catch (reason) {
         error = reason instanceof Error ? reason.message : 'Could not start focus mode';
       } finally {
@@ -368,6 +483,7 @@
 
     return () => {
       window.clearInterval(timer);
+      window.clearInterval(pollTimer);
       document.title = baseDocumentTitle;
       if (audioContext) void audioContext.close();
     };
@@ -389,7 +505,7 @@
       {#if workspace.role !== 'viewer' && phase === 'focus'}
         <button class="quiet-button" on:click={() => dispatch('openTask', 0)}>+ New task</button>
       {/if}
-      <button class="quiet-button" on:click={() => dispatch('end')}>End session</button>
+      <button class="quiet-button" on:click={endSession}>End session</button>
     </div>
   </header>
 
@@ -398,7 +514,10 @@
     <div class="timer" aria-live="polite">{formatTime(remainingSeconds)}</div>
 
     <div class="period-controls">
-      {#if running}
+      {#if ringing}
+        <span class="running-label alarm-label">Alarm ringing</span>
+        <button class="primary period-button" on:click={dismissAlarm}>Dismiss alarm</button>
+      {:else if running}
         <span class="running-label">Running</span>
         <button class="quiet-button period-button" on:click={cutPeriodShort}>
           {phase === 'focus' ? 'End focus early' : 'End break early'}
@@ -643,6 +762,8 @@
   }
 
   .break-mode .running-label { background: rgba(55, 95, 75, .1); color: var(--forest-2); }
+  .break-mode .alarm-label,
+  .alarm-label { background: #f6d7d1; color: #8d2f24; }
 
   .cycle-dots { display: flex; justify-content: center; gap: .4rem; margin: .85rem 0 .8rem; }
   .cycle-dots span { width: .48rem; height: .48rem; border-radius: 50%; background: #d4d0c5; }

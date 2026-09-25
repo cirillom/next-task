@@ -104,4 +104,19 @@ export interface PomodoroSettings {
   short_break_minutes: number;
   long_break_minutes: number;
   short_breaks_before_long: number;
+  alert_mode: 'notification' | 'alarm';
+}
+
+export type PomodoroPhase = 'focus' | 'short-break' | 'long-break';
+export type PomodoroState = 'ready' | 'running' | 'ringing';
+
+export interface PomodoroSession {
+  workspace_id: number;
+  tag_id: number | null;
+  task_id: number | null;
+  phase: PomodoroPhase;
+  state: PomodoroState;
+  short_breaks_taken: number;
+  ends_at: string | null;
+  server_now: string;
 }
