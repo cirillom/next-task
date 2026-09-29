@@ -8,6 +8,7 @@
   export let suggestedNames: string[] = [];
   export let disabled = false;
   export let creating = false;
+  export let allowCreate = true;
 
   const dispatch = createEventDispatcher<{
     change: number[];
@@ -39,7 +40,7 @@
   }
 
   function requestCreate() {
-    if (!normalizedSearch || exactMatch || creating) return;
+    if (!allowCreate || !normalizedSearch || exactMatch || creating) return;
     dispatch('create', normalizedSearch);
   }
 
@@ -102,7 +103,7 @@
           </button>
         {/each}
 
-        {#if normalizedSearch && !exactMatch}
+        {#if allowCreate && normalizedSearch && !exactMatch}
           <button
             type="button"
             class="create-tag"
