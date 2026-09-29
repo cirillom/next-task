@@ -43,7 +43,7 @@ export function hierarchicalTagResults(tags: Tag[], search: string): Hierarchica
   }
   for (const [parentId, items] of children) children.set(parentId, sortByName(items));
 
-  const needle = normalized(search).replace(/^#/, '');
+  const needle = normalized(search);
   let roots: Tag[];
 
   if (needle) {
@@ -130,7 +130,7 @@ export function tagHierarchyRows(tags: Tag[], search = ''): TagHierarchyRow[] {
 
   for (const root of roots) append(root, [], []);
 
-  const needle = normalized(search).replace(/^#/, '');
+  const needle = normalized(search);
   if (!needle) return rows;
   return rows.filter(
     (row) =>
