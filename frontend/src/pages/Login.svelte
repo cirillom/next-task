@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../lib/api/client';
   import type { User } from '../lib/api/types';
+  import AppButton from '../lib/components/AppButton.svelte';
+  import TextField from '../lib/components/TextField.svelte';
 
   const dispatch = createEventDispatcher<{ authenticated: User }>();
   let mode: 'login' | 'signup' = 'login';
@@ -45,11 +47,11 @@
     <form on:submit|preventDefault={submit}>
       <label>
         Username or email
-        <input bind:value={identifier} autocomplete="username" required />
+        <TextField bind:value={identifier} autocomplete="username" required />
       </label>
       <label>
         Password
-        <input
+        <TextField
           type="password"
           bind:value={password}
           autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
@@ -58,13 +60,13 @@
         />
       </label>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <button class="primary" disabled={busy}>
+      <AppButton type="submit" variant="primary" disabled={busy}>
         {#if mode === 'signup'}
           {busy ? 'Creating account…' : 'Create account'}
         {:else}
           {busy ? 'Signing in…' : 'Sign in'}
         {/if}
-      </button>
+      </AppButton>
     </form>
     <button type="button" class="auth-switch" disabled={busy} on:click={switchMode}>
       {mode === 'signup' ? 'Already have an account? Sign in' : 'Create account'}

@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { api } from '../api/client';
   import type { PomodoroSettings } from '../api/types';
+  import AppButton from './AppButton.svelte';
+  import NumberField from './NumberField.svelte';
 
   let settings: PomodoroSettings = {
     focus_minutes: 25,
@@ -58,19 +60,19 @@
       <div class="pomodoro-grid">
         <label>
           Focus time
-          <span class="number-field"><input type="number" min="1" max="180" bind:value={settings.focus_minutes} required /><small>min</small></span>
+          <span class="number-field"><NumberField min="1" max="180" bind:value={settings.focus_minutes} required /><small>min</small></span>
         </label>
         <label>
           Short break
-          <span class="number-field"><input type="number" min="1" max="60" bind:value={settings.short_break_minutes} required /><small>min</small></span>
+          <span class="number-field"><NumberField min="1" max="60" bind:value={settings.short_break_minutes} required /><small>min</small></span>
         </label>
         <label>
           Long break
-          <span class="number-field"><input type="number" min="1" max="180" bind:value={settings.long_break_minutes} required /><small>min</small></span>
+          <span class="number-field"><NumberField min="1" max="180" bind:value={settings.long_break_minutes} required /><small>min</small></span>
         </label>
         <label>
           Short breaks before long
-          <span class="number-field"><input type="number" min="1" max="12" bind:value={settings.short_breaks_before_long} required /><small>breaks</small></span>
+          <span class="number-field"><NumberField min="1" max="12" bind:value={settings.short_breaks_before_long} required /><small>breaks</small></span>
         </label>
       </div>
       <fieldset class="alert-mode">
@@ -86,7 +88,7 @@
       </fieldset>
       {#if error}<p class="error">{error}</p>{/if}
       {#if notice}<p class="notice">{notice}</p>{/if}
-      <button class="primary" disabled={saving}>{saving ? 'Saving…' : 'Save Pomodoro settings'}</button>
+      <AppButton type="submit" variant="primary" disabled={saving}>{saving ? 'Saving…' : 'Save Pomodoro settings'}</AppButton>
     </form>
   {/if}
 </section>
@@ -132,7 +134,7 @@
     background: #fff;
   }
 
-  .number-field input {
+  .number-field :global(input) {
     min-width: 0;
     border: 0;
     background: transparent;

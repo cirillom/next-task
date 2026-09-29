@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { ApiError, api } from './lib/api/client';
   import type { User, Workspace } from './lib/api/types';
+  import AppButton from './lib/components/AppButton.svelte';
+  import TextField from './lib/components/TextField.svelte';
   import Login from './pages/Login.svelte';
   import Next from './pages/Next.svelte';
   import Focus from './pages/Focus.svelte';
@@ -181,10 +183,10 @@
       {#if workspace}
         <div class="workspace-tools">
           <label class="workspace-switcher"><span>Workspace</span><select value={workspace.id} on:change={(event) => selectWorkspace(Number(event.currentTarget.value))}>{#each workspaces as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-          {#if workspace.role !== 'viewer'}<button class="primary new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>New task</span></button>{/if}
+          {#if workspace.role !== 'viewer'}<AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>New task</span></AppButton>{/if}
         </div>
       {/if}
-      <div class="account"><span>{user.display_name}</span><button on:click={logout}>Sign out</button></div>
+      <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>Sign out</AppButton></div>
     </header>
     <aside class="sidebar">
       <nav aria-label="Primary navigation">
@@ -200,7 +202,7 @@
     <main class="content">
       {#if error}<p class="error">{error}</p>{/if}
       {#if !workspace}
-        <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<input bind:value={firstWorkspaceName} required placeholder="Personal" /></label><button class="primary">Create workspace</button></form></section>
+        <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<TextField bind:value={firstWorkspaceName} required placeholder="Personal" /></label><AppButton type="submit" variant="primary">Create workspace</AppButton></form></section>
       {:else}
         {#key `${workspace.id}-${view}-${refreshKey}`}
           {#if view === 'next'}<Next {workspace} on:openTask={(event) => openTask(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
@@ -242,14 +244,14 @@
 <style>
   .workspace-tools { min-width: 0; display: flex; align-items: center; gap: .7rem; }
   .workspace-tools .workspace-switcher { flex: 1; }
-  .new-task-button { flex: 0 0 auto; white-space: nowrap; padding: .55rem .75rem; }
+  :global(.new-task-button) { flex: 0 0 auto; white-space: nowrap; padding: .55rem .75rem; }
   .draft-count { margin-left: auto; min-width: 1.35rem; border-radius: 999px; background: #e9eee9; padding: .08rem .38rem; color: var(--forest-2); font-size: .68rem; font-weight: 800; text-align: center; }
   .mobile-nav-icon { position: relative; }
   .mobile-nav-icon b { position: absolute; top: -.45rem; right: -.7rem; min-width: 1rem; border-radius: 999px; background: var(--forest); padding: .02rem .25rem; color: #fff; font-size: .55rem; line-height: 1rem; }
 
   @media (max-width: 760px) {
     .workspace-tools { min-width: 0; }
-    .new-task-button span { display: none; }
-    .new-task-button { padding: .5rem .65rem; }
+    :global(.new-task-button span) { display: none; }
+    :global(.new-task-button) { padding: .5rem .65rem; }
   }
 </style>

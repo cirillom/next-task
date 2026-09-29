@@ -7,6 +7,7 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import TagBadge from './TagBadge.svelte';
 
   export let task: Task;
   export let readOnly = false;
@@ -157,7 +158,7 @@
   {#if task.direct_tags.length}
     <div class="tag-row">
       {#each task.direct_tags as tag}
-        <span class="tag" style:--tag-color={tag.color || '#73847c'}>{tag.name}</span>
+        <TagBadge {tag} />
       {/each}
     </div>
   {/if}
@@ -239,7 +240,6 @@
   .priority { color: var(--forest); font-weight: 800; }
   .date-meta { font-variant-numeric: tabular-nums; }
   .overdue { color: var(--danger); font-weight: 700; }
-  .tag { display: inline-flex; align-items: center; border-radius: 2rem; background: color-mix(in srgb, var(--tag-color) 15%, white); color: color-mix(in srgb, var(--tag-color) 80%, black); padding: .25rem .55rem; font-size: .78rem; }
   .recommended-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; border-top: 1px solid #e8e3d9; padding-top: .85rem; }
   .action-button { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #cbc8be; border-radius: .55rem; background: #fff; color: var(--ink); padding: .58rem .78rem; font-size: .8rem; font-weight: 700; }
   .action-button svg { width: 1rem; height: 1rem; flex: 0 0 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }

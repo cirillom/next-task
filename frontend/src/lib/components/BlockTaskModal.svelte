@@ -3,6 +3,8 @@
   import type { Block } from '../api/types';
   import { formatDateTime, localDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
+  import AppButton from './AppButton.svelte';
+  import TextArea from './TextArea.svelte';
 
   type AutoUnblockChoice = 'none' | 'tomorrow' | 'three-days' | 'week' | 'custom';
 
@@ -106,14 +108,14 @@
     <form on:submit|preventDefault={submit}>
       <label>
         Blocking reason
-        <textarea
+        <TextArea
           bind:value={reason}
           rows="4"
           placeholder="What is preventing this task from moving forward?"
           disabled={busy}
           readonly={reblockMode}
           required
-        ></textarea>
+        />
       </label>
       <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
 
@@ -205,14 +207,14 @@
       </section>
 
       <footer class="block-modal__actions">
-        <button type="button" disabled={busy} on:click={close}>Cancel</button>
-        <button class="primary" disabled={busy || !reason.trim()}>
+        <AppButton disabled={busy} on:click={close}>Cancel</AppButton>
+        <AppButton type="submit" variant="primary" disabled={busy || !reason.trim()}>
           {#if busy}
             {reblockMode ? 'Reblocking…' : 'Blocking…'}
           {:else}
             {reblockMode ? 'Reblock task' : 'Block task'}
           {/if}
-        </button>
+        </AppButton>
       </footer>
     </form>
   </section>
@@ -241,8 +243,8 @@
   .task-title { margin: .45rem 0 0; color: var(--muted); font-weight: 650; }
 
   form { display: grid; gap: 0; padding: 1.25rem 1.4rem 0; }
-  textarea { min-height: 7rem; line-height: 1.5; }
-  textarea[readonly] { background: #f5f2ea; color: var(--muted); }
+  form :global(.app-text-area) { min-height: 7rem; line-height: 1.5; }
+  form :global(.app-text-area[readonly]) { background: #f5f2ea; color: var(--muted); }
   .help { margin: .45rem 0 0; }
 
   .auto-unblock-section {
@@ -374,14 +376,6 @@
     border-top: 1px solid var(--line);
     margin: 1.25rem -1.4rem 0;
     padding: 1rem 1.4rem;
-  }
-
-  .block-modal__actions > button:not(.primary) {
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--ink);
-    padding: .65rem .9rem;
   }
 
   @media (max-width: 600px) {

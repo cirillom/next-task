@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { mcpApi, type McpSettings } from '../api/mcp';
+  import AppButton from './AppButton.svelte';
+  import TextField from './TextField.svelte';
 
   let settings: McpSettings | null = null;
   let error = '';
@@ -55,8 +57,8 @@
   <label>
     MCP connector URL
     <span class="connector-row">
-      <input class="code-input" value={settings?.connector_url || 'Loading…'} readonly />
-      <button type="button" on:click={copyUrl} disabled={!settings}>Copy</button>
+      <TextField className="code-input" value={settings?.connector_url || 'Loading…'} readonly />
+      <AppButton on:click={copyUrl} disabled={!settings}>Copy</AppButton>
     </span>
   </label>
   <p class="help">
@@ -70,8 +72,8 @@
   {#if error}<p class="error">{error}</p>{/if}
   {#if notice}<p class="notice">{notice}</p>{/if}
   {#if settings?.active_connections}
-    <button class="danger" type="button" on:click={revokeAll} disabled={revoking}>
+    <AppButton variant="danger" on:click={revokeAll} disabled={revoking}>
       {revoking ? 'Disconnecting…' : 'Disconnect all ChatGPT connections'}
-    </button>
+    </AppButton>
   {/if}
 </section>

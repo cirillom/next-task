@@ -2,6 +2,10 @@
   import { createEventDispatcher } from 'svelte';
   import type { Tag } from '../api/types';
   import { hierarchicalTagResults, tagHierarchyPaths } from '../tagHierarchy';
+  import TagBadge from './TagBadge.svelte';
+  import AppButton from './AppButton.svelte';
+  import TextField from './TextField.svelte';
+  import TagSelect from './TagSelect.svelte';
 
   export let tags: Tag[] = [];
   export let selectedIds: number[] = [];
@@ -68,10 +72,6 @@
     search = '';
   }
 
-  function parentLabel(tag: Tag): string {
-    return tagHierarchyPaths(tag, tags)[0] || tag.name;
-  }
-
   function contextPaths(tag: Tag): string[] {
     return tagHierarchyPaths(tag, tags).filter((path) => path !== tag.name);
   }
@@ -90,18 +90,18 @@
   {#if selectedTags.length}
     <div class="selected-tags" aria-label="Selected direct tags">
       {#each selectedTags as tag (tag.id)}
-        <span class="selected-tag" style:--tag-color={tag.color || '#73847c'}>
+        <TagBadge {tag} selected>
           {tag.name}
           {#if !disabled}
             <button type="button" aria-label={`Remove ${tag.name}`} on:click={() => remove(tag.id)}>×</button>
           {/if}
-        </span>
+        </TagBadge>
       {/each}
     </div>
   {/if}
 
   <div class="picker-control">
-    <input
+    <TextField
       bind:value={search}
       aria-label="Search tags"
       placeholder="Search tags or hierarchy"
@@ -123,7 +123,7 @@
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
-              <strong>{result.tag.name}</strong>
+              <TagBadge tag={result.tag} selected={selectedIds.includes(result.tag.id)} />
               {#each contextPaths(result.tag) as path}
                 <small>{path}</small>
               {/each}
@@ -152,26 +152,27 @@
     <div class="inline-tag-create" aria-label="Create tag">
       <label>
         Name
-        <input bind:value={createName} maxlength="120" disabled={creating} />
+        <TextField bind:value={createName} maxlength="120" disabled={creating} />
       </label>
       <label>
         Parent
-        <select bind:value={createParentId} disabled={creating}>
-          <option value={0}>No parent</option>
-          {#each [...tags].sort((left, right) => left.name.localeCompare(right.name)) as tag (tag.id)}
-            <option value={tag.id}>{parentLabel(tag)}</option>
-          {/each}
-        </select>
+        <TagSelect
+          bind:value={createParentId}
+          options={[...tags].sort((left, right) => left.name.localeCompare(right.name)).map((tag) => ({ tag, context: tagHierarchyPaths(tag, tags)[0] }))}
+          emptyLabel="No parent"
+          label="Parent tag"
+          disabled={creating}
+        />
       </label>
       <label class="color-input">
         Color
         <input type="color" bind:value={createColor} disabled={creating} />
       </label>
       <div class="inline-create-actions">
-        <button type="button" disabled={creating} on:click={cancelCreate}>Cancel</button>
-        <button type="button" class="primary" disabled={creating || !createName.trim()} on:click={submitCreate}>
+        <AppButton disabled={creating} on:click={cancelCreate}>Cancel</AppButton>
+        <AppButton variant="primary" disabled={creating || !createName.trim()} on:click={submitCreate}>
           {creating ? 'Creating…' : 'Create and select'}
-        </button>
+        </AppButton>
       </div>
     </div>
   {/if}
@@ -190,37 +191,7 @@
     font-size: .72rem;
   }
 
-  .selected-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: .25rem;
-    border: 1px solid color-mix(in srgb, var(--tag-color) 30%, white);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--tag-color) 15%, white);
-    color: color-mix(in srgb, var(--tag-color) 78%, black);
-    padding: .2rem .3rem .2rem .5rem;
-    font-size: .75rem;
-    font-weight: 750;
-  }
-
-  .selected-tag button {
-    display: grid;
-    width: 1.15rem;
-    height: 1.15rem;
-    place-items: center;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: inherit;
-    padding: 0;
-    font-size: .9rem;
-    line-height: 1;
-  }
-
-  .selected-tag button:hover { background: rgba(0, 0, 0, .08); }
-
   .picker-control { position: relative; }
-  .picker-control input { width: 100%; }
 
   .tag-options {
     position: absolute;
@@ -255,7 +226,6 @@
 
   .option-check { color: var(--forest-2); font-weight: 900; }
   .option-copy { display: grid; min-width: 0; gap: .1rem; }
-  .option-copy strong { font-size: .8rem; }
   .option-copy small {
     overflow: hidden;
     color: var(--muted);
@@ -287,8 +257,7 @@
     font-weight: 750;
   }
 
-  .inline-tag-create input,
-  .inline-tag-create select {
+  .inline-tag-create input {
     width: 100%;
     min-width: 0;
   }
@@ -300,14 +269,6 @@
     grid-column: 1 / -1;
     justify-content: flex-end;
     gap: .4rem;
-  }
-
-  .inline-create-actions button:not(.primary) {
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--ink);
-    padding: .45rem .65rem;
   }
 
   @media (max-width: 640px) {

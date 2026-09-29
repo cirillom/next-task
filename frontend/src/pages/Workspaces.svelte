@@ -2,6 +2,10 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Member, Role, Status, Workspace } from '../lib/api/types';
+  import AppButton from '../lib/components/AppButton.svelte';
+  import TextField from '../lib/components/TextField.svelte';
+  import TextArea from '../lib/components/TextArea.svelte';
+  import NumberField from '../lib/components/NumberField.svelte';
 
   export let workspace: Workspace;
   export let workspaces: Workspace[];
@@ -155,17 +159,17 @@
   <aside class="panel workspace-list">
     <h2>Your workspaces</h2>
     {#each workspaces as item}<button class:active={item.id === workspace.id} on:click={() => dispatch('select', item.id)}>{item.name}<small>{item.role}</small></button>{/each}
-    <form on:submit|preventDefault={createWorkspace}><label>New workspace<input bind:value={newWorkspaceName} required placeholder="Workspace name" /></label><button class="primary">Create</button></form>
+    <form on:submit|preventDefault={createWorkspace}><label>New workspace<TextField bind:value={newWorkspaceName} required placeholder="Workspace name" /></label><AppButton type="submit" variant="primary">Create</AppButton></form>
   </aside>
 
   <div class="settings-stack">
     {#if workspace.role === 'owner'}
-      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<input bind:value={workspaceName} required /></label><label>Scoring formula<textarea class="code-input" bind:value={formula} rows="4"></textarea></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><button class="primary">Save settings</button></form></section>
+      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<TextField bind:value={workspaceName} required /></label><label>Scoring formula<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><AppButton type="submit" variant="primary">Save settings</AppButton></form></section>
     {/if}
 
-    <section class="panel"><h2>Statuses</h2><div class="editable-list">{#each statuses as item}<div class="editable-row"><input bind:value={item.name} disabled={workspace.role === 'viewer'} aria-label="Status name" /><input type="number" step="any" bind:value={item.score_value} disabled={workspace.role === 'viewer'} aria-label="Score value" />{#if workspace.role !== 'viewer'}<button on:click={() => saveStatus(item)}>Save</button><button class="danger-subtle" on:click={() => removeStatus(item)}>Delete</button>{/if}</div>{/each}</div>{#if workspace.role !== 'viewer'}<form class="inline-control" on:submit|preventDefault={addStatus}><input bind:value={statusName} placeholder="New status" required /><input type="number" step="any" bind:value={statusValue} aria-label="Score value" /><button>Add status</button></form>{/if}</section>
+    <section class="panel"><h2>Statuses</h2><div class="editable-list">{#each statuses as item}<div class="editable-row"><TextField bind:value={item.name} disabled={workspace.role === 'viewer'} aria-label="Status name" /><NumberField step="any" bind:value={item.score_value} disabled={workspace.role === 'viewer'} aria-label="Score value" />{#if workspace.role !== 'viewer'}<AppButton on:click={() => saveStatus(item)}>Save</AppButton><AppButton variant="danger" on:click={() => removeStatus(item)}>Delete</AppButton>{/if}</div>{/each}</div>{#if workspace.role !== 'viewer'}<form class="inline-control" on:submit|preventDefault={addStatus}><TextField bind:value={statusName} placeholder="New status" required /><NumberField step="any" bind:value={statusValue} aria-label="Score value" /><AppButton type="submit">Add status</AppButton></form>{/if}</section>
 
-    <section class="panel"><h2>Members</h2><div class="member-list">{#each members as member}<div><span><strong>{member.display_name}</strong><small>{member.email}</small></span>{#if workspace.role === 'owner'}<select value={member.role} on:change={(event) => changeRole(member, event.currentTarget.value as Role)}><option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button class="danger-subtle" on:click={() => removeMember(member)}>Remove</button>{:else}<span class="role-badge">{member.role}</span>{/if}</div>{/each}</div>{#if workspace.role === 'owner'}<form class="inline-control" on:submit|preventDefault={addMember}><input bind:value={memberEmail} placeholder="Existing username or email" autocomplete="off" required /><select bind:value={memberRole}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select><button>Add member</button></form>{/if}</section>
+    <section class="panel"><h2>Members</h2><div class="member-list">{#each members as member}<div><span><strong>{member.display_name}</strong><small>{member.email}</small></span>{#if workspace.role === 'owner'}<select value={member.role} on:change={(event) => changeRole(member, event.currentTarget.value as Role)}><option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><AppButton variant="danger" on:click={() => removeMember(member)}>Remove</AppButton>{:else}<span class="role-badge">{member.role}</span>{/if}</div>{/each}</div>{#if workspace.role === 'owner'}<form class="inline-control" on:submit|preventDefault={addMember}><TextField bind:value={memberEmail} placeholder="Existing username or email" autocomplete="off" required /><select bind:value={memberRole}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select><AppButton type="submit">Add member</AppButton></form>{/if}</section>
 
     {#if workspace.role === 'owner'}
       <section class="panel danger-zone">
@@ -176,7 +180,7 @@
           <p>All tasks and subtasks, tags, statuses, workspace memberships, assignments, task-tag links, and blocking history in this workspace will be removed.</p>
           <p><strong>User accounts will not be deleted.</strong> This action cannot be undone.</p>
         </div>
-        <button type="button" class="danger-primary" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting workspace…' : 'Delete workspace permanently'}</button>
+        <AppButton variant="danger-solid" className="delete-workspace-button" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting workspace…' : 'Delete workspace permanently'}</AppButton>
       </section>
     {/if}
   </div>
@@ -213,17 +217,5 @@
     margin: .55rem 0 0;
   }
 
-  .danger-primary {
-    margin-top: 1rem;
-    border: 0;
-    border-radius: .55rem;
-    background: var(--danger);
-    color: #fff;
-    padding: .75rem 1.05rem;
-    font-weight: 750;
-  }
-
-  .danger-primary:hover:not(:disabled) {
-    filter: brightness(.88);
-  }
+  :global(.delete-workspace-button) { margin-top: 1rem; }
 </style>

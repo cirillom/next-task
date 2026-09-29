@@ -6,6 +6,10 @@
   import DateTimeInput from './DateTimeInput.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import TagPicker from './TagPicker.svelte';
+  import TagBadge from './TagBadge.svelte';
+  import AppButton from './AppButton.svelte';
+  import TextField from './TextField.svelte';
+  import NumberField from './NumberField.svelte';
 
   export let workspace: Workspace;
   export let taskId = 0;
@@ -224,12 +228,12 @@
 {:else}
   <form class="shared-task-form" on:submit|preventDefault={submit}>
     <div class="title-row">
-      <label>Title<input bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
+      <label>Title<TextField bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
     </div>
 
     <div class="metadata-row">
       <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-      <label>Priority<input type="number" bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
+      <label>Priority<NumberField bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
       <label>Due date<DateTimeInput bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
       <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
     </div>
@@ -252,7 +256,7 @@
       <div class="parent-field">
         <span class="field-label">Parent</span>
         <div class="parent-combobox">
-          <input
+          <TextField
             id="task-parent-search"
             type="text"
             value={parentSearch}
@@ -264,7 +268,7 @@
             aria-expanded={parentOpen}
             disabled={workspace.role === 'viewer'}
             on:focus={focusParent}
-            on:input={(event) => filterParents(event.currentTarget.value)}
+            on:input={(event) => filterParents((event.target as HTMLInputElement).value)}
             on:blur={closeParent}
           />
           {#if parentOpen && workspace.role !== 'viewer'}
@@ -359,7 +363,7 @@
           <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
           <div class="inherited-tag-list">
             {#each taskDetails.inherited_tags as tag}
-              <span style:--tag-color={tag.color || '#73847c'}>{tag.name}</span>
+              <TagBadge {tag} inherited />
             {/each}
           </div>
         </details>
@@ -394,11 +398,11 @@
     {#if localError || error}<p class="error" role="alert">{localError || error}</p>{/if}
     <footer class="editor-actions">
       <span></span>
-      <button type="button" disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</button>
+      <AppButton disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</AppButton>
       {#if workspace.role !== 'viewer' && draftSubmitLabel}
-        <button type="button" disabled={busy || creatingTag || !statusId || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</button>
+        <AppButton disabled={busy || creatingTag || !statusId || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</AppButton>
       {/if}
-      {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</button>{/if}
+      {#if workspace.role !== 'viewer'}<AppButton type="submit" variant="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>{/if}
     </footer>
   </form>
 {/if}
@@ -607,13 +611,6 @@
   .inherited-tags { color: var(--muted); font-size: .72rem; }
   .inherited-tags summary { width: fit-content; cursor: pointer; color: var(--forest-2); font-weight: 700; }
   .inherited-tag-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
-  .inherited-tag-list span {
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--tag-color) 8%, white);
-    color: color-mix(in srgb, var(--tag-color) 70%, black);
-    padding: .14rem .4rem;
-  }
-
   .compact-details { margin-top: 0; padding-top: .5rem; }
   .compact-details dl { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
   .compact-details dl > div { display: flex; grid-template-columns: none; gap: .35rem; padding: 0; font-size: .75rem; }

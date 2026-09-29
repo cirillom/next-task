@@ -3,6 +3,7 @@
   import { api } from '../lib/api/client';
   import type { Tag, Task, Workspace } from '../lib/api/types';
   import NextTaskCard from '../lib/components/NextTaskCard.svelte';
+  import AppButton from '../lib/components/AppButton.svelte';
   import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
 
@@ -67,7 +68,7 @@
 
 <div class="page-heading">
   <div><p class="eyebrow">Ranked for you</p><h1>Next task</h1></div>
-  {#if workspace.role !== 'viewer'}<button class="primary" on:click={() => dispatch('openTask', 0)}>+ New task</button>{/if}
+  {#if workspace.role !== 'viewer'}<AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>{/if}
 </div>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}

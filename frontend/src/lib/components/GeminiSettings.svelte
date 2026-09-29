@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { geminiApi, type GeminiSettings } from '../api/gemini';
+  import AppButton from './AppButton.svelte';
+  import TextField from './TextField.svelte';
 
   let settings: GeminiSettings | null = null;
   let apiKey = '';
@@ -68,7 +70,7 @@
     <form on:submit|preventDefault={save}>
       <label>
         Gemini API key
-        <input
+        <TextField
           type="password"
           bind:value={apiKey}
           minlength="20"
@@ -86,12 +88,12 @@
       {#if notice}<p class="notice">{notice}</p>{/if}
       <div class="integration-actions">
         {#if settings?.configured}
-          <button type="button" class="danger-subtle" disabled={busy} on:click={remove}>Remove key</button>
+          <AppButton variant="danger" disabled={busy} on:click={remove}>Remove key</AppButton>
         {/if}
         <span></span>
-        <button class="primary" disabled={busy || apiKey.trim().length < 20}>
+        <AppButton type="submit" variant="primary" disabled={busy || apiKey.trim().length < 20}>
           {busy ? 'Saving…' : settings?.configured ? 'Replace key' : 'Save key'}
-        </button>
+        </AppButton>
       </div>
     </form>
   {/if}

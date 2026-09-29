@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
+  import AppButton from './AppButton.svelte';
 
   export let workspaceId: number;
   export let taskId: number;
@@ -106,15 +107,14 @@
     </div>
 
     <footer class="completion-actions">
-      <button type="button" disabled={busy} on:click={() => dispatch('close')}>Cancel</button>
-      <button
-        type="button"
-        class="primary"
+      <AppButton disabled={busy} on:click={() => dispatch('close')}>Cancel</AppButton>
+      <AppButton
+        variant="primary"
         disabled={busy || loading || !!error}
         on:click={() => dispatch('confirm')}
       >
         {busy ? 'Finishing…' : `Finish task${unfinishedCount ? ` + ${unfinishedCount} child${unfinishedCount === 1 ? '' : ' tasks'}` : ''}`}
-      </button>
+      </AppButton>
     </footer>
   </section>
 </div>
@@ -242,14 +242,6 @@
     gap: .6rem;
     border-top: 1px solid var(--line);
     padding: .8rem 1.1rem;
-  }
-
-  .completion-actions > button:not(.primary) {
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--ink);
-    padding: .55rem .8rem;
   }
 
   @media (max-width: 600px) {

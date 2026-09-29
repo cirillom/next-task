@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api } from '../lib/api/client';
+  import AppButton from '../lib/components/AppButton.svelte';
   import type {
     PomodoroPhase,
     PomodoroSession,
@@ -503,9 +504,9 @@
     <div class="focus-brand"><span class="focus-dot"></span><strong>Next Task</strong></div>
     <div class="focus-header-actions">
       {#if workspace.role !== 'viewer' && phase === 'focus'}
-        <button class="quiet-button" on:click={() => dispatch('openTask', 0)}>+ New task</button>
+        <AppButton on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
       {/if}
-      <button class="quiet-button" on:click={endSession}>End session</button>
+      <AppButton on:click={endSession}>End session</AppButton>
     </div>
   </header>
 
@@ -516,16 +517,16 @@
     <div class="period-controls">
       {#if ringing}
         <span class="running-label alarm-label">Alarm ringing</span>
-        <button class="primary period-button" on:click={dismissAlarm}>Dismiss alarm</button>
+        <AppButton variant="primary" className="period-button" on:click={dismissAlarm}>Dismiss alarm</AppButton>
       {:else if running}
         <span class="running-label">Running</span>
-        <button class="quiet-button period-button" on:click={cutPeriodShort}>
+        <AppButton className="period-button" on:click={cutPeriodShort}>
           {phase === 'focus' ? 'End focus early' : 'End break early'}
-        </button>
+        </AppButton>
       {:else}
-        <button class="primary period-button" disabled={loading || selecting} on:click={startCurrentPeriod}>
+        <AppButton variant="primary" className="period-button" disabled={loading || selecting} on:click={startCurrentPeriod}>
           {startLabel()}
-        </button>
+        </AppButton>
       {/if}
     </div>
 
@@ -595,7 +596,7 @@
           <div class="empty-focus">
             <p>No unfinished, unblocked tasks are available in this session scope.</p>
             {#if workspace.role !== 'viewer'}
-              <button class="primary" on:click={() => dispatch('openTask', 0)}>Create a task</button>
+              <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>Create a task</AppButton>
             {/if}
           </div>
         {/if}
@@ -668,8 +669,8 @@
         <h2 id="break-prompt-title">Start a break?</h2>
         <p id="break-prompt-description">Take a break now, or keep the current focus timer running with the next task.</p>
         <div class="break-prompt-actions">
-          <button type="button" class="quiet-button" on:click={keepFocusingAfterTask}>Keep focusing</button>
-          <button type="button" class="primary" on:click={startBreakAfterTask}>{nextBreakLabel()}</button>
+          <AppButton on:click={keepFocusingAfterTask}>Keep focusing</AppButton>
+          <AppButton variant="primary" on:click={startBreakAfterTask}>{nextBreakLabel()}</AppButton>
         </div>
       </section>
     </div>
@@ -707,18 +708,6 @@
     box-shadow: 0 0 0 .3rem rgba(166, 80, 56, .12);
   }
 
-  .quiet-button {
-    border: 1px solid rgba(80, 75, 65, .18);
-    border-radius: .55rem;
-    background: rgba(255, 255, 255, .45);
-    color: var(--muted);
-    padding: .48rem .7rem;
-    font-size: .8rem;
-    font-weight: 700;
-  }
-
-  .quiet-button:hover { background: rgba(255, 255, 255, .8); color: var(--ink); }
-
   .focus-content {
     width: min(900px, calc(100% - 2rem));
     margin: 0 auto;
@@ -750,7 +739,7 @@
   }
 
   .period-controls { justify-content: center; margin-top: 1rem; }
-  .period-button { min-width: 9rem; }
+  :global(.period-button) { min-width: 9rem; }
 
   .running-label {
     border-radius: 999px;

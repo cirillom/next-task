@@ -2,6 +2,8 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import type { PomodoroSession, PomodoroSettings, Tag } from '../api/types';
+  import TagSelect from './TagSelect.svelte';
+  import AppButton from './AppButton.svelte';
 
   export let tags: Tag[] = [];
   export let recommendedTaskTitle = '';
@@ -13,7 +15,7 @@
   let serverClockOffset = 0;
   let refreshTicks = 0;
   let timer: number;
-  let selectedTagId = '';
+  let selectedTagId: number | '' = '';
   let error = '';
 
   function updateRemaining() {
@@ -106,17 +108,13 @@
 
   <label class="tag-filter">
     <span>Session tag</span>
-    <select bind:value={selectedTagId} disabled={!!activeSession} on:change={changeScope}>
-      <option value="">All tags</option>
-      {#each tags as tag}
-        <option value={tag.id}>{tag.name}</option>
-      {/each}
-    </select>
+    <TagSelect bind:value={selectedTagId} options={tags.map((tag) => ({ tag }))} emptyValue="" emptyLabel="All tags" label="Session tag" disabled={!!activeSession} on:change={changeScope} />
     <small>{activeSession ? 'The active session keeps its original scope.' : 'Includes child tags.'}</small>
   </label>
 
-  <button
-    class="primary start-button"
+  <AppButton
+    variant="primary"
+    className="start-button"
     disabled={!settings || (!activeSession && !recommendedTaskTitle)}
     aria-label={activeSession ? 'Continue active Pomodoro' : recommendedTaskTitle ? `Start Pomodoro with ${recommendedTaskTitle}` : 'Start Pomodoro'}
     title={activeSession ? 'Continue the Pomodoro active on your account' : recommendedTaskTitle ? `Start with ${recommendedTaskTitle}` : 'No recommended task in this scope'}
@@ -124,7 +122,7 @@
   >
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
     {activeSession ? 'Continue Pomodoro' : 'Start Pomodoro'}
-  </button>
+  </AppButton>
 </section>
 
 <style>
@@ -153,7 +151,7 @@
   }
 
   .pomodoro-icon svg,
-  .start-button svg {
+  :global(.start-button svg) {
     width: 1.2rem;
     height: 1.2rem;
     fill: none;
@@ -163,7 +161,7 @@
     stroke-width: 1.8;
   }
 
-  .start-button svg {
+  :global(.start-button svg) {
     width: 1rem;
     height: 1rem;
     fill: currentColor;
@@ -189,17 +187,13 @@
     font-weight: 800;
   }
 
-  .tag-filter select {
-    min-width: 0;
-  }
-
   .tag-filter small {
     color: var(--muted);
     font-size: .68rem;
     font-weight: 500;
   }
 
-  .start-button {
+  :global(.start-button) {
     display: inline-flex;
     align-items: center;
     gap: .4rem;
@@ -215,7 +209,7 @@
       grid-column: 1 / -1;
     }
 
-    .start-button {
+    :global(.start-button) {
       grid-column: 1 / -1;
       justify-content: center;
     }

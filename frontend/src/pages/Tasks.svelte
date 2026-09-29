@@ -4,6 +4,8 @@
   import type { Member, Status, Tag, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TagPicker from '../lib/components/TagPicker.svelte';
+  import AppButton from '../lib/components/AppButton.svelte';
+  import TextField from '../lib/components/TextField.svelte';
 
   type FinishedFilter = 'unfinished' | 'finished' | 'all';
   type BlockedFilter = 'all' | 'blocked' | 'unblocked';
@@ -243,13 +245,13 @@
 
 <div class="page-heading">
   <div><p class="eyebrow">Browse and search</p><h1>Tasks</h1></div>
-  {#if workspace.role !== 'viewer'}<button class="primary" on:click={() => dispatch('openTask', 0)}>+ New task</button>{/if}
+  {#if workspace.role !== 'viewer'}<AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>{/if}
 </div>
 
 <section class="filter-bar tasks-toolbar">
   <label class="search-field">
     Search
-    <input type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" />
+    <TextField type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" />
   </label>
 
   <div class="popover-control">
@@ -433,10 +435,6 @@
   .search-field {
     width: min(34rem, 100%);
     flex: 1 1 24rem;
-  }
-
-  .search-field input {
-    width: 100%;
   }
 
   .popover-control {

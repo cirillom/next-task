@@ -3,6 +3,11 @@
   import { api } from '../lib/api/client';
   import type { Tag, TagMergePreview, Workspace } from '../lib/api/types';
   import { tagHierarchyOrder, tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
+  import TagBadge from '../lib/components/TagBadge.svelte';
+  import AppButton from '../lib/components/AppButton.svelte';
+  import TextField from '../lib/components/TextField.svelte';
+  import TagSelect from '../lib/components/TagSelect.svelte';
+  import TextArea from '../lib/components/TextArea.svelte';
 
   const SUGGESTED_TAG_COLORS = [
     '#587b6a',
@@ -282,9 +287,9 @@
 <div class="tag-manager">
   <aside class="panel hierarchy-browser">
     <div class="browser-toolbar">
-      <input bind:value={search} type="search" aria-label="Search tags" placeholder="Search tags" />
+      <TextField bind:value={search} type="search" aria-label="Search tags" placeholder="Search tags" />
       {#if workspace.role !== 'viewer'}
-        <button type="button" class="primary" on:click={startCreate}>New tag</button>
+        <AppButton variant="primary" on:click={startCreate}>New tag</AppButton>
       {/if}
     </div>
 
@@ -314,9 +319,8 @@
               <span class="expand-spacer"></span>
             {/if}
             <button type="button" class="tag-select" on:click={() => selectTag(row.tag)}>
-              <span class="color-dot" style:background={row.tag.color || '#73847c'}></span>
               <span class="tree-copy">
-                <strong>{row.tag.name}</strong>
+                <TagBadge tag={row.tag} selected={row.tag.id === selectedId} />
                 {#if search.trim() || row.tag.parents.length > 1}<small>{row.path}</small>{/if}
               </span>
               <span class="usage-badge" title="Direct task usage">{row.tag.direct_task_count}</span>
@@ -336,19 +340,19 @@
         </div>
       </header>
       <form class="detail-form" on:submit|preventDefault={create}>
-        <label>Name<input bind:value={createName} maxlength="120" required /></label>
+        <label>Name<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">Color<input type="color" bind:value={createColor} /></label>
-        <label class="wide">Description<textarea bind:value={createDescription} rows="4"></textarea></label>
+        <label class="wide">Description<TextArea bind:value={createDescription} rows="4" /></label>
         <div class="detail-actions">
-          <button type="button" on:click={() => (creating = false)}>Cancel</button>
-          <button class="primary" disabled={busy}>Create tag</button>
+          <AppButton on:click={() => (creating = false)}>Cancel</AppButton>
+          <AppButton type="submit" variant="primary" disabled={busy}>Create tag</AppButton>
         </div>
       </form>
     {:else if selectedTag}
       <header class="details-heading">
         <div>
           <p class="eyebrow">Tag details</p>
-          <h2><span class="color-dot large" style:background={selectedTag.color || '#73847c'}></span>{selectedTag.name}</h2>
+          <h2><TagBadge tag={selectedTag} /></h2>
         </div>
         <span class="usage-summary">{selectedTag.direct_task_count} direct {selectedTag.direct_task_count === 1 ? 'task' : 'tasks'}</span>
       </header>
@@ -363,12 +367,12 @@
       {/if}
 
       <form class="detail-form" on:submit|preventDefault={saveEdit}>
-        <label>Name<input bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
+        <label>Name<TextField bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
         <label class="color-field">Color<input type="color" bind:value={editColor} disabled={workspace.role === 'viewer'} /></label>
-        <label class="wide">Description<textarea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'}></textarea></label>
+        <label class="wide">Description<TextArea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'} /></label>
         {#if workspace.role !== 'viewer'}
           <div class="detail-actions wide">
-            <button class="primary" disabled={busy}>Save details</button>
+            <AppButton type="submit" variant="primary" disabled={busy}>Save details</AppButton>
           </div>
         {/if}
       </form>
@@ -382,7 +386,7 @@
           <div class="relationship-tags">
             {#each selectedTag.parents as parent}
               <span>
-                <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}>{parent.name}</button>
+                <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}><TagBadge tag={parent} /></button>
                 {#if workspace.role !== 'viewer'}
                   <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
                 {/if}
@@ -395,13 +399,8 @@
 
         {#if workspace.role !== 'viewer' && parentOptions.length}
           <div class="parent-control">
-            <select bind:value={parentChoice} disabled={busy}>
-              <option value={0}>Choose a parent…</option>
-              {#each parentOptions as option}
-                <option value={option.tag.id}>{'  '.repeat(option.depth)}{option.tag.name}</option>
-              {/each}
-            </select>
-            <button type="button" disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</button>
+            <TagSelect bind:value={parentChoice} options={parentOptions} emptyLabel="Choose a parent…" label="Parent tag" disabled={busy} />
+            <AppButton disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</AppButton>
           </div>
         {/if}
       </div>
@@ -414,7 +413,7 @@
         {#if selectedTag.children.length}
           <div class="children-list">
             {#each selectedTag.children as child}
-              <button type="button" on:click={() => selectTagById(child.id)}>{child.name}</button>
+              <button type="button" on:click={() => selectTagById(child.id)}><TagBadge tag={child} /></button>
             {/each}
           </div>
         {:else}
@@ -427,19 +426,17 @@
           <section class="merge-panel" aria-label="Merge tag">
             <div class="relationship-heading">
               <strong>Merge into…</strong>
-              <button type="button" class="clear-button" disabled={busy} on:click={cancelMerge}>Cancel</button>
+              <AppButton disabled={busy} on:click={cancelMerge}>Cancel</AppButton>
             </div>
 
-            <select
+            <TagSelect
               bind:value={mergeDestinationId}
+              options={mergeOptions.map((tag) => ({ tag }))}
+              emptyLabel="Choose destination tag…"
+              label="Merge destination tag"
               disabled={busy || mergeLoading}
               on:change={() => void loadMergePreview()}
-            >
-              <option value={0}>Choose destination tag…</option>
-              {#each mergeOptions as candidate}
-                <option value={candidate.id}>{candidate.name}</option>
-              {/each}
-            </select>
+            />
 
             {#if mergeLoading}
               <p class="muted">Checking merge…</p>
@@ -454,18 +451,18 @@
                 <span>“{selectedTag.name}” will be deleted</span>
               </div>
               <div class="merge-actions">
-                <button type="button" disabled={busy} on:click={cancelMerge}>Cancel</button>
-                <button type="button" class="danger-subtle" disabled={busy} on:click={() => void confirmMerge()}>
+                <AppButton disabled={busy} on:click={cancelMerge}>Cancel</AppButton>
+                <AppButton variant="danger" disabled={busy} on:click={() => void confirmMerge()}>
                   {busy ? 'Merging…' : 'Merge tags'}
-                </button>
+                </AppButton>
               </div>
             {/if}
           </section>
         {/if}
 
         <div class="danger-zone">
-          <button type="button" disabled={busy || mergeOpen} on:click={startMerge}>Merge into…</button>
-          <button type="button" class="danger-subtle" disabled={busy || mergeOpen} on:click={() => void remove()}>Delete tag</button>
+          <AppButton disabled={busy || mergeOpen} on:click={startMerge}>Merge into…</AppButton>
+          <AppButton variant="danger" disabled={busy || mergeOpen} on:click={() => void remove()}>Delete tag</AppButton>
         </div>
       {/if}
     {:else}
@@ -491,8 +488,6 @@
     gap: .55rem;
     margin-bottom: .75rem;
   }
-
-  .browser-toolbar input { min-width: 0; }
 
   .tag-tree {
     display: grid;
@@ -526,7 +521,7 @@
   .tag-select {
     display: grid;
     width: 100%;
-    grid-template-columns: .65rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: .45rem;
     border: 0;
@@ -537,23 +532,7 @@
   }
 
   .tree-copy { display: grid; min-width: 0; gap: .08rem; }
-  .tree-copy strong { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
   .tree-copy small { overflow: hidden; color: var(--muted); font-size: .67rem; text-overflow: ellipsis; white-space: nowrap; }
-
-  .color-dot {
-    display: inline-block;
-    width: .55rem;
-    height: .55rem;
-    flex: 0 0 .55rem;
-    border-radius: 50%;
-  }
-
-  .color-dot.large {
-    width: .75rem;
-    height: .75rem;
-    margin-right: .35rem;
-    vertical-align: middle;
-  }
 
   .usage-badge {
     min-width: 1.35rem;
@@ -608,14 +587,6 @@
   .detail-form .wide { grid-column: 1 / -1; }
   .color-field input { width: 100%; min-height: 2.4rem; padding: .2rem; }
   .detail-actions { display: flex; justify-content: flex-end; gap: .45rem; }
-  .detail-actions button:not(.primary) {
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--ink);
-    padding: .48rem .7rem;
-  }
-  .detail-actions button:not(.primary):hover:not(:disabled) { background: #f7f5ef; }
   .detail-actions.wide { grid-column: 1 / -1; }
 
   .relationship-section {
@@ -646,20 +617,13 @@
     display: inline-flex;
     align-items: center;
     overflow: hidden;
-    border: 1px solid #d7d8d2;
+    border: 0;
     border-radius: 999px;
-    background: #f7f8f5;
+    background: transparent;
   }
 
   .relationship-link,
-  .children-list button {
-    border: 0;
-    background: transparent;
-    color: var(--forest-2);
-    padding: .28rem .5rem;
-    font-size: .75rem;
-    font-weight: 750;
-  }
+  .children-list button { border: 0; background: transparent; padding: 0; }
 
   .relationship-link:hover,
   .children-list button:hover { text-decoration: underline; text-underline-offset: .12rem; }
@@ -681,12 +645,6 @@
     gap: .45rem;
   }
 
-  .children-list button {
-    border: 1px solid #d7d8d2;
-    border-radius: 999px;
-    background: #f7f8f5;
-  }
-
   .muted { margin: 0; color: var(--muted); font-size: .8rem; }
 
   .merge-panel {
@@ -698,8 +656,6 @@
     background: #f8f8f5;
     padding: .75rem;
   }
-
-  .merge-panel select { width: 100%; }
 
   .merge-summary {
     display: grid;
@@ -720,15 +676,6 @@
     gap: .45rem;
   }
 
-  .merge-actions button:not(.danger-subtle),
-  .danger-zone button:not(.danger-subtle) {
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--ink);
-    padding: .48rem .7rem;
-  }
-
   .danger-zone {
     display: flex;
     justify-content: flex-end;
@@ -736,18 +683,6 @@
     margin-top: 1rem;
     border-top: 1px solid var(--line);
     padding-top: .85rem;
-  }
-
-  .danger-zone .danger-subtle {
-    border: 1px solid #d8aaa5;
-    border-radius: .5rem;
-    background: #fff;
-    color: var(--danger);
-    padding: .48rem .7rem;
-  }
-
-  .danger-zone .danger-subtle:hover:not(:disabled) {
-    background: #fff2f0;
   }
 
   @media (max-width: 800px) {

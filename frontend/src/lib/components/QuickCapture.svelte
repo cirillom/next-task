@@ -4,6 +4,8 @@
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
   import type { Task, TaskInput, Workspace } from '../api/types';
   import TaskForm from './TaskForm.svelte';
+  import AppButton from './AppButton.svelte';
+  import TextArea from './TextArea.svelte';
 
   export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ close: void; saved: Task }>();
@@ -132,26 +134,26 @@
       <div class="capture-body">
         <label class="capture-field">
           <span>What do you need to do?</span>
-          <textarea
+          <TextArea
             bind:value={captureText}
             rows="7"
             maxlength="12000"
             autofocus
             placeholder="Write a task, thought, or a few lines of context…"
-          ></textarea>
+          />
         </label>
         <p class="capture-hint">The first non-empty line becomes the title. Any lines after it become the description.</p>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <footer class="capture-actions">
-          <button type="button" disabled={busy || !captureText.trim()} on:click={createDraft}>
+          <AppButton disabled={busy || !captureText.trim()} on:click={createDraft}>
             <span aria-hidden="true">✎</span> {busy ? 'Saving…' : 'Draft task'}
-          </button>
-          <button type="button" disabled={busy || !captureText.trim()} on:click={generate}>
+          </AppButton>
+          <AppButton disabled={busy || !captureText.trim()} on:click={generate}>
             <span aria-hidden="true">✨</span> {busy ? 'Drafting…' : 'Text to task'}
-          </button>
-          <button type="button" class="primary" disabled={busy || !captureText.trim()} on:click={expand}>
+          </AppButton>
+          <AppButton variant="primary" disabled={busy || !captureText.trim()} on:click={expand}>
             <span aria-hidden="true">↗</span> Expand
-          </button>
+          </AppButton>
         </footer>
       </div>
     {:else if proposal}
@@ -198,7 +200,7 @@
 
   .capture-body { display: grid; gap: .75rem; }
   .capture-field { display: grid; gap: .4rem; font-weight: 750; }
-  .capture-field textarea { min-height: 11rem; resize: vertical; line-height: 1.55; font: inherit; }
+  .capture-field :global(.app-text-area) { min-height: 11rem; line-height: 1.55; }
   .capture-hint { margin: -.2rem 0 0; color: var(--muted); font-size: .78rem; }
 
   .capture-actions {
@@ -212,25 +214,12 @@
     background: var(--paper);
   }
 
-  .capture-actions button {
-    display: inline-flex;
-    align-items: center;
-    gap: .35rem;
-    border: 1px solid #cbc8be;
-    border-radius: .5rem;
-    background: #fff;
-    padding: .5rem .72rem;
-    color: var(--ink);
-    font-weight: 700;
-  }
-
-  .capture-actions button.primary { border-color: var(--forest); background: var(--forest); color: #fff; }
   code { overflow-wrap: anywhere; }
 
   @media (max-width: 640px) {
     .quick-capture-modal { padding: .8rem; }
     .editor-header { top: -.8rem; margin: -.8rem -.8rem .75rem; padding: .75rem .8rem; }
     .capture-actions { margin: .2rem -.8rem -.8rem; padding: .75rem .8rem max(.75rem, env(safe-area-inset-bottom)); }
-    .capture-actions button { flex: 1 1 auto; justify-content: center; }
+    .capture-actions :global(.app-button) { flex: 1 1 auto; }
   }
 </style>
