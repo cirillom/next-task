@@ -259,3 +259,59 @@ def test_database_trigger_rejects_two_scheduled_active_blocks(
         with pytest.raises(IntegrityError):
             db.commit()
         db.rollback()
+
+
+def test_finishing_tasks_ends_active_blocks_and_preserves_history(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace = client.post("/api/workspaces", json={"name": "Completion blocking"}).json()
+    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
+
+    parent = client.post(
+        "/api/tasks",
+        json={
+            "workspace_id": workspace["id"],
+            "title": "Blocked parent",
+            "status_id": statuses[0]["id"],
+        },
+    ).json()
+    child = client.post(
+        "/api/tasks",
+        json={
+            "workspace_id": workspace["id"],
+            "title": "Blocked child",
+            "status_id": statuses[0]["id"],
+            "parent_task_id": parent["id"],
+        },
+    ).json()
+
+    parent_block = client.post(
+        f"/api/tasks/{parent['id']}/block",
+        json={"reason": "Parent blocker"},
+    ).json()["current_block"]
+    child_block = client.post(
+        f"/api/tasks/{child['id']}/block",
+        json={"reason": "Child blocker"},
+    ).json()["current_block"]
+
+    finished = client.post(f"/api/tasks/{parent['id']}/finish")
+    assert finished.status_code == 200
+    finished_at = finished.json()["finished_at"]
+
+    for task_id, block_id in (
+        (parent["id"], parent_block["id"]),
+        (child["id"], child_block["id"]),
+    ):
+        task = client.get(f"/api/tasks/{task_id}").json()
+        assert task["finished_at"] == finished_at
+        assert task["current_block"] is None
+        assert len(task["blocking_history"]) == 1
+        assert task["blocking_history"][0]["id"] == block_id
+        assert task["blocking_history"][0]["unblocked_at"] == finished_at
+
+    reopened = client.post(f"/api/tasks/{child['id']}/reopen")
+    assert reopened.status_code == 200
+    assert reopened.json()["current_block"] is None
+    assert reopened.json()["blocking_history"][0]["id"] == child_block["id"]
+    assert reopened.json()["blocking_history"][0]["unblocked_at"] == finished_at
