@@ -49,7 +49,11 @@
     busy = true;
     error = '';
     try {
-      const saved = await api.createDraft(workspace.id, parsed.title, parsed.description);
+      const saved = await api.createDraft({
+        workspace_id: workspace.id,
+        title: parsed.title,
+        description: parsed.description
+      });
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create draft';
@@ -89,6 +93,20 @@
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create task';
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function saveDraft(input: TaskInput) {
+    busy = true;
+    error = '';
+    try {
+      const { priority: _priority, ...draftInput } = input;
+      const saved = await api.createDraft({ ...draftInput, workspace_id: workspace.id });
+      dispatch('saved', saved);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not create draft';
     } finally {
       busy = false;
     }
@@ -154,8 +172,10 @@
         {error}
         submitLabel="Create task"
         busyLabel="Creating…"
+        draftSubmitLabel="Save draft"
         cancelLabel="Back"
         on:cancel={backToCapture}
+        on:draft={(event) => saveDraft(event.detail)}
         on:submit={(event) => save(event.detail)}
       />
     {/if}
