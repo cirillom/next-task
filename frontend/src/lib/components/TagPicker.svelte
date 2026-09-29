@@ -89,7 +89,7 @@
           <button
             type="button"
             class:selected={selectedIds.includes(result.tag.id)}
-            style:--tag-depth={result.depth}
+            style:--tag-indent={`${result.depth}rem`}
             on:mousedown|preventDefault={() => toggle(result.tag.id)}
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
@@ -189,7 +189,7 @@
     border-radius: .45rem;
     background: transparent;
     color: var(--ink);
-    padding: .48rem .55rem .48rem calc(.55rem + var(--tag-depth, 0) * 1rem);
+    padding: .48rem .55rem .48rem calc(.55rem + var(--tag-indent, 0rem));
     text-align: left;
   }
 
