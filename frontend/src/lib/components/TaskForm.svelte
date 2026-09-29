@@ -339,7 +339,7 @@
         on:create={(event) => void createAndSelectTag(event.detail)}
       />
       {#if taskDetails?.inherited_tags.length}
-        <details class="inherited-tags">
+        <details class="inherited-tags" open>
           <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
           <div class="inherited-tag-list">
             {#each taskDetails.inherited_tags as tag}
