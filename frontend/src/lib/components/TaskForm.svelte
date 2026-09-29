@@ -153,22 +153,38 @@
     return [...new Set(values)];
   }
 
-  async function createAndSelectTag(name: string) {
+  async function createAndSelectTag(input: {
+    name: string;
+    parent_tag_id: number | null;
+    color: string;
+  }) {
+    const name = normalizeTagName(input.name);
     if (!name || creatingTag) return;
     creatingTag = true;
     localError = '';
     try {
       let created: Tag;
       try {
-        created = await api.createTag(workspace.id, { name });
-        tags = [...tags, created].sort((left, right) => left.name.localeCompare(right.name));
+        created = await api.createTag(workspace.id, {
+          name,
+          color: input.color,
+          parent_tag_id: input.parent_tag_id
+        });
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
         tags = await api.tags(workspace.id);
         const concurrent = tags.find((tag) => tag.name.toLowerCase() === name);
         if (!concurrent) throw reason;
         created = concurrent;
+        if (
+          input.parent_tag_id &&
+          !created.parents.some((parent) => parent.id === input.parent_tag_id)
+        ) {
+          created = await api.addTagParent(workspace.id, created.id, input.parent_tag_id);
+        }
       }
+
+      tags = await api.tags(workspace.id);
       if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
       suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion !== name);
     } catch (reason) {

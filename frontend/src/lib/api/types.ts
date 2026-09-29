@@ -44,6 +44,14 @@ export interface Tag extends TagSummary {
   ancestors: TagSummary[];
 }
 
+export interface TagMergePreview {
+  source_tag_id: number;
+  destination_tag_id: number;
+  task_assignments: number;
+  parent_relationships: number;
+  child_relationships: number;
+}
+
 export interface Block {
   id: number;
   reason: string;

@@ -531,3 +531,183 @@ def test_score_calculation_and_safe_formula(
         json={"scoring_formula": "open('/etc/passwd').read()"},
     )
     assert invalid.status_code == 422
+
+
+def test_tag_creation_can_atomically_assign_parent(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, _ = make_workspace(client, "Parent-aware tag creation")
+
+    parent = client.post(
+        f"/api/workspaces/{workspace['id']}/tags",
+        json={"name": "homelab"},
+    ).json()
+    created = client.post(
+        f"/api/workspaces/{workspace['id']}/tags",
+        json={
+            "name": "server maintenance",
+            "color": "#587b6a",
+            "parent_tag_id": parent["id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert [item["id"] for item in created.json()["parents"]] == [parent["id"]]
+
+    invalid = client.post(
+        f"/api/workspaces/{workspace['id']}/tags",
+        json={"name": "orphan", "parent_tag_id": 999999},
+    )
+    assert invalid.status_code == 404
+    names = {
+        tag["name"]
+        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
+    }
+    assert "orphan" not in names
+
+
+def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, statuses = make_workspace(client, "Merge tags")
+
+    tags: dict[str, dict] = {}
+    for name in ("parent-a", "parent-b", "source", "destination", "child-a", "child-b"):
+        response = client.post(
+            f"/api/workspaces/{workspace['id']}/tags",
+            json={"name": name},
+        )
+        assert response.status_code == 201, response.text
+        tags[name] = response.json()
+
+    def add_parent(child: str, parent: str) -> None:
+        response = client.post(
+            f"/api/workspaces/{workspace['id']}/tags/{tags[child]['id']}/parents",
+            json={"parent_tag_id": tags[parent]["id"]},
+        )
+        assert response.status_code == 201, response.text
+
+    add_parent("source", "parent-a")
+    add_parent("source", "parent-b")
+    add_parent("destination", "parent-b")
+    add_parent("child-a", "source")
+    add_parent("child-b", "source")
+    add_parent("child-b", "destination")
+
+    source_only = make_task(
+        client,
+        workspace,
+        statuses,
+        "Source only",
+        tag_ids=[tags["source"]["id"]],
+    )
+    both = make_task(
+        client,
+        workspace,
+        statuses,
+        "Already both",
+        tag_ids=[tags["source"]["id"], tags["destination"]["id"]],
+    )
+    destination_only = make_task(
+        client,
+        workspace,
+        statuses,
+        "Destination only",
+        tag_ids=[tags["destination"]["id"]],
+    )
+
+    preview = client.get(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge-preview",
+        params={"destination_tag_id": tags["destination"]["id"]},
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json() == {
+        "source_tag_id": tags["source"]["id"],
+        "destination_tag_id": tags["destination"]["id"],
+        "task_assignments": 2,
+        "parent_relationships": 2,
+        "child_relationships": 2,
+    }
+
+    merged = client.post(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge",
+        json={"destination_tag_id": tags["destination"]["id"]},
+    )
+    assert merged.status_code == 200, merged.text
+    destination = merged.json()
+    assert {item["name"] for item in destination["parents"]} == {"parent-a", "parent-b"}
+    assert {item["name"] for item in destination["children"]} == {"child-a", "child-b"}
+    assert destination["direct_task_count"] == 3
+
+    remaining_names = {
+        tag["name"]
+        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
+    }
+    assert "source" not in remaining_names
+
+    for task_id in (source_only["id"], both["id"], destination_only["id"]):
+        direct_names = [
+            tag["name"]
+            for tag in client.get(f"/api/tasks/{task_id}").json()["direct_tags"]
+        ]
+        assert direct_names.count("destination") == 1
+        assert "source" not in direct_names
+
+
+def test_tag_merge_cycle_failure_is_atomic(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, statuses = make_workspace(client, "Atomic merge")
+
+    tags: dict[str, dict] = {}
+    for name in ("destination", "middle", "source"):
+        tags[name] = client.post(
+            f"/api/workspaces/{workspace['id']}/tags",
+            json={"name": name},
+        ).json()
+
+    assert client.post(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/parents",
+        json={"parent_tag_id": tags["middle"]["id"]},
+    ).status_code == 201
+    assert client.post(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['middle']['id']}/parents",
+        json={"parent_tag_id": tags["destination"]["id"]},
+    ).status_code == 201
+
+    task = make_task(
+        client,
+        workspace,
+        statuses,
+        "Keep source",
+        tag_ids=[tags["source"]["id"]],
+    )
+
+    preview = client.get(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge-preview",
+        params={"destination_tag_id": tags["destination"]["id"]},
+    )
+    assert preview.status_code == 422
+    assert preview.json()["detail"] == "Merge would create a tag hierarchy cycle"
+
+    merged = client.post(
+        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge",
+        json={"destination_tag_id": tags["destination"]["id"]},
+    )
+    assert merged.status_code == 422
+
+    tag_by_name = {
+        tag["name"]: tag
+        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
+    }
+    assert "source" in tag_by_name
+    assert [item["name"] for item in tag_by_name["source"]["parents"]] == ["middle"]
+    assert [item["name"] for item in tag_by_name["middle"]["parents"]] == ["destination"]
+
+    direct_names = [
+        tag["name"]
+        for tag in client.get(f"/api/tasks/{task['id']}").json()["direct_tags"]
+    ]
+    assert direct_names == ["source"]

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Tag, Workspace } from '../lib/api/types';
+  import type { Tag, TagMergePreview, Workspace } from '../lib/api/types';
   import { tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
 
   const SUGGESTED_TAG_COLORS = [
@@ -41,6 +41,12 @@
   let editColor = '';
   let parentChoice = 0;
 
+  let mergeOpen = false;
+  let mergeDestinationId = 0;
+  let mergePreview: TagMergePreview | null = null;
+  let mergeError = '';
+  let mergeLoading = false;
+
   let error = '';
   let busy = false;
 
@@ -61,6 +67,13 @@
         )
         .sort((left, right) => left.name.localeCompare(right.name))
     : [];
+  $: mergeOptions = selectedTag
+    ? tags
+        .filter((candidate) => candidate.id !== selectedTag!.id)
+        .sort((left, right) => left.name.localeCompare(right.name))
+    : [];
+  $: mergeDestination =
+    tags.find((tag) => tag.id === Number(mergeDestinationId)) || null;
 
   function setEditFields(tag: Tag) {
     editName = tag.name;
@@ -71,6 +84,10 @@
 
   function selectTag(tag: Tag) {
     creating = false;
+    mergeOpen = false;
+    mergeDestinationId = 0;
+    mergePreview = null;
+    mergeError = '';
     selectedId = tag.id;
     setEditFields(tag);
   }
@@ -176,6 +193,58 @@
       await load(selectedTag.id);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not remove parent';
+    } finally {
+      busy = false;
+    }
+  }
+
+  function startMerge() {
+    mergeOpen = true;
+    mergeDestinationId = 0;
+    mergePreview = null;
+    mergeError = '';
+  }
+
+  function cancelMerge() {
+    mergeOpen = false;
+    mergeDestinationId = 0;
+    mergePreview = null;
+    mergeError = '';
+  }
+
+  async function loadMergePreview() {
+    if (!selectedTag || !mergeDestinationId) {
+      mergePreview = null;
+      mergeError = '';
+      return;
+    }
+
+    mergeLoading = true;
+    mergePreview = null;
+    mergeError = '';
+    try {
+      mergePreview = await api.tagMergePreview(
+        workspace.id,
+        selectedTag.id,
+        Number(mergeDestinationId)
+      );
+    } catch (reason) {
+      mergeError = reason instanceof Error ? reason.message : 'Could not preview tag merge';
+    } finally {
+      mergeLoading = false;
+    }
+  }
+
+  async function confirmMerge() {
+    if (!selectedTag || !mergeDestination || !mergePreview) return;
+    busy = true;
+    mergeError = '';
+    try {
+      const merged = await api.mergeTag(workspace.id, selectedTag.id, mergeDestination.id);
+      mergeOpen = false;
+      await load(merged.id);
+    } catch (reason) {
+      mergeError = reason instanceof Error ? reason.message : 'Could not merge tags';
     } finally {
       busy = false;
     }
@@ -354,8 +423,49 @@
       </div>
 
       {#if workspace.role !== 'viewer'}
+        {#if mergeOpen}
+          <section class="merge-panel" aria-label="Merge tag">
+            <div class="relationship-heading">
+              <strong>Merge into…</strong>
+              <button type="button" class="clear-button" disabled={busy} on:click={cancelMerge}>Cancel</button>
+            </div>
+
+            <select
+              bind:value={mergeDestinationId}
+              disabled={busy || mergeLoading}
+              on:change={() => void loadMergePreview()}
+            >
+              <option value={0}>Choose destination tag…</option>
+              {#each mergeOptions as candidate}
+                <option value={candidate.id}>{candidate.name}</option>
+              {/each}
+            </select>
+
+            {#if mergeLoading}
+              <p class="muted">Checking merge…</p>
+            {:else if mergeError}
+              <p class="error merge-error" role="alert">{mergeError}</p>
+            {:else if mergePreview && mergeDestination}
+              <div class="merge-summary">
+                <strong>Merge “{selectedTag.name}” into “{mergeDestination.name}”</strong>
+                <span>{mergePreview.task_assignments} task {mergePreview.task_assignments === 1 ? 'assignment' : 'assignments'} will move</span>
+                <span>{mergePreview.parent_relationships} parent {mergePreview.parent_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
+                <span>{mergePreview.child_relationships} child {mergePreview.child_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
+                <span>“{selectedTag.name}” will be deleted</span>
+              </div>
+              <div class="merge-actions">
+                <button type="button" disabled={busy} on:click={cancelMerge}>Cancel</button>
+                <button type="button" class="danger-subtle" disabled={busy} on:click={() => void confirmMerge()}>
+                  {busy ? 'Merging…' : 'Merge tags'}
+                </button>
+              </div>
+            {/if}
+          </section>
+        {/if}
+
         <div class="danger-zone">
-          <button type="button" class="danger-subtle" disabled={busy} on:click={() => void remove()}>Delete tag</button>
+          <button type="button" disabled={busy || mergeOpen} on:click={startMerge}>Merge into…</button>
+          <button type="button" class="danger-subtle" disabled={busy || mergeOpen} on:click={() => void remove()}>Delete tag</button>
         </div>
       {/if}
     {:else}
@@ -579,9 +689,50 @@
 
   .muted { margin: 0; color: var(--muted); font-size: .8rem; }
 
+  .merge-panel {
+    display: grid;
+    gap: .6rem;
+    margin-top: 1rem;
+    border: 1px solid #d7d8d2;
+    border-radius: .65rem;
+    background: #f8f8f5;
+    padding: .75rem;
+  }
+
+  .merge-panel select { width: 100%; }
+
+  .merge-summary {
+    display: grid;
+    gap: .25rem;
+    border-radius: .5rem;
+    background: #fff;
+    padding: .65rem;
+    color: var(--muted);
+    font-size: .76rem;
+  }
+
+  .merge-summary strong { color: var(--ink); margin-bottom: .1rem; }
+  .merge-error { margin: 0; }
+
+  .merge-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .45rem;
+  }
+
+  .merge-actions button:not(.danger-subtle),
+  .danger-zone button:not(.danger-subtle) {
+    border: 1px solid #cbc8be;
+    border-radius: .5rem;
+    background: #fff;
+    color: var(--ink);
+    padding: .48rem .7rem;
+  }
+
   .danger-zone {
     display: flex;
     justify-content: flex-end;
+    gap: .45rem;
     margin-top: 1rem;
     border-top: 1px solid var(--line);
     padding-top: .85rem;
