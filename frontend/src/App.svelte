@@ -131,8 +131,7 @@
 
   function quickCaptureSaved() {
     quickCaptureOpen = false;
-    refreshKey += 1;
-    void loadDraftCount();
+    taskEditorChanged();
   }
 
   async function startFocus(tagId: number | null) {
@@ -222,8 +221,9 @@
       {/each}
     </nav>
   </div>
-  {#if workspace && quickCaptureOpen}<QuickCapture {workspace} on:close={() => (quickCaptureOpen = false)} on:saved={quickCaptureSaved} />{/if}
 {/if}
+
+{#if workspace && quickCaptureOpen}<QuickCapture {workspace} on:close={() => (quickCaptureOpen = false)} on:saved={quickCaptureSaved} />{/if}
 
 {#if workspace && editorTaskId !== null}
   {#key editorTaskId}

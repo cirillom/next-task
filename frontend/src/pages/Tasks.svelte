@@ -17,7 +17,7 @@
   let tags: Tag[] = [];
   let members: Member[] = [];
   let search = '';
-  let finishedFilter: FinishedFilter = 'all';
+  let finishedFilter: FinishedFilter = 'unfinished';
   let blockedFilter: BlockedFilter = 'all';
   let statusFilter = '';
   let tagFilter = '';
@@ -31,7 +31,7 @@
   let searchTimer: number;
 
   $: activeFilterCount = [
-    finishedFilter !== 'all',
+    finishedFilter !== 'unfinished',
     blockedFilter !== 'all',
     statusFilter !== '',
     tagFilter !== '',
@@ -202,7 +202,7 @@
   }
 
   function clearFilters() {
-    finishedFilter = 'all';
+    finishedFilter = 'unfinished';
     blockedFilter = 'all';
     statusFilter = '';
     tagFilter = '';

@@ -341,6 +341,14 @@ def finish_task(
     for candidate in [task, *descendant_tasks(task)]:
         if candidate.finished_at is None:
             candidate.finished_at = now
+            active_block = db.scalar(
+                select(TaskBlock).where(
+                    TaskBlock.task_id == candidate.id,
+                    active_block_condition(now),
+                )
+            )
+            if active_block is not None:
+                active_block.unblocked_at = now
             changed = True
     if changed:
         db.commit()
