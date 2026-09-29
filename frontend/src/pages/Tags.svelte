@@ -106,7 +106,7 @@
   }
 
   function startCreate() {
-    const searchedName = search.trim().replace(/^#/, '').trim();
+    const searchedName = search.trim();
     const existingTag = tags.some((tag) => tag.name.toLowerCase() === searchedName.toLowerCase());
 
     creating = true;
@@ -182,7 +182,7 @@
   }
 
   async function remove() {
-    if (!selectedTag || !window.confirm(`Delete #${selectedTag.name}? It will be removed from tasks.`)) {
+    if (!selectedTag || !window.confirm(`Delete ${selectedTag.name}? It will be removed from tasks.`)) {
       return;
     }
 
@@ -240,7 +240,7 @@
               <button
                 type="button"
                 class="expand-button"
-                aria-label={expandedIds.has(row.tag.id) ? `Collapse #${row.tag.name}` : `Expand #${row.tag.name}`}
+                aria-label={expandedIds.has(row.tag.id) ? `Collapse ${row.tag.name}` : `Expand ${row.tag.name}`}
                 on:click={() => toggleExpanded(row.tag.id)}
               >{expandedIds.has(row.tag.id) || search.trim() ? '▾' : '▸'}</button>
             {:else}
@@ -249,7 +249,7 @@
             <button type="button" class="tag-select" on:click={() => selectTag(row.tag)}>
               <span class="color-dot" style:background={row.tag.color || '#73847c'}></span>
               <span class="tree-copy">
-                <strong>#{row.tag.name}</strong>
+                <strong>{row.tag.name}</strong>
                 {#if search.trim() || row.tag.parents.length > 1}<small>{row.path}</small>{/if}
               </span>
               <span class="usage-badge" title="Direct task usage">{row.tag.direct_task_count}</span>
@@ -281,7 +281,7 @@
       <header class="details-heading">
         <div>
           <p class="eyebrow">Tag details</p>
-          <h2><span class="color-dot large" style:background={selectedTag.color || '#73847c'}></span>#{selectedTag.name}</h2>
+          <h2><span class="color-dot large" style:background={selectedTag.color || '#73847c'}></span>{selectedTag.name}</h2>
         </div>
         <span class="usage-summary">{selectedTag.direct_task_count} direct {selectedTag.direct_task_count === 1 ? 'task' : 'tasks'}</span>
       </header>
@@ -315,9 +315,9 @@
           <div class="relationship-tags">
             {#each selectedTag.parents as parent}
               <span>
-                <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}>#{parent.name}</button>
+                <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}>{parent.name}</button>
                 {#if workspace.role !== 'viewer'}
-                  <button type="button" class="remove-relation" aria-label={`Remove parent #${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
+                  <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
                 {/if}
               </span>
             {/each}
@@ -330,7 +330,7 @@
           <div class="parent-control">
             <select bind:value={parentChoice} disabled={busy}>
               <option value={0}>Choose a parent…</option>
-              {#each parentOptions as candidate}<option value={candidate.id}>#{candidate.name}</option>{/each}
+              {#each parentOptions as candidate}<option value={candidate.id}>{candidate.name}</option>{/each}
             </select>
             <button type="button" disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</button>
           </div>
@@ -345,7 +345,7 @@
         {#if selectedTag.children.length}
           <div class="children-list">
             {#each selectedTag.children as child}
-              <button type="button" on:click={() => selectTagById(child.id)}>#{child.name}</button>
+              <button type="button" on:click={() => selectTagById(child.id)}>{child.name}</button>
             {/each}
           </div>
         {:else}
