@@ -112,6 +112,7 @@
     creating = true;
     selectedId = 0;
     createName = searchedName && !existingTag ? searchedName : '';
+    search = '';
     createDescription = '';
     createColor = randomTagColor();
     error = '';
@@ -497,6 +498,14 @@
   .detail-form .wide { grid-column: 1 / -1; }
   .color-field input { width: 100%; min-height: 2.4rem; padding: .2rem; }
   .detail-actions { display: flex; justify-content: flex-end; gap: .45rem; }
+  .detail-actions button:not(.primary) {
+    border: 1px solid #cbc8be;
+    border-radius: .5rem;
+    background: #fff;
+    color: var(--ink);
+    padding: .48rem .7rem;
+  }
+  .detail-actions button:not(.primary):hover:not(:disabled) { background: #f7f5ef; }
   .detail-actions.wide { grid-column: 1 / -1; }
 
   .relationship-section {
