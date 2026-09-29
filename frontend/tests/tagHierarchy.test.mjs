@@ -9,7 +9,7 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
 }).outputText;
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`;
-const { hierarchicalTagResults, tagHierarchyPaths, tagHierarchyRows } = await import(moduleUrl);
+const { hierarchicalTagResults, tagHierarchyOrder, tagHierarchyPaths, tagHierarchyRows } = await import(moduleUrl);
 
 const summary = (id, name) => ({ id, name, color: null });
 const tag = (id, name, parents = [], ancestors = []) => ({
@@ -104,6 +104,21 @@ test('hierarchy row search keeps matching hierarchy paths', () => {
       ['Project', 0],
       ['Homelab', 1],
       ['Server Maintenance', 2],
+      ['Next-task', 1]
+    ]
+  );
+});
+
+
+test('unique hierarchy order matches the first appearance in the hierarchy tree', () => {
+  assert.deepEqual(
+    tagHierarchyOrder(tags).map(({ tag, depth }) => [tag.name, depth]),
+    [
+      ['Infrastructure', 0],
+      ['Server Maintenance', 1],
+      ['Personal', 0],
+      ['Project', 0],
+      ['Homelab', 1],
       ['Next-task', 1]
     ]
   );

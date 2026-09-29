@@ -138,3 +138,13 @@ export function tagHierarchyRows(tags: Tag[], search = ''): TagHierarchyRow[] {
       normalized(row.path).includes(needle)
   );
 }
+
+
+export function tagHierarchyOrder(tags: Tag[]): TagHierarchyRow[] {
+  const seen = new Set<number>();
+  return tagHierarchyRows(tags).filter((row) => {
+    if (seen.has(row.tag.id)) return false;
+    seen.add(row.tag.id);
+    return true;
+  });
+}
