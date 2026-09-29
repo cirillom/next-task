@@ -9,7 +9,7 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
 }).outputText;
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`;
-const { hierarchicalTagResults, tagHierarchyPaths } = await import(moduleUrl);
+const { hierarchicalTagResults, tagHierarchyPaths, tagHierarchyRows } = await import(moduleUrl);
 
 const summary = (id, name) => ({ id, name, color: null });
 const tag = (id, name, parents = [], ancestors = []) => ({
@@ -78,5 +78,33 @@ test('searching a child keeps its subtree and direct depth relative to that matc
   assert.deepEqual(
     hierarchicalTagResults(tags, '#personal').map(({ tag, depth }) => [tag.name, depth]),
     [['Personal', 0]]
+  );
+});
+
+
+test('hierarchy rows repeat multiple-parent tags under each parent path', () => {
+  assert.deepEqual(
+    tagHierarchyRows(tags).map(({ tag, depth, path }) => [tag.name, depth, path]),
+    [
+      ['Infrastructure', 0, 'Infrastructure'],
+      ['Server Maintenance', 1, 'Infrastructure › Server Maintenance'],
+      ['Personal', 0, 'Personal'],
+      ['Project', 0, 'Project'],
+      ['Homelab', 1, 'Project › Homelab'],
+      ['Server Maintenance', 2, 'Project › Homelab › Server Maintenance'],
+      ['Next-task', 1, 'Project › Next-task']
+    ]
+  );
+});
+
+test('hierarchy row search keeps matching hierarchy paths', () => {
+  assert.deepEqual(
+    tagHierarchyRows(tags, 'project').map(({ tag, depth }) => [tag.name, depth]),
+    [
+      ['Project', 0],
+      ['Homelab', 1],
+      ['Server Maintenance', 2],
+      ['Next-task', 1]
+    ]
   );
 });
