@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import exists, or_, select
@@ -219,6 +220,9 @@ def list_tasks(
     finished: bool | None = False,
     status_id: int | None = None,
     tag_id: int | None = None,
+    include_tag_id: list[int] | None = Query(default=None),
+    exclude_tag_id: list[int] | None = Query(default=None),
+    tag_match: Literal["all", "any"] = "all",
     assignee_id: int | None = None,
     blocked: bool | None = None,
     actionable: bool = False,
@@ -240,9 +244,26 @@ def list_tasks(
         )
     if actionable:
         query = query.where(actionable_ownership_condition(user.id))
-    if tag_id is not None:
-        allowed_tag_ids = descendant_ids(db, tag_id)
-        query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
+    include_tag_ids = list(dict.fromkeys(include_tag_id or []))
+    if tag_id is not None and tag_id not in include_tag_ids:
+        include_tag_ids.append(tag_id)
+
+    if include_tag_ids:
+        if tag_match == "all":
+            for included_tag_id in include_tag_ids:
+                allowed_tag_ids = descendant_ids(db, included_tag_id)
+                query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
+        else:
+            allowed_tag_ids: set[int] = set()
+            for included_tag_id in include_tag_ids:
+                allowed_tag_ids.update(descendant_ids(db, included_tag_id))
+            query = query.where(Task.tags.any(Tag.id.in_(allowed_tag_ids)))
+
+    if exclude_tag_id:
+        excluded_tag_ids: set[int] = set()
+        for tag_to_exclude in dict.fromkeys(exclude_tag_id):
+            excluded_tag_ids.update(descendant_ids(db, tag_to_exclude))
+        query = query.where(~Task.tags.any(Tag.id.in_(excluded_tag_ids)))
     if blocked is not None:
         now = datetime.now(UTC)
         active_block = exists().where(

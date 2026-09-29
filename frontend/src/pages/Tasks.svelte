@@ -3,11 +3,13 @@
   import { api } from '../lib/api/client';
   import type { Member, Status, Tag, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
+  import TagPicker from '../lib/components/TagPicker.svelte';
 
   type FinishedFilter = 'unfinished' | 'finished' | 'all';
   type BlockedFilter = 'all' | 'blocked' | 'unblocked';
   type SortField = 'score' | 'finished_at' | 'last_worked_at' | 'due_date' | 'created_at';
   type SortDirection = 'asc' | 'desc';
+  type TagMatch = 'all' | 'any';
 
   export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number }>();
@@ -20,7 +22,9 @@
   let finishedFilter: FinishedFilter = 'unfinished';
   let blockedFilter: BlockedFilter = 'all';
   let statusFilter = '';
-  let tagFilter = '';
+  let includeTagIds: number[] = [];
+  let excludeTagIds: number[] = [];
+  let tagMatch: TagMatch = 'all';
   let assigneeFilter = '';
   let sortField: SortField = 'score';
   let sortDirection: SortDirection = 'desc';
@@ -34,7 +38,8 @@
     finishedFilter !== 'unfinished',
     blockedFilter !== 'all',
     statusFilter !== '',
-    tagFilter !== '',
+    includeTagIds.length > 0,
+    excludeTagIds.length > 0,
     assigneeFilter !== ''
   ].filter(Boolean).length;
 
@@ -43,7 +48,9 @@
       finished,
       search,
       status_id: statusFilter ? Number(statusFilter) : null,
-      tag_id: tagFilter ? Number(tagFilter) : null,
+      include_tag_id: includeTagIds,
+      exclude_tag_id: excludeTagIds,
+      tag_match: tagMatch,
       assignee_id: assigneeFilter ? Number(assigneeFilter) : null,
       blocked:
         blockedFilter === 'all'
@@ -205,9 +212,26 @@
     finishedFilter = 'unfinished';
     blockedFilter = 'all';
     statusFilter = '';
-    tagFilter = '';
+    includeTagIds = [];
+    excludeTagIds = [];
+    tagMatch = 'all';
     assigneeFilter = '';
     void refreshTasks();
+  }
+
+  function setIncludeTags(ids: number[]) {
+    includeTagIds = ids;
+    void refreshTasks();
+  }
+
+  function setExcludeTags(ids: number[]) {
+    excludeTagIds = ids;
+    void refreshTasks();
+  }
+
+  function setTagMatch(match: TagMatch) {
+    tagMatch = match;
+    if (includeTagIds.length) void refreshTasks();
   }
 
   function setSortDirection(direction: SortDirection) {
@@ -288,15 +312,47 @@
             </select>
           </label>
 
-          <label class="tag-filter">
-            Tag
-            <select bind:value={tagFilter} on:change={refreshTasks}>
-              <option value="">All</option>
-              {#each tags as tag (tag.id)}
-                <option value={String(tag.id)}>{tag.name}</option>
-              {/each}
-            </select>
-          </label>
+          <div class="tag-filter">
+            <span class="field-label">Include tags</span>
+            <TagPicker
+              {tags}
+              selectedIds={includeTagIds}
+              allowCreate={false}
+              on:change={(event) => setIncludeTags(event.detail)}
+            />
+
+            <fieldset class="tag-match">
+              <legend>Match included tags</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="tag-match"
+                  value="all"
+                  checked={tagMatch === 'all'}
+                  on:change={() => setTagMatch('all')}
+                />
+                All
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="tag-match"
+                  value="any"
+                  checked={tagMatch === 'any'}
+                  on:change={() => setTagMatch('any')}
+                />
+                Any
+              </label>
+            </fieldset>
+
+            <span class="field-label">Exclude tags</span>
+            <TagPicker
+              {tags}
+              selectedIds={excludeTagIds}
+              allowCreate={false}
+              on:change={(event) => setExcludeTags(event.detail)}
+            />
+          </div>
         </div>
       </div>
     {/if}
@@ -449,7 +505,7 @@
   }
 
   .filter-popover {
-    width: min(25rem, calc(100vw - 2rem));
+    width: min(30rem, calc(100vw - 2rem));
   }
 
   .sort-popover {
@@ -499,7 +555,42 @@
   }
 
   .tag-filter {
+    display: grid;
     grid-column: 1 / -1;
+    gap: .4rem;
+    border-top: 1px solid var(--line);
+    padding-top: .65rem;
+  }
+
+  .tag-match {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    border: 0;
+    margin: .15rem 0 .25rem;
+    padding: 0;
+  }
+
+  .tag-match legend {
+    float: left;
+    margin-right: .25rem;
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 700;
+  }
+
+  .tag-match label {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    color: var(--ink);
+    font-size: .75rem;
+    font-weight: 650;
+  }
+
+  .tag-match input {
+    width: auto;
+    margin: 0;
   }
 
   .direction-options {

@@ -299,6 +299,144 @@ def test_tag_dag_and_inherited_filtering(logged_in_client: Callable[[str], TestC
     assert usage == {"next-task": 1, "programming": 0, "projects": 1}
 
 
+
+def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
+    logged_in_client: Callable[[str], TestClient],
+    create_user: Callable,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    teammate = create_user("teammate@example.com")
+    workspace, statuses = make_workspace(client, "Tag filters")
+    client.post(
+        f"/api/workspaces/{workspace['id']}/members",
+        json={"email": teammate.email, "role": "editor"},
+    )
+
+    tags: dict[str, dict] = {}
+    for name in ("project", "homelab", "server", "research", "shopping", "personal"):
+        response = client.post(
+            f"/api/workspaces/{workspace['id']}/tags",
+            json={"name": name},
+        )
+        assert response.status_code == 201, response.text
+        tags[name] = response.json()
+
+    for child, parent in (
+        ("homelab", "project"),
+        ("server", "homelab"),
+        ("shopping", "homelab"),
+    ):
+        response = client.post(
+            f"/api/workspaces/{workspace['id']}/tags/{tags[child]['id']}/parents",
+            json={"parent_tag_id": tags[parent]["id"]},
+        )
+        assert response.status_code == 201, response.text
+
+    server = make_task(
+        client,
+        workspace,
+        statuses,
+        "Server research",
+        status_id=statuses[1]["id"],
+        tag_ids=[tags["server"]["id"], tags["research"]["id"]],
+        assignee_ids=[teammate.id],
+    )
+    homelab = make_task(
+        client,
+        workspace,
+        statuses,
+        "Homelab notes",
+        tag_ids=[tags["homelab"]["id"]],
+    )
+    shopping = make_task(
+        client,
+        workspace,
+        statuses,
+        "Buy rack parts",
+        tag_ids=[tags["shopping"]["id"]],
+    )
+    personal = make_task(
+        client,
+        workspace,
+        statuses,
+        "Personal task",
+        tag_ids=[tags["personal"]["id"]],
+    )
+    research = make_task(
+        client,
+        workspace,
+        statuses,
+        "Research only",
+        tag_ids=[tags["research"]["id"]],
+    )
+    assert client.post(
+        f"/api/tasks/{server['id']}/block",
+        json={"reason": "Waiting for hardware"},
+    ).status_code == 201
+
+    include_all = client.get(
+        "/api/tasks",
+        params=[
+            ("workspace_id", workspace["id"]),
+            ("include_tag_id", tags["homelab"]["id"]),
+            ("include_tag_id", tags["research"]["id"]),
+            ("tag_match", "all"),
+        ],
+    ).json()
+    assert [task["id"] for task in include_all] == [server["id"]]
+
+    include_any = client.get(
+        "/api/tasks",
+        params=[
+            ("workspace_id", workspace["id"]),
+            ("include_tag_id", tags["homelab"]["id"]),
+            ("include_tag_id", tags["personal"]["id"]),
+            ("tag_match", "any"),
+        ],
+    ).json()
+    assert {task["id"] for task in include_any} == {
+        server["id"],
+        homelab["id"],
+        shopping["id"],
+        personal["id"],
+    }
+
+    excluded = client.get(
+        "/api/tasks",
+        params=[
+            ("workspace_id", workspace["id"]),
+            ("include_tag_id", tags["project"]["id"]),
+            ("exclude_tag_id", tags["shopping"]["id"]),
+        ],
+    ).json()
+    assert {task["id"] for task in excluded} == {server["id"], homelab["id"]}
+
+    combined = client.get(
+        "/api/tasks",
+        params=[
+            ("workspace_id", workspace["id"]),
+            ("finished", "false"),
+            ("status_id", statuses[1]["id"]),
+            ("assignee_id", teammate.id),
+            ("blocked", "true"),
+            ("search", "server"),
+            ("include_tag_id", tags["project"]["id"]),
+            ("include_tag_id", tags["research"]["id"]),
+            ("tag_match", "all"),
+            ("exclude_tag_id", tags["shopping"]["id"]),
+        ],
+    ).json()
+    assert [task["id"] for task in combined] == [server["id"]]
+
+    legacy = client.get(
+        "/api/tasks",
+        params={"workspace_id": workspace["id"], "tag_id": tags["project"]["id"]},
+    ).json()
+    assert {task["id"] for task in legacy} == {server["id"], homelab["id"], shopping["id"]}
+
+    assert research["id"] not in {task["id"] for task in include_any}
+
+
 def test_finish_and_reopen_are_independent_from_status(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
