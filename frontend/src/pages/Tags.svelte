@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Tag, Workspace } from '../lib/api/types';
+  import { tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
 
   const SUGGESTED_TAG_COLORS = [
     '#587b6a',
@@ -23,35 +24,106 @@
   }
 
   export let workspace: Workspace;
+
   let tags: Tag[] = [];
-  let name = '';
-  let description = '';
-  let color = randomTagColor();
-  let editing = 0;
+  let search = '';
+  let selectedId = 0;
+  let expandedIds = new Set<number>();
+  let expandedInitialized = false;
+
+  let creating = false;
+  let createName = '';
+  let createDescription = '';
+  let createColor = randomTagColor();
+
   let editName = '';
   let editDescription = '';
   let editColor = '';
-  let parentChoices: Record<number, number> = {};
+  let parentChoice = 0;
+
   let error = '';
   let busy = false;
 
-  async function load() {
+  $: selectedTag = tags.find((tag) => tag.id === selectedId) || null;
+  $: hierarchyRows = tagHierarchyRows(tags, search);
+  $: visibleRows = search.trim()
+    ? hierarchyRows
+    : hierarchyRows.filter((row) =>
+        row.ancestorIds.every((ancestorId) => expandedIds.has(ancestorId))
+      );
+  $: parentOptions = selectedTag
+    ? tags
+        .filter(
+          (candidate) =>
+            candidate.id !== selectedTag!.id &&
+            !selectedTag!.parents.some((parent) => parent.id === candidate.id) &&
+            !candidate.ancestors.some((ancestor) => ancestor.id === selectedTag!.id)
+        )
+        .sort((left, right) => left.name.localeCompare(right.name))
+    : [];
+
+  function setEditFields(tag: Tag) {
+    editName = tag.name;
+    editDescription = tag.description || '';
+    editColor = tag.color || '#587b6a';
+    parentChoice = 0;
+  }
+
+  function selectTag(tag: Tag) {
+    creating = false;
+    selectedId = tag.id;
+    setEditFields(tag);
+  }
+
+  function selectTagById(tagId: number) {
+    const tag = tags.find((item) => item.id === tagId);
+    if (tag) selectTag(tag);
+  }
+
+  function toggleExpanded(tagId: number) {
+    const next = new Set(expandedIds);
+    if (next.has(tagId)) next.delete(tagId);
+    else next.add(tagId);
+    expandedIds = next;
+  }
+
+  async function load(preferredId = selectedId) {
     try {
-      tags = await api.tags(workspace.id);
+      const loaded = await api.tags(workspace.id);
+      tags = loaded;
+
+      if (!expandedInitialized) {
+        expandedIds = new Set(loaded.map((tag) => tag.id));
+        expandedInitialized = true;
+      }
+
+      const selected = loaded.find((tag) => tag.id === preferredId) || loaded[0] || null;
+      if (selected) selectTag(selected);
+      else selectedId = 0;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tags';
     }
+  }
+
+  function startCreate() {
+    creating = true;
+    selectedId = 0;
+    createName = '';
+    createDescription = '';
+    createColor = randomTagColor();
+    error = '';
   }
 
   async function create() {
     busy = true;
     error = '';
     try {
-      await api.createTag(workspace.id, { name, description, color });
-      name = '';
-      description = '';
-      color = randomTagColor();
-      await load();
+      const created = await api.createTag(workspace.id, {
+        name: createName,
+        description: createDescription,
+        color: createColor
+      });
+      await load(created.id);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create tag';
     } finally {
@@ -59,23 +131,17 @@
     }
   }
 
-  function startEdit(tag: Tag) {
-    editing = tag.id;
-    editName = tag.name;
-    editDescription = tag.description || '';
-    editColor = tag.color || '#587b6a';
-  }
-
-  async function saveEdit(tag: Tag) {
+  async function saveEdit() {
+    if (!selectedTag) return;
     busy = true;
+    error = '';
     try {
-      await api.updateTag(workspace.id, tag.id, {
+      await api.updateTag(workspace.id, selectedTag.id, {
         name: editName,
         description: editDescription,
         color: editColor
       });
-      editing = 0;
-      await load();
+      await load(selectedTag.id);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not update tag';
     } finally {
@@ -83,79 +149,443 @@
     }
   }
 
-  async function addParent(tag: Tag) {
-    const parentId = Number(parentChoices[tag.id]);
-    if (!parentId) return;
+  async function addParent() {
+    if (!selectedTag || !parentChoice) return;
+    busy = true;
+    error = '';
     try {
-      await api.addTagParent(workspace.id, tag.id, parentId);
-      parentChoices[tag.id] = 0;
-      await load();
+      await api.addTagParent(workspace.id, selectedTag.id, Number(parentChoice));
+      await load(selectedTag.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not relate tags';
+      error = reason instanceof Error ? reason.message : 'Could not add parent';
+    } finally {
+      busy = false;
     }
   }
 
-  async function removeParent(tag: Tag, parentId: number) {
+  async function removeParent(parentId: number) {
+    if (!selectedTag) return;
+    busy = true;
+    error = '';
     try {
-      await api.removeTagParent(workspace.id, tag.id, parentId);
-      await load();
+      await api.removeTagParent(workspace.id, selectedTag.id, parentId);
+      await load(selectedTag.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not remove relationship';
+      error = reason instanceof Error ? reason.message : 'Could not remove parent';
+    } finally {
+      busy = false;
     }
   }
 
-  async function remove(tag: Tag) {
-    if (!window.confirm(`Delete #${tag.name}? It will be removed from tasks.`)) return;
+  async function remove() {
+    if (!selectedTag || !window.confirm(`Delete #${selectedTag.name}? It will be removed from tasks.`)) {
+      return;
+    }
+
+    busy = true;
+    error = '';
     try {
-      await api.deleteTag(workspace.id, tag.id);
-      await load();
+      await api.deleteTag(workspace.id, selectedTag.id);
+      selectedId = 0;
+      await load(0);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not delete tag';
+    } finally {
+      busy = false;
     }
   }
 
-  onMount(load);
+  onMount(() => void load());
 </script>
 
-<div class="page-heading"><div><p class="eyebrow">Tag Studio</p><h1>Tags</h1></div></div>
-<p class="page-intro">Tasks store direct tags only. Parent tags are inherited automatically when filtering.</p>
-
-{#if workspace.role !== 'viewer'}
-  <form class="panel compact-form" on:submit|preventDefault={create}>
-    <h2>Create tag</h2>
-    <label>Name<input bind:value={name} placeholder="next-task" required /></label>
-    <label>Description<input bind:value={description} placeholder="What belongs here?" /></label>
-    <label>Color<input type="color" bind:value={color} /></label>
-    <button class="primary" disabled={busy}>Add tag</button>
-  </form>
-{/if}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Tag Studio</p>
+    <h1>Tags</h1>
+  </div>
+</div>
+<p class="page-intro">Browse the tag hierarchy, inspect direct usage, and reorganize parent relationships.</p>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
-{#if !tags.length}<p class="empty">No tags yet.</p>{/if}
 
-<div class="tag-studio">
-  {#each tags as tag (tag.id)}
-    <article class="panel tag-card">
-      {#if editing === tag.id}
-        <div class="form-grid">
-          <label>Name<input bind:value={editName} /></label>
-          <label>Color<input type="color" bind:value={editColor} /></label>
-          <label class="wide">Description<textarea bind:value={editDescription} rows="2"></textarea></label>
-        </div>
-        <div class="row-actions"><button on:click={() => (editing = 0)}>Cancel</button><button class="primary" disabled={busy} on:click={() => saveEdit(tag)}>Save</button></div>
-      {:else}
-        <header><div><h2><span class="color-dot" style:background={tag.color || '#73847c'}></span>#{tag.name}</h2><p>{tag.description || 'No description'}</p></div>{#if workspace.role !== 'viewer'}<div class="row-actions"><button on:click={() => startEdit(tag)}>Edit</button><button class="danger-subtle" on:click={() => remove(tag)}>Delete</button></div>{/if}</header>
-      {/if}
-
-      <div class="relationship-grid">
-        <div><strong>Direct parents</strong>{#if tag.parents.length}<div class="tag-row">{#each tag.parents as parent}<span class="tag">#{parent.name}{#if workspace.role !== 'viewer'}<button aria-label={`Remove parent ${parent.name}`} on:click={() => removeParent(tag, parent.id)}>×</button>{/if}</span>{/each}</div>{:else}<p class="muted">None</p>{/if}</div>
-        <div><strong>Children</strong>{#if tag.children.length}<p>{tag.children.map((item) => `#${item.name}`).join(', ')}</p>{:else}<p class="muted">None</p>{/if}</div>
-        <div><strong>All inherited parents</strong>{#if tag.ancestors.length}<p>{tag.ancestors.map((item) => `#${item.name}`).join(' → ')}</p>{:else}<p class="muted">None</p>{/if}</div>
-      </div>
+<div class="tag-manager">
+  <aside class="panel hierarchy-browser">
+    <div class="browser-toolbar">
+      <input bind:value={search} type="search" aria-label="Search tags" placeholder="Search tags" />
       {#if workspace.role !== 'viewer'}
-        <div class="inline-control"><select bind:value={parentChoices[tag.id]}><option value={0}>Choose a parent…</option>{#each tags.filter((candidate) => candidate.id !== tag.id && !tag.parents.some((parent) => parent.id === candidate.id)) as candidate}<option value={candidate.id}>#{candidate.name}</option>{/each}</select><button on:click={() => addParent(tag)}>Add parent</button></div>
+        <button type="button" class="primary" on:click={startCreate}>New tag</button>
       {/if}
-    </article>
-  {/each}
+    </div>
+
+    {#if !tags.length}
+      <p class="empty">No tags yet.</p>
+    {:else if !visibleRows.length}
+      <p class="empty">No matching tags.</p>
+    {:else}
+      <div class="tag-tree" role="tree" aria-label="Tag hierarchy">
+        {#each visibleRows as row (row.key)}
+          <div
+            class="tree-row"
+            class:selected={row.tag.id === selectedId}
+            style:--tag-depth={`${row.depth}rem`}
+            role="treeitem"
+            aria-level={row.depth + 1}
+            aria-selected={row.tag.id === selectedId}
+          >
+            {#if row.hasChildren}
+              <button
+                type="button"
+                class="expand-button"
+                aria-label={expandedIds.has(row.tag.id) ? `Collapse #${row.tag.name}` : `Expand #${row.tag.name}`}
+                on:click={() => toggleExpanded(row.tag.id)}
+              >{expandedIds.has(row.tag.id) || search.trim() ? '▾' : '▸'}</button>
+            {:else}
+              <span class="expand-spacer"></span>
+            {/if}
+            <button type="button" class="tag-select" on:click={() => selectTag(row.tag)}>
+              <span class="color-dot" style:background={row.tag.color || '#73847c'}></span>
+              <span class="tree-copy">
+                <strong>#{row.tag.name}</strong>
+                {#if search.trim() || row.tag.parents.length > 1}<small>{row.path}</small>{/if}
+              </span>
+              <span class="usage-badge" title="Direct task usage">{row.tag.direct_task_count}</span>
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </aside>
+
+  <section class="panel tag-details">
+    {#if creating}
+      <header class="details-heading">
+        <div>
+          <p class="eyebrow">New tag</p>
+          <h2>Create tag</h2>
+        </div>
+      </header>
+      <form class="detail-form" on:submit|preventDefault={create}>
+        <label>Name<input bind:value={createName} maxlength="120" required /></label>
+        <label class="color-field">Color<input type="color" bind:value={createColor} /></label>
+        <label class="wide">Description<textarea bind:value={createDescription} rows="4"></textarea></label>
+        <div class="detail-actions">
+          <button type="button" on:click={() => (creating = false)}>Cancel</button>
+          <button class="primary" disabled={busy}>Create tag</button>
+        </div>
+      </form>
+    {:else if selectedTag}
+      <header class="details-heading">
+        <div>
+          <p class="eyebrow">Tag details</p>
+          <h2><span class="color-dot large" style:background={selectedTag.color || '#73847c'}></span>#{selectedTag.name}</h2>
+        </div>
+        <span class="usage-summary">{selectedTag.direct_task_count} direct {selectedTag.direct_task_count === 1 ? 'task' : 'tasks'}</span>
+      </header>
+
+      {#if tagHierarchyPaths(selectedTag, tags).some((path) => path !== selectedTag.name)}
+        <div class="path-list">
+          <strong>Hierarchy paths</strong>
+          {#each tagHierarchyPaths(selectedTag, tags) as path}
+            <span>{path}</span>
+          {/each}
+        </div>
+      {/if}
+
+      <form class="detail-form" on:submit|preventDefault={saveEdit}>
+        <label>Name<input bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
+        <label class="color-field">Color<input type="color" bind:value={editColor} disabled={workspace.role === 'viewer'} /></label>
+        <label class="wide">Description<textarea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'}></textarea></label>
+        {#if workspace.role !== 'viewer'}
+          <div class="detail-actions wide">
+            <button class="primary" disabled={busy}>Save details</button>
+          </div>
+        {/if}
+      </form>
+
+      <div class="relationship-section">
+        <div class="relationship-heading">
+          <strong>Direct parents</strong>
+          <span>{selectedTag.parents.length}</span>
+        </div>
+        {#if selectedTag.parents.length}
+          <div class="relationship-tags">
+            {#each selectedTag.parents as parent}
+              <span>
+                <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}>#{parent.name}</button>
+                {#if workspace.role !== 'viewer'}
+                  <button type="button" class="remove-relation" aria-label={`Remove parent #${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
+                {/if}
+              </span>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted">No direct parents.</p>
+        {/if}
+
+        {#if workspace.role !== 'viewer' && parentOptions.length}
+          <div class="parent-control">
+            <select bind:value={parentChoice} disabled={busy}>
+              <option value={0}>Choose a parent…</option>
+              {#each parentOptions as candidate}<option value={candidate.id}>#{candidate.name}</option>{/each}
+            </select>
+            <button type="button" disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="relationship-section">
+        <div class="relationship-heading">
+          <strong>Direct children</strong>
+          <span>{selectedTag.children.length}</span>
+        </div>
+        {#if selectedTag.children.length}
+          <div class="children-list">
+            {#each selectedTag.children as child}
+              <button type="button" on:click={() => selectTagById(child.id)}>#{child.name}</button>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted">No direct children.</p>
+        {/if}
+      </div>
+
+      {#if workspace.role !== 'viewer'}
+        <div class="danger-zone">
+          <button type="button" class="danger-subtle" disabled={busy} on:click={() => void remove()}>Delete tag</button>
+        </div>
+      {/if}
+    {:else}
+      <p class="empty">Select a tag to inspect it.</p>
+    {/if}
+  </section>
 </div>
 
+<style>
+  .tag-manager {
+    display: grid;
+    grid-template-columns: minmax(18rem, 1fr) minmax(24rem, 1.45fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .hierarchy-browser,
+  .tag-details { min-width: 0; }
+
+  .browser-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .55rem;
+    margin-bottom: .75rem;
+  }
+
+  .browser-toolbar input { min-width: 0; }
+
+  .tag-tree {
+    display: grid;
+    max-height: 65vh;
+    overflow-y: auto;
+    padding: .15rem;
+  }
+
+  .tree-row {
+    display: grid;
+    grid-template-columns: 1.4rem minmax(0, 1fr);
+    align-items: stretch;
+    padding-left: var(--tag-depth);
+    border-radius: .5rem;
+  }
+
+  .tree-row:hover,
+  .tree-row.selected { background: #f2f3ef; }
+
+  .expand-button {
+    width: 1.4rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 0;
+    font-size: .78rem;
+  }
+
+  .expand-spacer { width: 1.4rem; }
+
+  .tag-select {
+    display: grid;
+    width: 100%;
+    grid-template-columns: .65rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .45rem;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: .45rem .5rem;
+    text-align: left;
+  }
+
+  .tree-copy { display: grid; min-width: 0; gap: .08rem; }
+  .tree-copy strong { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-copy small { overflow: hidden; color: var(--muted); font-size: .67rem; text-overflow: ellipsis; white-space: nowrap; }
+
+  .color-dot {
+    display: inline-block;
+    width: .55rem;
+    height: .55rem;
+    flex: 0 0 .55rem;
+    border-radius: 50%;
+  }
+
+  .color-dot.large {
+    width: .75rem;
+    height: .75rem;
+    margin-right: .35rem;
+    vertical-align: middle;
+  }
+
+  .usage-badge {
+    min-width: 1.35rem;
+    border-radius: 999px;
+    background: #eceee9;
+    color: var(--muted);
+    padding: .12rem .38rem;
+    font-size: .68rem;
+    font-weight: 750;
+    text-align: center;
+  }
+
+  .details-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: .8rem;
+  }
+
+  .details-heading h2 { margin: .1rem 0 0; }
+  .usage-summary {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #eef2ef;
+    color: var(--forest-2);
+    padding: .32rem .55rem;
+    font-size: .72rem;
+    font-weight: 750;
+  }
+
+  .path-list {
+    display: grid;
+    gap: .25rem;
+    margin-top: .8rem;
+    color: var(--muted);
+    font-size: .75rem;
+  }
+
+  .path-list strong { color: var(--ink); }
+  .path-list span { padding-left: .15rem; }
+
+  .detail-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7rem;
+    gap: .65rem;
+    margin-top: .9rem;
+  }
+
+  .detail-form label { display: grid; gap: .3rem; font-weight: 700; }
+  .detail-form .wide { grid-column: 1 / -1; }
+  .color-field input { width: 100%; min-height: 2.4rem; padding: .2rem; }
+  .detail-actions { display: flex; justify-content: flex-end; gap: .45rem; }
+  .detail-actions.wide { grid-column: 1 / -1; }
+
+  .relationship-section {
+    display: grid;
+    gap: .55rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--line);
+    padding-top: .85rem;
+  }
+
+  .relationship-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+  }
+
+  .relationship-heading span { color: var(--muted); font-size: .75rem; }
+
+  .relationship-tags,
+  .children-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+  }
+
+  .relationship-tags > span {
+    display: inline-flex;
+    align-items: center;
+    overflow: hidden;
+    border: 1px solid #d7d8d2;
+    border-radius: 999px;
+    background: #f7f8f5;
+  }
+
+  .relationship-link,
+  .children-list button {
+    border: 0;
+    background: transparent;
+    color: var(--forest-2);
+    padding: .28rem .5rem;
+    font-size: .75rem;
+    font-weight: 750;
+  }
+
+  .relationship-link:hover,
+  .children-list button:hover { text-decoration: underline; text-underline-offset: .12rem; }
+
+  .remove-relation {
+    width: 1.45rem;
+    align-self: stretch;
+    border: 0;
+    border-left: 1px solid #d7d8d2;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 0;
+  }
+
+  .parent-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .45rem;
+  }
+
+  .children-list button {
+    border: 1px solid #d7d8d2;
+    border-radius: 999px;
+    background: #f7f8f5;
+  }
+
+  .muted { margin: 0; color: var(--muted); font-size: .8rem; }
+
+  .danger-zone {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+    border-top: 1px solid var(--line);
+    padding-top: .85rem;
+  }
+
+  @media (max-width: 800px) {
+    .tag-manager { grid-template-columns: 1fr; }
+    .tag-tree { max-height: 45vh; }
+  }
+
+  @media (max-width: 520px) {
+    .browser-toolbar,
+    .detail-form,
+    .parent-control { grid-template-columns: 1fr; }
+    .detail-form .wide,
+    .detail-actions.wide { grid-column: auto; }
+    .details-heading { align-items: flex-start; flex-direction: column; }
+  }
+</style>
