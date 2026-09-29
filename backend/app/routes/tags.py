@@ -49,8 +49,12 @@ def merge_plan(
         if parent_id in workspace_tag_ids
     }
 
-    source_parent_ids = {parent_id for child_id, parent_id in relationships if child_id == source.id}
-    source_child_ids = {child_id for child_id, parent_id in relationships if parent_id == source.id}
+    source_parent_ids = {
+        parent_id for child_id, parent_id in relationships if child_id == source.id
+    }
+    source_child_ids = {
+        child_id for child_id, parent_id in relationships if parent_id == source.id
+    }
     base_relationships = {
         relationship
         for relationship in relationships
