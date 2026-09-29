@@ -157,7 +157,7 @@
   {#if task.direct_tags.length}
     <div class="tag-row">
       {#each task.direct_tags as tag}
-        <span class="tag" style:--tag-color={tag.color || '#73847c'}>#{tag.name}</span>
+        <span class="tag" style:--tag-color={tag.color || '#73847c'}>{tag.name}</span>
       {/each}
     </div>
   {/if}

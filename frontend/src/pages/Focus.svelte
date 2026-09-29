@@ -540,7 +540,7 @@
 
     <div class="session-scope">
       <span>Session scope</span>
-      <strong>{sessionTag ? `#${sessionTag.name}` : 'All tags'}</strong>
+      <strong>{sessionTag ? sessionTag.name : 'All tags'}</strong>
       {#if sessionTag}<small>includes child tags</small>{/if}
     </div>
 

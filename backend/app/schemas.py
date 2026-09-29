@@ -258,6 +258,7 @@ class TagUpdate(ApiModel):
 class TagRead(TagSummary):
     workspace_id: int
     description: str | None
+    direct_task_count: int
     parents: list[TagSummary]
     children: list[TagSummary]
     ancestors: list[TagSummary]

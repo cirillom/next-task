@@ -19,7 +19,7 @@
 
   $: selectedTags = tags.filter((tag) => selectedIds.includes(tag.id));
   $: filteredTags = hierarchicalTagResults(tags, search);
-  $: normalizedSearch = search.trim().replace(/^#/, '').trim().toLowerCase();
+  $: normalizedSearch = search.trim().toLowerCase();
   $: exactMatch = tags.some((tag) => tag.name.toLowerCase() === normalizedSearch);
 
   function toggle(tagId: number) {
@@ -53,7 +53,7 @@
     <div class="tag-suggestions">
       <small>Suggested new tags</small>
       {#each suggestedNames as suggestion}
-        <button type="button" on:click={() => chooseSuggestion(suggestion)}>#{suggestion}</button>
+        <button type="button" on:click={() => chooseSuggestion(suggestion)}>{suggestion}</button>
       {/each}
     </div>
   {/if}
@@ -62,9 +62,9 @@
     <div class="selected-tags" aria-label="Selected direct tags">
       {#each selectedTags as tag (tag.id)}
         <span class="selected-tag" style:--tag-color={tag.color || '#73847c'}>
-          #{tag.name}
+          {tag.name}
           {#if !disabled}
-            <button type="button" aria-label={`Remove #${tag.name}`} on:click={() => remove(tag.id)}>×</button>
+            <button type="button" aria-label={`Remove ${tag.name}`} on:click={() => remove(tag.id)}>×</button>
           {/if}
         </span>
       {/each}
@@ -94,7 +94,7 @@
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
-              <strong>#{result.tag.name}</strong>
+              <strong>{result.tag.name}</strong>
               {#each contextPaths(result.tag) as path}
                 <small>{path}</small>
               {/each}
@@ -110,7 +110,7 @@
             on:mousedown|preventDefault={requestCreate}
           >
             <span class="option-check" aria-hidden="true">+</span>
-            <span class="option-copy"><strong>{creating ? 'Creating…' : `Create #${normalizedSearch}`}</strong></span>
+            <span class="option-copy"><strong>{creating ? 'Creating…' : `Create ${normalizedSearch}`}</strong></span>
           </button>
         {:else if !filteredTags.length}
           <span class="tag-empty">No matching tags</span>

@@ -109,7 +109,7 @@
     <select bind:value={selectedTagId} disabled={!!activeSession} on:change={changeScope}>
       <option value="">All tags</option>
       {#each tags as tag}
-        <option value={tag.id}>#{tag.name}</option>
+        <option value={tag.id}>{tag.name}</option>
       {/each}
     </select>
     <small>{activeSession ? 'The active session keeps its original scope.' : 'Includes child tags.'}</small>

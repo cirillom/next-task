@@ -279,6 +279,25 @@ def test_tag_dag_and_inherited_filtering(logged_in_client: Callable[[str], TestC
     ).json()
     assert [item["id"] for item in matches] == [task["id"]]
 
+    usage = {
+        tag["name"]: tag["direct_task_count"]
+        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
+    }
+    assert usage == {"next-task": 1, "programming": 0, "projects": 0}
+
+    make_task(
+        client,
+        workspace,
+        statuses,
+        "Direct project task",
+        tag_ids=[tags["projects"]["id"]],
+    )
+    usage = {
+        tag["name"]: tag["direct_task_count"]
+        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
+    }
+    assert usage == {"next-task": 1, "programming": 0, "projects": 1}
+
 
 def test_finish_and_reopen_are_independent_from_status(
     logged_in_client: Callable[[str], TestClient],

@@ -38,6 +38,7 @@ export interface TagSummary {
 export interface Tag extends TagSummary {
   workspace_id: number;
   description: string | null;
+  direct_task_count: number;
   parents: TagSummary[];
   children: TagSummary[];
   ancestors: TagSummary[];
