@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Tag, TagMergePreview, Workspace } from '../lib/api/types';
-  import { tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
+  import { tagHierarchyOrder, tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
 
   const SUGGESTED_TAG_COLORS = [
     '#587b6a',
@@ -58,14 +58,12 @@
         row.ancestorIds.every((ancestorId) => expandedIds.has(ancestorId))
       );
   $: parentOptions = selectedTag
-    ? tags
-        .filter(
-          (candidate) =>
-            candidate.id !== selectedTag!.id &&
-            !selectedTag!.parents.some((parent) => parent.id === candidate.id) &&
-            !candidate.ancestors.some((ancestor) => ancestor.id === selectedTag!.id)
-        )
-        .sort((left, right) => left.name.localeCompare(right.name))
+    ? tagHierarchyOrder(tags).filter(
+        ({ tag: candidate }) =>
+          candidate.id !== selectedTag!.id &&
+          !selectedTag!.parents.some((parent) => parent.id === candidate.id) &&
+          !candidate.ancestors.some((ancestor) => ancestor.id === selectedTag!.id)
+      )
     : [];
   $: mergeOptions = selectedTag
     ? tags
@@ -399,7 +397,9 @@
           <div class="parent-control">
             <select bind:value={parentChoice} disabled={busy}>
               <option value={0}>Choose a parent…</option>
-              {#each parentOptions as candidate}<option value={candidate.id}>{candidate.name}</option>{/each}
+              {#each parentOptions as option}
+                <option value={option.tag.id}>{'  '.repeat(option.depth)}{option.tag.name}</option>
+              {/each}
             </select>
             <button type="button" disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</button>
           </div>
