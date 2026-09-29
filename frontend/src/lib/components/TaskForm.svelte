@@ -5,6 +5,7 @@
   import { formatDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
+  import TagPicker from './TagPicker.svelte';
 
   export let workspace: Workspace;
   export let taskId = 0;
@@ -54,7 +55,6 @@
   let assigneeIds = [...initialAssigneeIds];
   let assigneeOpen = false;
   let tagIds = [...initialTagIds];
-  let tagSearch = '';
   let suggestedNewTags = normalizedTagNames(initialNewTags);
   let loading = true;
   let creatingTag = false;
@@ -70,10 +70,6 @@
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedMembers = members.filter((member) => assigneeIds.includes(member.user_id));
-  $: normalizedTagSearch = normalizeTagName(tagSearch);
-  $: filteredTags = normalizedTagSearch
-    ? tags.filter((tag) => tag.name.toLowerCase().includes(normalizedTagSearch))
-    : tags;
 
   function parentOptionLabel(item: Task): string {
     return `${item.title} (#${item.id})`;
@@ -110,12 +106,6 @@
     assigneeIds = assigneeIds.includes(userId)
       ? assigneeIds.filter((id) => id !== userId)
       : [...assigneeIds, userId];
-  }
-
-  function toggleTag(tagId: number) {
-    tagIds = tagIds.includes(tagId)
-      ? tagIds.filter((id) => id !== tagId)
-      : [...tagIds, tagId];
   }
 
   function memberInitial(member: Member): string {
@@ -163,8 +153,7 @@
     return [...new Set(values)];
   }
 
-  async function createAndSelectTag() {
-    const name = normalizedTagSearch;
+  async function createAndSelectTag(name: string) {
     if (!name || creatingTag) return;
     creatingTag = true;
     localError = '';
@@ -182,7 +171,6 @@
       }
       if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
       suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion !== name);
-      tagSearch = '';
     } catch (reason) {
       localError = reason instanceof Error ? reason.message : 'Could not create tag';
     } finally {
@@ -341,40 +329,25 @@
 
     <section class="tags-section">
       <span class="field-label">Direct tags</span>
-      {#if suggestedNewTags.length && workspace.role !== 'viewer'}
-        <div class="tag-suggestions">
-          <small>Suggested new tags</small>
-          {#each suggestedNewTags as suggestion}
-            <button type="button" on:click={() => (tagSearch = suggestion)}>#{suggestion}</button>
-          {/each}
-        </div>
+      <TagPicker
+        {tags}
+        selectedIds={tagIds}
+        suggestedNames={suggestedNewTags}
+        disabled={workspace.role === 'viewer'}
+        creating={creatingTag}
+        on:change={(event) => (tagIds = event.detail)}
+        on:create={(event) => void createAndSelectTag(event.detail)}
+      />
+      {#if taskDetails?.inherited_tags.length}
+        <details class="inherited-tags">
+          <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
+          <div class="inherited-tag-list">
+            {#each taskDetails.inherited_tags as tag}
+              <span style:--tag-color={tag.color || '#73847c'}>#{tag.name}</span>
+            {/each}
+          </div>
+        </details>
       {/if}
-      <div class="tags-line">
-        <input
-          bind:value={tagSearch}
-          aria-label="Search tags"
-          placeholder="Search tags"
-          autocomplete="off"
-          on:keydown={(event) => event.key === 'Enter' && event.preventDefault()}
-        />
-        {#each filteredTags as tag (tag.id)}
-          <button
-            type="button"
-            class:selected={tagIds.includes(tag.id)}
-            style:--tag-color={tag.color || '#73847c'}
-            disabled={workspace.role === 'viewer'}
-            on:click={() => toggleTag(tag.id)}
-          >#{tag.name}</button>
-        {/each}
-        {#if normalizedTagSearch && !filteredTags.length && workspace.role !== 'viewer'}
-          <button
-            type="button"
-            class="create-tag-button"
-            disabled={creatingTag}
-            on:click={createAndSelectTag}
-          >{creatingTag ? 'Creating…' : `Create #${normalizedTagSearch}`}</button>
-        {/if}
-      </div>
     </section>
 
     {#if taskDetails}
@@ -615,36 +588,15 @@
   .member-copy { display: grid; min-width: 0; }
   .member-copy small { overflow: hidden; color: var(--muted); font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
 
-  .tags-line {
-    display: flex;
-    min-height: 2.35rem;
-    align-items: center;
-    gap: .3rem;
-    overflow-x: auto;
-    border: 1px solid #cfcbbf;
-    border-radius: .55rem;
-    background: #fff;
-    padding: .3rem .4rem;
-  }
-
-  .tags-line button {
-    flex: 0 0 auto;
-    border: 1px solid color-mix(in srgb, var(--tag-color) 30%, white);
+  .inherited-tags { color: var(--muted); font-size: .72rem; }
+  .inherited-tags summary { width: fit-content; cursor: pointer; color: var(--forest-2); font-weight: 700; }
+  .inherited-tag-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+  .inherited-tag-list span {
     border-radius: 999px;
-    background: color-mix(in srgb, var(--tag-color) 9%, white);
-    color: color-mix(in srgb, var(--tag-color) 78%, black);
-    padding: .18rem .45rem;
-    font-size: .72rem;
+    background: color-mix(in srgb, var(--tag-color) 8%, white);
+    color: color-mix(in srgb, var(--tag-color) 70%, black);
+    padding: .14rem .4rem;
   }
-
-  .tags-line button.selected { background: color-mix(in srgb, var(--tag-color) 23%, white); font-weight: 800; }
-  .tags-line input { width: 8rem; min-width: 8rem; flex: 1 0 8rem; order: -1; border: 0; padding: .2rem .35rem; box-shadow: none; }
-  .tags-line input:focus { outline: 0; }
-  .tags-line .create-tag-button { border-style: dashed; font-weight: 750; }
-
-  .tag-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
-  .tag-suggestions small { margin-right: .15rem; color: var(--muted); }
-  .tag-suggestions button { border: 1px dashed #aeb9b2; border-radius: 999px; background: #f7f8f5; color: var(--forest-2); padding: .18rem .45rem; font-size: .72rem; }
 
   .compact-details { margin-top: 0; padding-top: .5rem; }
   .compact-details dl { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
