@@ -142,7 +142,7 @@
   });
 
   function normalizeTagName(value: string): string {
-    return value.trim().replace(/^#/, '').trim().toLowerCase();
+    return value.trim().toLowerCase();
   }
 
   function normalizedTagNames(value: string): string[] {
@@ -343,7 +343,7 @@
           <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
           <div class="inherited-tag-list">
             {#each taskDetails.inherited_tags as tag}
-              <span style:--tag-color={tag.color || '#73847c'}>#{tag.name}</span>
+              <span style:--tag-color={tag.color || '#73847c'}>{tag.name}</span>
             {/each}
           </div>
         </details>
