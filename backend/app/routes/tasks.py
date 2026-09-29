@@ -261,8 +261,8 @@ def list_tasks(
 
     if exclude_tag_id:
         excluded_tag_ids: set[int] = set()
-        for excluded_tag_id in dict.fromkeys(exclude_tag_id):
-            excluded_tag_ids.update(descendant_ids(db, excluded_tag_id))
+        for tag_to_exclude in dict.fromkeys(exclude_tag_id):
+            excluded_tag_ids.update(descendant_ids(db, tag_to_exclude))
         query = query.where(~Task.tags.any(Tag.id.in_(excluded_tag_ids)))
     if blocked is not None:
         now = datetime.now(UTC)
