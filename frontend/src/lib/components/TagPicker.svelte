@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { Tag } from '../api/types';
-  import { filterTagsByHierarchy, tagHierarchyPaths } from '../tagHierarchy';
+  import { hierarchicalTagResults, tagHierarchyPaths } from '../tagHierarchy';
 
   export let tags: Tag[] = [];
   export let selectedIds: number[] = [];
@@ -18,7 +18,7 @@
   let open = false;
 
   $: selectedTags = tags.filter((tag) => selectedIds.includes(tag.id));
-  $: filteredTags = filterTagsByHierarchy(tags, search);
+  $: filteredTags = hierarchicalTagResults(tags, search);
   $: normalizedSearch = search.trim().replace(/^#/, '').trim().toLowerCase();
   $: exactMatch = tags.some((tag) => tag.name.toLowerCase() === normalizedSearch);
 
@@ -85,16 +85,17 @@
 
     {#if open && !disabled}
       <div class="tag-options" role="listbox" aria-label="Tag options">
-        {#each filteredTags as tag (tag.id)}
+        {#each filteredTags as result (`${result.tag.id}-${result.depth}`)}
           <button
             type="button"
-            class:selected={selectedIds.includes(tag.id)}
-            on:mousedown|preventDefault={() => toggle(tag.id)}
+            class:selected={selectedIds.includes(result.tag.id)}
+            style:--tag-depth={result.depth}
+            on:mousedown|preventDefault={() => toggle(result.tag.id)}
           >
-            <span class="option-check" aria-hidden="true">{selectedIds.includes(tag.id) ? '✓' : ''}</span>
+            <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
-              <strong>#{tag.name}</strong>
-              {#each contextPaths(tag) as path}
+              <strong>#{result.tag.name}</strong>
+              {#each contextPaths(result.tag) as path}
                 <small>{path}</small>
               {/each}
             </span>
@@ -188,7 +189,7 @@
     border-radius: .45rem;
     background: transparent;
     color: var(--ink);
-    padding: .48rem .55rem;
+    padding: .48rem .55rem .48rem calc(.55rem + var(--tag-depth, 0) * 1rem);
     text-align: left;
   }
 
