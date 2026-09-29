@@ -237,6 +237,7 @@ class TagCreate(ApiModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = None
     color: str | None = Field(default=None, max_length=32)
+    parent_tag_id: int | None = None
 
     @field_validator("name")
     @classmethod
@@ -266,3 +267,15 @@ class TagRead(TagSummary):
 
 class TagRelationshipCreate(ApiModel):
     parent_tag_id: int
+
+
+class TagMergeCreate(ApiModel):
+    destination_tag_id: int
+
+
+class TagMergePreview(ApiModel):
+    source_tag_id: int
+    destination_tag_id: int
+    task_assignments: int
+    parent_relationships: int
+    child_relationships: int
