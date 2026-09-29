@@ -118,10 +118,20 @@ export const api = {
       json('DELETE')
     ),
 
-  tasks: (workspaceId: number, params: Record<string, string | number | boolean | null> = {}) => {
+  tasks: (
+    workspaceId: number,
+    params: Record<
+      string,
+      string | number | boolean | null | undefined | readonly (string | number | boolean)[]
+    > = {}
+  ) => {
     const query = new URLSearchParams({ workspace_id: String(workspaceId) });
     for (const [key, value] of Object.entries(params)) {
-      if (value !== null && value !== '') query.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const item of value) query.append(key, String(item));
+      } else if (value !== null && value !== undefined && value !== '') {
+        query.set(key, String(value));
+      }
     }
     return request<Task[]>(`/api/tasks?${query}`);
   },
