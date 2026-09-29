@@ -76,7 +76,7 @@ test('searching a child keeps its subtree and direct depth relative to that matc
     ]
   );
   assert.deepEqual(
-    hierarchicalTagResults(tags, '#personal').map(({ tag, depth }) => [tag.name, depth]),
+    hierarchicalTagResults(tags, 'personal').map(({ tag, depth }) => [tag.name, depth]),
     [['Personal', 0]]
   );
 });
