@@ -4,6 +4,7 @@ import type {
   PomodoroSettings,
   Status,
   Tag,
+  TagMergePreview,
   Task,
   TaskInput,
   User,
@@ -101,8 +102,15 @@ export const api = {
     request<void>(`/api/workspaces/${workspaceId}/statuses/${statusId}`, json('DELETE')),
 
   tags: (id: number) => request<Tag[]>(`/api/workspaces/${id}/tags`),
-  createTag: (id: number, body: { name: string; description?: string; color?: string }) =>
-    request<Tag>(`/api/workspaces/${id}/tags`, json('POST', body)),
+  createTag: (
+    id: number,
+    body: {
+      name: string;
+      description?: string;
+      color?: string;
+      parent_tag_id?: number | null;
+    }
+  ) => request<Tag>(`/api/workspaces/${id}/tags`, json('POST', body)),
   updateTag: (workspaceId: number, tagId: number, body: Partial<Tag>) =>
     request<Tag>(`/api/workspaces/${workspaceId}/tags/${tagId}`, json('PATCH', body)),
   deleteTag: (workspaceId: number, tagId: number) =>
@@ -116,6 +124,15 @@ export const api = {
     request<Tag>(
       `/api/workspaces/${workspaceId}/tags/${tagId}/parents/${parentId}`,
       json('DELETE')
+    ),
+  tagMergePreview: (workspaceId: number, tagId: number, destinationTagId: number) =>
+    request<TagMergePreview>(
+      `/api/workspaces/${workspaceId}/tags/${tagId}/merge-preview?destination_tag_id=${encodeURIComponent(String(destinationTagId))}`
+    ),
+  mergeTag: (workspaceId: number, tagId: number, destinationTagId: number) =>
+    request<Tag>(
+      `/api/workspaces/${workspaceId}/tags/${tagId}/merge`,
+      json('POST', { destination_tag_id: destinationTagId })
     ),
 
   tasks: (
