@@ -127,11 +127,10 @@ export const api = {
   },
   drafts: (workspaceId: number) =>
     request<Task[]>(`/api/drafts?workspace_id=${encodeURIComponent(String(workspaceId))}`),
-  createDraft: (workspaceId: number, title: string, description: string | null) =>
-    request<Task>(
-      '/api/drafts',
-      json('POST', { workspace_id: workspaceId, title, description })
-    ),
+  createDraft: (
+    body: Pick<TaskInput, 'title'> &
+      Partial<Omit<TaskInput, 'workspace_id' | 'title' | 'priority'>> & { workspace_id: number }
+  ) => request<Task>('/api/drafts', json('POST', body)),
   task: (id: number) => request<Task>(`/api/tasks/${id}`),
   createTask: (body: TaskInput & { workspace_id: number }) =>
     request<Task>('/api/tasks', json('POST', body)),
