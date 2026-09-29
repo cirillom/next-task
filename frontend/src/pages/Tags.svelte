@@ -106,9 +106,12 @@
   }
 
   function startCreate() {
+    const searchedName = search.trim().replace(/^#/, '').trim();
+    const existingTag = tags.some((tag) => tag.name.toLowerCase() === searchedName.toLowerCase());
+
     creating = true;
     selectedId = 0;
-    createName = '';
+    createName = searchedName && !existingTag ? searchedName : '';
     createDescription = '';
     createColor = randomTagColor();
     error = '';
@@ -573,6 +576,18 @@
     margin-top: 1rem;
     border-top: 1px solid var(--line);
     padding-top: .85rem;
+  }
+
+  .danger-zone .danger-subtle {
+    border: 1px solid #d8aaa5;
+    border-radius: .5rem;
+    background: #fff;
+    color: var(--danger);
+    padding: .48rem .7rem;
+  }
+
+  .danger-zone .danger-subtle:hover:not(:disabled) {
+    background: #fff2f0;
   }
 
   @media (max-width: 800px) {
