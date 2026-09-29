@@ -9,9 +9,10 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
 }).outputText;
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`;
-const { filterTagsByHierarchy, tagHierarchyPaths } = await import(moduleUrl);
+const { hierarchicalTagResults, tagHierarchyPaths } = await import(moduleUrl);
 
-const tag = (id, name, parents = []) => ({
+const summary = (id, name) => ({ id, name, color: null });
+const tag = (id, name, parents = [], ancestors = []) => ({
   id,
   name,
   color: null,
@@ -19,18 +20,31 @@ const tag = (id, name, parents = []) => ({
   description: null,
   parents,
   children: [],
-  ancestors: []
+  ancestors
 });
 
 const project = tag(1, 'Project');
-const homelab = tag(2, 'Homelab', [{ id: 1, name: 'Project', color: null }]);
+const homelab = tag(
+  2,
+  'Homelab',
+  [summary(1, 'Project')],
+  [summary(1, 'Project')]
+);
 const infrastructure = tag(3, 'Infrastructure');
-const maintenance = tag(4, 'Server Maintenance', [
-  { id: 2, name: 'Homelab', color: null },
-  { id: 3, name: 'Infrastructure', color: null }
-]);
+const maintenance = tag(
+  4,
+  'Server Maintenance',
+  [summary(2, 'Homelab'), summary(3, 'Infrastructure')],
+  [summary(1, 'Project'), summary(2, 'Homelab'), summary(3, 'Infrastructure')]
+);
 const personal = tag(5, 'Personal');
-const tags = [project, homelab, infrastructure, maintenance, personal];
+const nextTask = tag(
+  6,
+  'Next-task',
+  [summary(1, 'Project')],
+  [summary(1, 'Project')]
+);
+const tags = [project, homelab, infrastructure, maintenance, personal, nextTask];
 
 test('builds hierarchy paths including multiple parents', () => {
   assert.deepEqual(tagHierarchyPaths(project, tags), ['Project']);
@@ -41,9 +55,28 @@ test('builds hierarchy paths including multiple parents', () => {
   ]);
 });
 
-test('search matches tag names and ancestor path context', () => {
-  assert.deepEqual(filterTagsByHierarchy(tags, 'server').map((item) => item.id), [4]);
-  assert.deepEqual(filterTagsByHierarchy(tags, 'homelab').map((item) => item.id), [2, 4]);
-  assert.deepEqual(filterTagsByHierarchy(tags, 'project').map((item) => item.id), [1, 2, 4]);
-  assert.deepEqual(filterTagsByHierarchy(tags, '#personal').map((item) => item.id), [5]);
+test('search puts the matched root first and traverses descendants alphabetically by depth', () => {
+  assert.deepEqual(
+    hierarchicalTagResults(tags, 'project').map(({ tag, depth }) => [tag.name, depth]),
+    [
+      ['Project', 0],
+      ['Homelab', 1],
+      ['Server Maintenance', 2],
+      ['Next-task', 1]
+    ]
+  );
+});
+
+test('searching a child keeps its subtree and direct depth relative to that match', () => {
+  assert.deepEqual(
+    hierarchicalTagResults(tags, 'homelab').map(({ tag, depth }) => [tag.name, depth]),
+    [
+      ['Homelab', 0],
+      ['Server Maintenance', 1]
+    ]
+  );
+  assert.deepEqual(
+    hierarchicalTagResults(tags, '#personal').map(({ tag, depth }) => [tag.name, depth]),
+    [['Personal', 0]]
+  );
 });
