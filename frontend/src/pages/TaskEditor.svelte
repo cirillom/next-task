@@ -65,6 +65,21 @@
     }
   }
 
+  async function saveDraft(input: TaskInput) {
+    if (!taskId) return;
+    busy = true;
+    error = '';
+    try {
+      const { priority: _priority, ...draftInput } = input;
+      const saved = await api.updateTask(taskId, draftInput);
+      dispatch('saved', saved);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not save draft';
+    } finally {
+      busy = false;
+    }
+  }
+
   async function remove() {
     if (!task || !window.confirm(`Delete “${task.title}”? This cannot be undone.`)) return;
     busy = true;
@@ -264,7 +279,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
       {#if isDraft}
-        <p class="notice draft-notice">Review the draft and choose a priority of 1 or higher before saving it as a task.</p>
+        <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
       {/if}
       <TaskForm
         {workspace}
@@ -283,9 +298,11 @@
         {error}
         submitLabel={isDraft ? 'Save as task' : taskId ? 'Save task' : 'Create task'}
         busyLabel={isDraft ? 'Saving…' : taskId ? 'Saving…' : 'Creating…'}
+        draftSubmitLabel={isDraft ? 'Save draft' : ''}
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
+        on:draft={(event) => saveDraft(event.detail)}
         on:submit={(event) => save(event.detail)}
       />
     {/if}

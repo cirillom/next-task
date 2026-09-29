@@ -31,7 +31,7 @@
   <div>
     <p class="eyebrow">Needs your input</p>
     <h1>Drafts</h1>
-    <p class="draft-intro">Quick captures stay here until you review them and choose a priority.</p>
+    <p class="draft-intro">Prepare tasks here without making them active until they are ready.</p>
   </div>
 </div>
 

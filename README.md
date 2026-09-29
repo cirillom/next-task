@@ -213,10 +213,11 @@ language in Quick Capture, choose **Text to task**, and review an editable task 
 anything is created. The review includes title, Markdown description, status, priority,
 due date, assignees, existing tags, and suggested new tags.
 
-Quick Capture can also save the text as a lightweight draft. Drafts stay on the dedicated
-**Drafts** page until the user chooses **Edit draft**, reviews the details, assigns a real
-priority, and presses **Create task**. Priority 0 is reserved internally for drafts and
-drafts are excluded from normal task lists, Next, Pomodoro, and MCP task listings.
+Quick Capture can also save text as a draft. Drafts are full task records that can keep
+status, due date, hierarchy, assignees, tags, and other task metadata while remaining on
+the dedicated **Drafts** page. **Save draft** keeps priority 0; **Save as task** assigns a
+normal priority. Drafts are excluded from normal task lists, Next, Pomodoro, and MCP task
+listings until activated.
 
 Drafting sends the entered text plus the selected workspace statuses, members, and tag
 names to Gemini. The personal API key is encrypted in SQLite and is never returned to

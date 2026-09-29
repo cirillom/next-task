@@ -23,10 +23,13 @@
   export let error = '';
   export let submitLabel = 'Save task';
   export let busyLabel = 'Saving…';
+  export let draftSubmitLabel = '';
+  export let draftBusyLabel = 'Saving…';
   export let cancelLabel = 'Cancel';
 
   const dispatch = createEventDispatcher<{
     submit: TaskInput;
+    draft: TaskInput;
     cancel: void;
     openTask: number;
     toggleSubtask: TaskSummary;
@@ -187,9 +190,8 @@
     }
   }
 
-  function submit() {
-    localError = '';
-    dispatch('submit', {
+  function taskInput(): TaskInput {
+    return {
       title,
       description: description || null,
       status_id: statusId,
@@ -199,7 +201,17 @@
       parent_task_id: parentTaskId || null,
       assignee_ids: assigneeIds,
       tag_ids: tagIds
-    });
+    };
+  }
+
+  function submit() {
+    localError = '';
+    dispatch('submit', taskInput());
+  }
+
+  function saveDraft() {
+    localError = '';
+    dispatch('draft', taskInput());
   }
 </script>
 
@@ -394,6 +406,9 @@
     <footer class="editor-actions">
       <span></span>
       <button type="button" disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</button>
+      {#if workspace.role !== 'viewer' && draftSubmitLabel}
+        <button type="button" disabled={busy || creatingTag || !statusId || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</button>
+      {/if}
       {#if workspace.role !== 'viewer'}<button class="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</button>{/if}
     </footer>
   </form>
@@ -647,7 +662,7 @@
 
   .editor-actions {
     bottom: -1rem;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr repeat(3, auto);
     margin: .65rem -1rem -1rem;
     padding: .7rem 1rem;
   }
