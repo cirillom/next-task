@@ -12,11 +12,15 @@
 
   const dispatch = createEventDispatcher<{
     change: number[];
-    create: string;
+    create: { name: string; parent_tag_id: number | null; color: string };
   }>();
 
   let search = '';
   let open = false;
+  let createOpen = false;
+  let createName = '';
+  let createParentId = 0;
+  let createColor = '#587b6a';
 
   $: selectedTags = tags.filter((tag) => selectedIds.includes(tag.id));
   $: filteredTags = hierarchicalTagResults(tags, search);
@@ -41,7 +45,31 @@
 
   function requestCreate() {
     if (!allowCreate || !normalizedSearch || exactMatch || creating) return;
-    dispatch('create', normalizedSearch);
+    createName = search.trim();
+    createParentId = 0;
+    createColor = '#587b6a';
+    createOpen = true;
+    open = false;
+  }
+
+  function cancelCreate() {
+    createOpen = false;
+  }
+
+  function submitCreate() {
+    const name = createName.trim();
+    if (!name || creating) return;
+    dispatch('create', {
+      name,
+      parent_tag_id: createParentId || null,
+      color: createColor
+    });
+    createOpen = false;
+    search = '';
+  }
+
+  function parentLabel(tag: Tag): string {
+    return tagHierarchyPaths(tag, tags)[0] || tag.name;
   }
 
   function contextPaths(tag: Tag): string[] {
@@ -119,6 +147,34 @@
       </div>
     {/if}
   </div>
+
+  {#if createOpen && allowCreate && !disabled}
+    <div class="inline-tag-create" aria-label="Create tag">
+      <label>
+        Name
+        <input bind:value={createName} maxlength="120" disabled={creating} />
+      </label>
+      <label>
+        Parent
+        <select bind:value={createParentId} disabled={creating}>
+          <option value={0}>No parent</option>
+          {#each [...tags].sort((left, right) => left.name.localeCompare(right.name)) as tag (tag.id)}
+            <option value={tag.id}>{parentLabel(tag)}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="color-input">
+        Color
+        <input type="color" bind:value={createColor} disabled={creating} />
+      </label>
+      <div class="inline-create-actions">
+        <button type="button" disabled={creating} on:click={cancelCreate}>Cancel</button>
+        <button type="button" class="primary" disabled={creating || !createName.trim()} on:click={submitCreate}>
+          {creating ? 'Creating…' : 'Create and select'}
+        </button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -211,4 +267,51 @@
 
   .create-tag { border-top: 1px solid #ebe7dd !important; margin-top: .2rem; color: var(--forest-2) !important; }
   .tag-empty { display: block; padding: .6rem; color: var(--muted); font-size: .78rem; }
+
+  .inline-tag-create {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 5rem;
+    gap: .45rem;
+    border: 1px solid #d8d5ca;
+    border-radius: .6rem;
+    background: #f8f8f5;
+    padding: .55rem;
+  }
+
+  .inline-tag-create label {
+    display: grid;
+    min-width: 0;
+    gap: .2rem;
+    color: var(--muted);
+    font-size: .68rem;
+    font-weight: 750;
+  }
+
+  .inline-tag-create input,
+  .inline-tag-create select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .color-input input { min-height: 2.35rem; padding: .15rem; }
+
+  .inline-create-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    gap: .4rem;
+  }
+
+  .inline-create-actions button:not(.primary) {
+    border: 1px solid #cbc8be;
+    border-radius: .5rem;
+    background: #fff;
+    color: var(--ink);
+    padding: .45rem .65rem;
+  }
+
+  @media (max-width: 640px) {
+    .inline-tag-create { grid-template-columns: 1fr; }
+    .inline-create-actions { grid-column: auto; }
+  }
 </style>
