@@ -341,11 +341,6 @@ def finish_task(
     for candidate in [task, *descendant_tasks(task)]:
         if candidate.finished_at is None:
             candidate.finished_at = now
-            for block in candidate.blocks:
-                if active_block_condition(now).compare(
-                    TaskBlock.unblocked_at.is_(None)
-                ):
-                    pass
             active_blocks = db.scalars(
                 select(TaskBlock).where(
                     TaskBlock.task_id == candidate.id,
