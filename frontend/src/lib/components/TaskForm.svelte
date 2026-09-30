@@ -10,6 +10,8 @@
   import AppButton from './AppButton.svelte';
   import TextField from './TextField.svelte';
   import NumberField from './NumberField.svelte';
+  import TaskSearchSelect from './TaskSearchSelect.svelte';
+  import BlockSummary from './BlockSummary.svelte';
 
   export let workspace: Workspace;
   export let taskId = 0;
@@ -38,13 +40,16 @@
     cancel: void;
     openTask: number;
     toggleSubtask: TaskSummary;
+    createRelated: { kind: 'parent' | 'child' | 'blocks'; title: string };
+    attachChild: TaskSummary;
+    detachChild: TaskSummary;
+    blockTarget: TaskSummary;
   }>();
 
   let statuses: Status[] = [];
   let tags: Tag[] = [];
   let members: Member[] = [];
   let parentTasks: Task[] = [];
-  let filteredParentTasks: Task[] = [];
 
   let title = initialTitle;
   let description = initialDescription;
@@ -53,9 +58,6 @@
   let dueDate = initialDueDate;
   let lastWorked = initialLastWorked;
   let parentTaskId = initialParentTaskId;
-  let parentSearch = '';
-  let parentOpen = false;
-  let parentDirty = false;
   let assigneeIds = [...initialAssigneeIds];
   let assigneeOpen = false;
   let tagIds = [...initialTagIds];
@@ -65,46 +67,18 @@
   let createdParentId = 0;
   let localError = '';
 
-  $: {
-    const candidates = parentTasks.filter((item) => item.id !== taskId);
-    const needle = parentSearch.trim().toLowerCase();
-    filteredParentTasks = parentDirty && needle
-      ? candidates.filter((item) => item.title.toLowerCase().includes(needle))
-      : candidates;
-  }
-
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedMembers = members.filter((member) => assigneeIds.includes(member.user_id));
+  $: selectedParent = parentTasks.find((item) => item.id === parentTaskId)
+    || (taskDetails?.parent_task?.id === parentTaskId ? taskDetails.parent_task : null);
 
-  function parentOptionLabel(item: Task): string {
-    return `${item.title} (#${item.id})`;
+  export function selectCreatedParent(created: Task) {
+    parentTasks = [...parentTasks, created];
+    parentTaskId = created.id;
   }
 
-  function focusParent(event: FocusEvent) {
-    parentOpen = true;
-    parentDirty = false;
-    (event.currentTarget as HTMLInputElement).select();
-  }
-
-  function filterParents(value: string) {
-    parentSearch = value;
-    parentDirty = true;
-    parentTaskId = 0;
-    parentOpen = true;
-  }
-
-  function chooseParent(item: Task | null) {
-    parentTaskId = item?.id || 0;
-    parentSearch = item ? parentOptionLabel(item) : '';
-    parentDirty = false;
-    parentOpen = false;
-  }
-
-  function closeParent() {
-    parentOpen = false;
-    if (!parentDirty) return;
-    parentSearch = '';
-    parentDirty = false;
+  export async function refreshRelatedTasks() {
+    parentTasks = await api.tasks(workspace.id, { finished: false });
   }
 
   function toggleAssignee(userId: number) {
@@ -128,17 +102,6 @@
 
       if (!statuses.some((item) => item.id === statusId)) statusId = statuses[0]?.id || 0;
 
-      if (parentTaskId) {
-        let parent = parentTasks.find((item) => item.id === parentTaskId);
-        if (!parent) {
-          try {
-            parent = await api.task(parentTaskId);
-          } catch {
-            parent = undefined;
-          }
-        }
-        parentSearch = parent ? parentOptionLabel(parent) : '';
-      }
     } catch (reason) {
       localError = reason instanceof Error ? reason.message : 'Could not load task options';
     } finally {
@@ -230,6 +193,9 @@
   <p class="empty">Loading task editor…</p>
 {:else}
   <form class="shared-task-form" on:submit|preventDefault={submit}>
+    {#if taskDetails?.active_blocks.length}
+      <BlockSummary blocks={taskDetails.active_blocks} on:openTask={(event) => dispatch('openTask', event.detail)} />
+    {/if}
     <div class="title-row">
       <label>Title<TextField bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
     </div>
@@ -241,73 +207,27 @@
       <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
     </div>
 
-    <section class="hierarchy-panel" aria-label="Task hierarchy">
-      <div class="hierarchy-header">
-        <div>
-          <span class="field-label">Task hierarchy</span>
-          {#if taskDetails?.subtasks.length}
-            <small>{completedSubtasks} / {taskDetails.subtasks.length} direct subtasks complete</small>
-          {/if}
-        </div>
-        {#if taskDetails?.parent_task}
-          <button type="button" class="parent-jump" on:click={() => dispatch('openTask', taskDetails!.parent_task!.id)}>
-            Open parent #{taskDetails.parent_task.id}
-          </button>
-        {/if}
-      </div>
-
-      <div class="parent-field">
-        <span class="field-label">Parent</span>
-        <div class="parent-combobox">
-          <TextField
-            id="task-parent-search"
-            type="text"
-            value={parentSearch}
-            placeholder="No parent task"
-            autocomplete="off"
-            role="combobox"
-            aria-autocomplete="list"
-            aria-controls="parent-task-options"
-            aria-expanded={parentOpen}
-            disabled={workspace.role === 'viewer'}
-            on:focus={focusParent}
-            on:input={(event) => filterParents((event.target as HTMLInputElement).value)}
-            on:blur={closeParent}
-          />
-          {#if parentOpen && workspace.role !== 'viewer'}
-            <div id="parent-task-options" class="parent-options" role="listbox">
-              <button type="button" class:selected={!parentTaskId} on:mousedown|preventDefault={() => chooseParent(null)}>No parent</button>
-              {#each filteredParentTasks as item (item.id)}
-                <button type="button" class:selected={item.id === parentTaskId} on:mousedown|preventDefault={() => chooseParent(item)}>{parentOptionLabel(item)}</button>
-              {/each}
-              {#if !filteredParentTasks.length}<span class="parent-empty">No matching tasks</span>{/if}
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      {#if taskDetails?.subtasks.length}
-        <div class="subtask-list">
-          {#each taskDetails.subtasks as subtask (subtask.id)}
-            <div class:finished={!!subtask.finished_at} class="subtask-row">
-              {#if workspace.role !== 'viewer'}
-                <button
-                  type="button"
-                  class="subtask-toggle"
-                  class:finished={!!subtask.finished_at}
-                  disabled={busy || creatingTag}
-                  aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`}
-                  title={subtask.finished_at ? 'Reopen subtask' : 'Finish subtask'}
-                  on:click={() => dispatch('toggleSubtask', subtask)}
-                >{subtask.finished_at ? '✓' : '○'}</button>
-              {:else}
-                <span class="subtask-state" aria-hidden="true">{subtask.finished_at ? '✓' : '○'}</span>
-              {/if}
-              <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}</button>
-              <small>#{subtask.id}</small>
-            </div>
-          {/each}
-        </div>
+    <section class="tags-section">
+      <span class="field-label">Direct tags</span>
+      <TagPicker
+        {tags}
+        selectedIds={tagIds}
+        suggestedNames={suggestedNewTags}
+        disabled={workspace.role === 'viewer'}
+        creating={creatingTag}
+        bind:createdParentId
+        on:change={(event) => (tagIds = event.detail)}
+        on:create={(event) => void createAndSelectTag(event.detail)}
+      />
+      {#if taskDetails?.inherited_tags.length}
+        <details class="inherited-tags" open>
+          <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
+          <div class="inherited-tag-list">
+            {#each taskDetails.inherited_tags as tag}
+              <TagBadge {tag} inherited />
+            {/each}
+          </div>
+        </details>
       {/if}
     </section>
 
@@ -350,28 +270,71 @@
       </div>
     </section>
 
-    <section class="tags-section">
-      <span class="field-label">Direct tags</span>
-      <TagPicker
-        {tags}
-        selectedIds={tagIds}
-        suggestedNames={suggestedNewTags}
-        disabled={workspace.role === 'viewer'}
-        creating={creatingTag}
-        bind:createdParentId
-        on:change={(event) => (tagIds = event.detail)}
-        on:create={(event) => void createAndSelectTag(event.detail)}
-      />
-      {#if taskDetails?.inherited_tags.length}
-        <details class="inherited-tags" open>
-          <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
-          <div class="inherited-tag-list">
-            {#each taskDetails.inherited_tags as tag}
-              <TagBadge {tag} inherited />
-            {/each}
+    <section class="hierarchy-panel" aria-label="Relations">
+      <span class="field-label">Relations</span>
+
+      <div class="relation-group">
+        <strong>Parent</strong>
+        {#if parentTaskId}
+          <div class="relation-row">
+            <button type="button" class="relation-link" on:click={() => dispatch('openTask', parentTaskId)}>{selectedParent?.title || 'Parent task'} #{parentTaskId}</button>
+            {#if workspace.role !== 'viewer'}<AppButton disabled={busy} on:click={() => (parentTaskId = 0)}>Remove parent</AppButton>{/if}
           </div>
-        </details>
-      {/if}
+        {:else}
+          <TaskSearchSelect
+            tasks={parentTasks}
+            excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
+            placeholder="Search task to add as parent..."
+            disabled={workspace.role === 'viewer' || busy}
+            on:select={(event) => (parentTaskId = event.detail.id)}
+            on:create={(event) => dispatch('createRelated', { kind: 'parent', title: event.detail })}
+          />
+        {/if}
+      </div>
+
+      <div class="relation-group">
+        <strong>Children {#if taskDetails?.subtasks.length}<small>{completedSubtasks} / {taskDetails.subtasks.length} complete</small>{/if}</strong>
+        {#each taskDetails?.subtasks || [] as subtask (subtask.id)}
+          <div class:finished={!!subtask.finished_at} class="subtask-row">
+            {#if workspace.role !== 'viewer'}
+              <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag} aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
+            {:else}
+              <span class="subtask-state" aria-hidden="true">{subtask.finished_at ? '✓' : '○'}</span>
+            {/if}
+            <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}</button>
+            <small>#{subtask.id}</small>
+            {#if workspace.role !== 'viewer'}<AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>Remove</AppButton>{/if}
+          </div>
+        {/each}
+        {#if taskId && workspace.role !== 'viewer'}
+          <TaskSearchSelect
+            tasks={parentTasks}
+            excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
+            placeholder="Search task to add as child..."
+            disabled={busy}
+            on:select={(event) => dispatch('attachChild', event.detail)}
+            on:create={(event) => dispatch('createRelated', { kind: 'child', title: event.detail })}
+          />
+        {/if}
+      </div>
+
+      <div class="relation-group">
+        <strong>Blocks</strong>
+        {#each taskDetails?.blocks_tasks || [] as blocked (blocked.id)}
+          <div class="block-row"><span aria-hidden="true">→</span><button type="button" class="relation-link" on:click={() => dispatch('openTask', blocked.id)}>{blocked.title} #{blocked.id}</button></div>
+        {/each}
+        {#if taskId && workspace.role !== 'viewer'}
+          <TaskSearchSelect
+            tasks={parentTasks}
+            excludeIds={[taskId, ...(taskDetails?.blocks_tasks.map((blocked) => blocked.id) || [])]}
+            placeholder="Search task to block..."
+            disabled={busy}
+            on:select={(event) => dispatch('blockTarget', event.detail)}
+            on:create={(event) => dispatch('createRelated', { kind: 'blocks', title: event.detail })}
+          />
+        {/if}
+      </div>
+      {#if !taskId}<small class="relation-hint">Save this task to add children or task blockers.</small>{/if}
     </section>
 
     {#if taskDetails}
@@ -381,21 +344,6 @@
           <div><dt>Created</dt><dd>{formatDateTime(taskDetails.created_at)}</dd></div>
           {#if taskDetails.finished_at}<div><dt>Finished</dt><dd>{formatDateTime(taskDetails.finished_at)}</dd></div>{/if}
         </dl>
-        {#if taskDetails.current_block}<div class="blocked-reason"><strong>Currently blocked:</strong> {taskDetails.current_block.reason}</div>{/if}
-
-        {#if taskDetails.blocking_history.length}
-          <details class="block-history">
-            <summary>Blocking history <span>{taskDetails.blocking_history.length}</span></summary>
-            <ol>
-              {#each taskDetails.blocking_history as block (block.id)}
-                <li>
-                  <div><strong>{block.reason}</strong>{#if taskDetails.current_block?.id === block.id}<span class="active-block">Active</span>{/if}</div>
-                  <small>Blocked {formatDateTime(block.blocked_at)}{block.unblocked_at ? ` · Unblocked ${formatDateTime(block.unblocked_at)}` : ''}</small>
-                </li>
-              {/each}
-            </ol>
-          </details>
-        {/if}
       </section>
     {/if}
 
@@ -435,56 +383,22 @@
     padding: .65rem .75rem;
   }
 
-  .hierarchy-header,
-  .parent-field,
   .subtask-row {
     display: flex;
     align-items: center;
   }
 
-  .hierarchy-header { justify-content: space-between; gap: .75rem; }
-  .hierarchy-header > div { display: flex; align-items: baseline; gap: .6rem; min-width: 0; }
-  .hierarchy-header small { color: var(--muted); font-size: .72rem; }
-
-  .parent-jump {
-    border: 0;
-    background: transparent;
-    color: var(--forest-2);
-    padding: 0;
-    font-size: .72rem;
-    font-weight: 750;
-  }
-
-  .parent-jump:hover { text-decoration: underline; text-underline-offset: .14rem; }
-
-  .parent-field { gap: .65rem; }
-  .parent-field > .field-label { flex: 0 0 4rem; }
-  .parent-combobox { position: relative; flex: 1; min-width: 0; }
-
-  .parent-options {
-    position: absolute;
-    z-index: 8;
-    top: calc(100% + .25rem);
-    left: 0;
-    right: 0;
-    max-height: 15rem;
-    overflow: auto;
-    border: 1px solid #cbc8be;
-    border-radius: .55rem;
-    background: #fff;
-    box-shadow: 0 12px 28px rgba(20, 27, 23, .16);
-    padding: .3rem;
-  }
-
-  .parent-options button { display: block; width: 100%; border: 0; border-radius: .4rem; background: transparent; color: var(--ink); padding: .5rem .6rem; text-align: left; font: inherit; }
-  .parent-options button:hover, .parent-options button.selected { background: #f0eee7; }
-  .parent-empty { display: block; padding: .55rem .6rem; color: var(--muted); font-size: .85rem; }
-
-  .subtask-list { display: grid; gap: .14rem; border-top: 1px solid #e6e1d7; padding-top: .45rem; }
+  .relation-group { display: grid; gap: .35rem; border-top: 1px solid #e6e1d7; padding-top: .5rem; }
+  .relation-group:first-of-type { border-top: 0; padding-top: 0; }
+  .relation-group > strong { display: flex; gap: .4rem; align-items: baseline; font-size: .82rem; }
+  .relation-group small, .relation-hint { color: var(--muted); font-size: .72rem; }
+  .relation-row, .block-row { display: flex; align-items: center; gap: .5rem; }
+  .relation-link { border: 0; background: transparent; color: var(--forest-2); padding: .2rem 0; text-align: left; font: inherit; font-weight: 700; }
+  .relation-link:hover { text-decoration: underline; }
 
   .subtask-row {
     display: grid;
-    grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.55rem minmax(0, 1fr) auto auto;
     gap: .35rem;
     border-radius: .4rem;
     padding: .18rem .3rem;
@@ -493,6 +407,7 @@
   .subtask-row:hover { background: #f0eee7; }
   .subtask-row.finished { color: var(--muted); }
   .subtask-row small { color: var(--muted); font-size: .7rem; }
+  .subtask-row :global(.relation-remove) { min-height: 1.55rem; padding: .2rem .45rem; font-size: .7rem; }
 
   .subtask-toggle {
     display: grid;
@@ -619,15 +534,6 @@
   .compact-details dl { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
   .compact-details dl > div { display: flex; grid-template-columns: none; gap: .35rem; padding: 0; font-size: .75rem; }
 
-  .block-history { margin-top: .55rem; border-top: 1px solid #ebe7dd; padding-top: .45rem; }
-  .block-history summary { color: var(--forest-2); cursor: pointer; font-size: .76rem; font-weight: 750; }
-  .block-history summary span { color: var(--muted); font-weight: 650; }
-  .block-history ol { display: grid; gap: .45rem; margin: .55rem 0 0; padding: 0; list-style: none; }
-  .block-history li { border-left: 2px solid #d9d4c9; padding-left: .55rem; }
-  .block-history li > div { display: flex; align-items: center; gap: .45rem; }
-  .block-history li strong { font-size: .76rem; }
-  .block-history li small { color: var(--muted); font-size: .68rem; }
-  .active-block { border-radius: 999px; background: #f8e6dc; color: #7c3821; padding: .1rem .35rem; font-size: .62rem; font-weight: 800; }
 
   .editor-actions {
     bottom: -1rem;
@@ -642,10 +548,6 @@
 
   @media (max-width: 600px) {
     .metadata-row { grid-template-columns: 1fr; }
-    .parent-field { align-items: flex-start; flex-direction: column; gap: .25rem; }
-    .parent-field > .field-label { flex-basis: auto; }
-    .parent-combobox { width: 100%; }
-    .hierarchy-header { align-items: flex-start; flex-direction: column; gap: .25rem; }
     .editor-actions { bottom: -.75rem; margin: .6rem -.75rem -.75rem; padding: .65rem .75rem; }
   }
 </style>

@@ -4,6 +4,7 @@
   import type { Status, Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
+  import BlockSummary from './BlockSummary.svelte';
   import DateTimeInput from './DateTimeInput.svelte';
   import TagBadge from './TagBadge.svelte';
   import Markdown from './Markdown.svelte';
@@ -14,7 +15,7 @@
   export let statuses: Status[] = [];
   export let readOnly = false;
 
-  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string }>();
+  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
@@ -57,9 +58,9 @@
     }
   }
 
-  function block(request: { reason: string; unblocked_at: string | null }) {
+  function block(request: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null }) {
     void runBlockingAction(
-      () => api.blockTask(task.id, request.reason, request.unblocked_at),
+      () => api.blockTask(task.id, request),
       'Could not block task'
     );
   }
@@ -178,12 +179,7 @@
     <div class="tag-row">{#each task.direct_tags as tag}<TagBadge {tag} />{/each}</div>
   {/if}
 
-  {#if task.current_block}
-    <div class="blocked-reason">
-      <strong>Blocked:</strong> {task.current_block.reason}
-      {#if task.current_block.unblocked_at}<span class="auto-unblock-note">· Auto-unblocks {formatDateTime(task.current_block.unblocked_at)}</span>{/if}
-    </div>
-  {/if}
+  {#if task.active_blocks.length}<BlockSummary blocks={task.active_blocks} compact on:openTask={(event) => dispatch('open', event.detail)} />{/if}
 
   {#if !readOnly}
     <div class="task-actions">
@@ -199,12 +195,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>Worked now</span>
       </button>
 
-      <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => task.current_block ? act(() => api.unblockTask(task.id)) : (blockModalOpen = true)}>
-        {#if task.current_block}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg><span>Unblock</span>
-        {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>Block</span>
-        {/if}
+      <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
       </button>
 
       <div class="status-select">
@@ -235,7 +227,7 @@
 </article>
 
 {#if blockModalOpen}
-  <BlockTaskModal taskTitle={task.title} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
+  <BlockTaskModal taskTitle={task.title} taskId={task.id} workspaceId={task.workspace_id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
 {/if}
 
 {#if completionOpen}
@@ -247,7 +239,6 @@
   .task-id { flex: 0 0 auto; color: var(--muted); font-size: .72rem; font-weight: 700; opacity: .72; }
   .date-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
   .meta-row > span + span::before { content: '·'; margin-right: .65rem; color: #b8b3a8; font-weight: 700; }
-  .auto-unblock-note { color: var(--muted); font-size: .82rem; }
   .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
   .ranking-boost { border: 0; border-radius: .4rem; background: transparent; color: var(--forest-2); padding: .25rem .32rem; font-size: .72rem; font-weight: 750; white-space: nowrap; }

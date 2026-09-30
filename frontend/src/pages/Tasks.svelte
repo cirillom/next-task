@@ -14,7 +14,7 @@
   type TagMatch = 'all' | 'any';
 
   export let workspace: Workspace;
-  const dispatch = createEventDispatcher<{ openTask: number }>();
+  const dispatch = createEventDispatcher<{ openTask: number; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
   let statuses: Status[] = [];
@@ -418,6 +418,7 @@
       readOnly={workspace.role === 'viewer'}
       on:changed={() => void refreshTasks()}
       on:open={(event) => dispatch('openTask', event.detail)}
+      on:createBlocker={(event) => dispatch('createBlocker', event.detail)}
       on:error={(event) => (error = event.detail)}
     />
   {/each}

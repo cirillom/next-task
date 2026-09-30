@@ -9,6 +9,9 @@
 
   export let workspace: Workspace;
   export let taskId = 0;
+  export let initialTitle = '';
+  export let initialParentTaskId = 0;
+  export let initialBlockerTitle = '';
   const dispatch = createEventDispatcher<{
     close: void;
     saved: Task;
@@ -23,6 +26,9 @@
   let blockModalOpen = false;
   let completionTarget: TaskSummary | null = null;
   let error = '';
+  let form: TaskForm;
+  let nestedIntent: 'parent' | 'child' | 'blocks' | 'blocker' | null = null;
+  let nestedTitle = '';
 
   $: isDraft = task?.priority === 0;
 
@@ -47,6 +53,10 @@
       error = reason instanceof Error ? reason.message : 'Could not load task';
     } finally {
       loading = false;
+      if (initialBlockerTitle && task) {
+        nestedIntent = 'blocker';
+        nestedTitle = initialBlockerTitle;
+      }
     }
   });
 
@@ -177,17 +187,79 @@
     }
   }
 
-  function block(request: { reason: string; unblocked_at: string | null }) {
+  function block(request: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null }) {
     if (!task) return;
     void runBlockingAction(
-      () => api.blockTask(task!.id, request.reason, request.unblocked_at),
+      () => api.blockTask(task!.id, request),
       'Could not block task'
     );
   }
 
-  function unblock() {
+  function unblock(blockId: number) {
     if (!task) return;
-    void runTaskAction(() => api.unblockTask(task!.id), 'Could not unblock task');
+    void runBlockingAction(() => api.unblockOne(task!.id, blockId), 'Could not unblock task');
+  }
+
+  async function refreshTask() {
+    if (task) {
+      task = await api.task(task.id);
+      dispatch('changed', task);
+    }
+    await form?.refreshRelatedTasks();
+  }
+
+  async function attachChild(child: TaskSummary) {
+    if (!task) return;
+    try {
+      const existing = await api.task(child.id);
+      if (existing.parent_task_id && existing.parent_task_id !== task.id &&
+        !window.confirm(`Move “${child.title}” from its current parent to “${task.title}”?`)) return;
+      await setChildParent(child, task.id);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not attach child task';
+    }
+  }
+
+  async function setChildParent(child: TaskSummary, parentId: number | null) {
+    busy = true;
+    error = '';
+    try {
+      await api.updateTask(child.id, { parent_task_id: parentId });
+      await refreshTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not update child task';
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function blockTarget(target: TaskSummary) {
+    if (!task) return;
+    try {
+      await api.blockTask(target.id, { blocking_task_id: task.id });
+      await refreshTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not block task';
+    }
+  }
+
+  async function nestedSaved(created: Task) {
+    const intent = nestedIntent;
+    nestedIntent = null;
+    try {
+      if (intent === 'parent') {
+        form.selectCreatedParent(created);
+        if (task) await api.updateTask(task.id, { parent_task_id: created.id });
+      } else if (intent === 'blocks' && task) {
+        await api.blockTask(created.id, { blocking_task_id: task.id });
+      } else if (intent === 'blocker' && task) {
+        await api.blockTask(task.id, { blocking_task_id: created.id });
+        blockModalOpen = false;
+      }
+      await refreshTask();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not connect task';
+    }
   }
 
   function reblock(request: { unblocked_at: string | null }) {
@@ -247,15 +319,10 @@
               class="quick-action block-action"
               class:active={!!task.current_block}
               disabled={busy}
-              on:click={() => task?.current_block ? unblock() : (blockModalOpen = true)}
+              on:click={() => (blockModalOpen = true)}
             >
-              {#if task.current_block}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 9.5-2" /><rect x="5" y="10" width="14" height="10" rx="2" /></svg>
-                <span>Unblock</span>
-              {:else}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-                <span>Block</span>
-              {/if}
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
+              <span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
             </button>
           {/if}
           <button
@@ -282,15 +349,16 @@
         <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
       {/if}
       <TaskForm
+        bind:this={form}
         {workspace}
         {taskId}
-        initialTitle={task?.title || ''}
+        initialTitle={task?.title || initialTitle}
         initialDescription={task?.description || ''}
         initialStatusId={task?.status.id || 0}
         initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
         initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}
-        initialParentTaskId={task?.parent_task_id || 0}
+        initialParentTaskId={task?.parent_task_id || initialParentTaskId}
         initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
         initialTagIds={task?.direct_tags.map((item) => item.id) || []}
         taskDetails={task}
@@ -302,6 +370,10 @@
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
+        on:createRelated={(event) => { nestedIntent = event.detail.kind; nestedTitle = event.detail.title; }}
+        on:attachChild={(event) => void attachChild(event.detail)}
+        on:detachChild={(event) => void setChildParent(event.detail, null)}
+        on:blockTarget={(event) => void blockTarget(event.detail)}
         on:draft={(event) => saveDraft(event.detail)}
         on:submit={(event) => save(event.detail)}
       />
@@ -311,14 +383,23 @@
 
 {#if task && blockModalOpen}
   <BlockTaskModal
+    taskId={task.id}
+    workspaceId={workspace.id}
     taskTitle={task.title}
     history={task.blocking_history}
     {busy}
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
+    on:unblock={(event) => unblock(event.detail)}
+    on:createTask={(event) => { blockModalOpen = false; nestedIntent = 'blocker'; nestedTitle = event.detail; }}
+    on:openTask={(event) => dispatch('openTask', event.detail)}
     on:reblock={(event) => reblock(event.detail)}
     on:deleteBlock={(event) => deleteBlock(event.detail)}
   />
+{/if}
+
+{#if nestedIntent}
+  <svelte:self {workspace} initialTitle={nestedTitle} initialParentTaskId={nestedIntent === 'child' ? taskId : 0} on:saved={(event) => void nestedSaved(event.detail)} on:close={() => (nestedIntent = null)} on:changed={(event) => dispatch('changed', event.detail)} on:openTask={(event) => dispatch('openTask', event.detail)} />
 {/if}
 
 {#if completionTarget}

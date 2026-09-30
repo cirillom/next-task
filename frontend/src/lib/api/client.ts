@@ -166,9 +166,11 @@ export const api = {
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, json('DELETE')),
   finishTask: (id: number) => request<Task>(`/api/tasks/${id}/finish`, json('POST')),
   reopenTask: (id: number) => request<Task>(`/api/tasks/${id}/reopen`, json('POST')),
-  blockTask: (id: number, reason: string, unblocked_at: string | null = null) =>
-    request<Task>(`/api/tasks/${id}/block`, json('POST', { reason, unblocked_at })),
+  blockTask: (id: number, body: { reason?: string | null; blocking_task_id?: number | null; unblocked_at?: string | null }) =>
+    request<Task>(`/api/tasks/${id}/block`, json('POST', body)),
   unblockTask: (id: number) => request<Task>(`/api/tasks/${id}/unblock`, json('POST')),
+  unblockOne: (taskId: number, blockId: number) =>
+    request<Task>(`/api/tasks/${taskId}/blocks/${blockId}/unblock`, json('POST')),
   reblockTask: (id: number, unblocked_at: string | null = null) =>
     request<Task>(`/api/tasks/${id}/reblock`, json('POST', { unblocked_at })),
   deleteBlock: (taskId: number, blockId: number) =>

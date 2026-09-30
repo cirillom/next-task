@@ -4,4 +4,4 @@
   export let className = '';
 </script>
 
-<textarea {disabled} bind:value class={`app-field app-text-area ${className}`} {...$$restProps} on:input on:change on:focus on:blur></textarea>
+<textarea {disabled} bind:value class={`app-field app-text-area ${className}`} {...$$restProps} on:input on:change on:focus on:blur on:keydown></textarea>

@@ -8,7 +8,7 @@
   import TaskQueue from '../lib/components/TaskQueue.svelte';
 
   export let workspace: Workspace;
-  const dispatch = createEventDispatcher<{ openTask: number; startFocus: number | null }>();
+  const dispatch = createEventDispatcher<{ openTask: number; startFocus: number | null; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
   let tags: Tag[] = [];
@@ -93,6 +93,7 @@
       readOnly={workspace.role === 'viewer'}
       on:changed={(event) => void replaceTask(event.detail)}
       on:open={(event) => dispatch('openTask', event.detail)}
+      on:createBlocker={(event) => dispatch('createBlocker', event.detail)}
       on:error={(event) => (error = event.detail)}
     />
   {/if}
