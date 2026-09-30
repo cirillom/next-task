@@ -7,7 +7,7 @@ from app.models import WorkspaceRole
 
 
 def clean_required(value: str, tag: bool = False) -> str:
-    cleaned = value.strip().removeprefix("#").lower() if tag else value.strip()
+    cleaned = value.strip().removeprefix("#") if tag else value.strip()
     if not cleaned:
         raise ValueError("Value cannot be blank")
     return cleaned

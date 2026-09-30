@@ -566,6 +566,27 @@ def test_tag_creation_can_atomically_assign_parent(
     assert "orphan" not in names
 
 
+def test_tag_names_keep_casing_and_reject_case_insensitive_duplicates(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    workspace, _ = make_workspace(client, "Tag casing")
+    url = f"/api/workspaces/{workspace['id']}/tags"
+
+    created = client.post(url, json={"name": "  homeLab  "})
+    assert created.status_code == 201, created.text
+    assert created.json()["name"] == "homeLab"
+    assert client.post(url, json={"name": "HOMELAB"}).status_code == 409
+
+    lower = client.post(url, json={"name": "server maintenance"})
+    assert lower.status_code == 201, lower.text
+    assert lower.json()["name"] == "server maintenance"
+    updated = client.patch(f"{url}/{lower.json()['id']}", json={"name": "next-task"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "next-task"
+    assert client.patch(f"{url}/{lower.json()['id']}", json={"name": "HOMELAB"}).status_code == 409
+
+
 def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:

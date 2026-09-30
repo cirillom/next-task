@@ -13,10 +13,11 @@
   export let disabled = false;
   export let creating = false;
   export let allowCreate = true;
+  export let createdParentId = 0;
 
   const dispatch = createEventDispatcher<{
     change: number[];
-    create: { name: string; parent_tag_id: number | null; color: string };
+    create: { name: string; parent_tag_id: number | null; color: string; asParent?: boolean };
   }>();
 
   let search = '';
@@ -25,6 +26,15 @@
   let createName = '';
   let createParentId = 0;
   let createColor = '#587b6a';
+  let childDraft: { name: string; parentId: number; color: string } | null = null;
+
+  $: if (createdParentId && childDraft) {
+    createName = childDraft.name;
+    createParentId = createdParentId;
+    createColor = childDraft.color;
+    childDraft = null;
+    createdParentId = 0;
+  }
 
   $: selectedTags = tags.filter((tag) => selectedIds.includes(tag.id));
   $: filteredTags = hierarchicalTagResults(tags, search);
@@ -57,7 +67,22 @@
   }
 
   function cancelCreate() {
-    createOpen = false;
+    if (childDraft) {
+      createName = childDraft.name;
+      createParentId = childDraft.parentId;
+      createColor = childDraft.color;
+      childDraft = null;
+    } else {
+      createOpen = false;
+    }
+  }
+
+  function requestCreateParent(name: string) {
+    childDraft = { name: createName, parentId: createParentId, color: createColor };
+    createdParentId = 0;
+    createName = name;
+    createParentId = 0;
+    createColor = '#587b6a';
   }
 
   function submitCreate() {
@@ -66,10 +91,13 @@
     dispatch('create', {
       name,
       parent_tag_id: createParentId || null,
-      color: createColor
+      color: createColor,
+      asParent: !!childDraft
     });
-    createOpen = false;
-    search = '';
+    if (!childDraft) {
+      createOpen = false;
+      search = '';
+    }
   }
 
   function contextPaths(tag: Tag): string[] {
@@ -139,7 +167,7 @@
             on:mousedown|preventDefault={requestCreate}
           >
             <span class="option-check" aria-hidden="true">+</span>
-            <span class="option-copy"><strong>{creating ? 'Creating…' : `Create ${normalizedSearch}`}</strong></span>
+            <span class="option-copy"><strong>{creating ? 'Creating…' : `Create ${search.trim()}`}</strong></span>
           </button>
         {:else if !filteredTags.length}
           <span class="tag-empty">No matching tags</span>
@@ -155,12 +183,15 @@
         <TextField bind:value={createName} maxlength="120" disabled={creating} />
       </label>
       <label>
-        Parent
+        Parent tags
         <TagSelect
           bind:value={createParentId}
           options={[...tags].sort((left, right) => left.name.localeCompare(right.name)).map((tag) => ({ tag, context: tagHierarchyPaths(tag, tags)[0] }))}
-          emptyLabel="No parent"
+          emptyLabel="Choose a parent tag..."
           label="Parent tag"
+          searchable
+          allowCreate={!childDraft}
+          on:create={(event) => requestCreateParent(event.detail)}
           disabled={creating}
         />
       </label>

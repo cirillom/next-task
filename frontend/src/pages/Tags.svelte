@@ -40,6 +40,8 @@
   let createName = '';
   let createDescription = '';
   let createColor = randomTagColor();
+  let createParentChoice = 0;
+  let parentDraft: { tagId: number; name: string; description: string; color: string; parentChoice: number } | null = null;
 
   let editName = '';
   let editDescription = '';
@@ -126,6 +128,7 @@
   }
 
   function startCreate() {
+    parentDraft = null;
     const searchedName = search.trim();
     const existingTag = tags.some((tag) => tag.name.toLowerCase() === searchedName.toLowerCase());
 
@@ -135,7 +138,41 @@
     search = '';
     createDescription = '';
     createColor = randomTagColor();
+    createParentChoice = 0;
     error = '';
+  }
+
+  function startCreateParent(name: string) {
+    if (!creating && !selectedTag) return;
+    parentDraft = creating
+      ? { tagId: 0, name: createName, description: createDescription, color: createColor, parentChoice: createParentChoice }
+      : { tagId: selectedTag!.id, name: editName, description: editDescription, color: editColor, parentChoice: parentChoice };
+    createName = name;
+    createDescription = '';
+    createColor = randomTagColor();
+    createParentChoice = 0;
+    creating = true;
+    error = '';
+  }
+
+  function restoreParentDraft(newParentId = 0) {
+    if (!parentDraft) return;
+    if (parentDraft.tagId) {
+      selectedId = parentDraft.tagId;
+      editName = parentDraft.name;
+      editDescription = parentDraft.description;
+      editColor = parentDraft.color;
+      parentChoice = parentDraft.parentChoice;
+      creating = false;
+    } else {
+      selectedId = 0;
+      createName = parentDraft.name;
+      createDescription = parentDraft.description;
+      createColor = parentDraft.color;
+      createParentChoice = newParentId || parentDraft.parentChoice;
+      creating = true;
+    }
+    parentDraft = null;
   }
 
   async function create() {
@@ -145,9 +182,25 @@
       const created = await api.createTag(workspace.id, {
         name: createName,
         description: createDescription,
-        color: createColor
+        color: createColor,
+        parent_tag_id: createParentChoice || null
       });
-      await load(created.id);
+      if (parentDraft) {
+        const draft = parentDraft;
+        if (draft.tagId) {
+          try {
+            await api.addTagParent(workspace.id, draft.tagId, created.id);
+          } finally {
+            await load(draft.tagId);
+            restoreParentDraft();
+          }
+        } else {
+          tags = await api.tags(workspace.id);
+          restoreParentDraft(created.id);
+        }
+      } else {
+        await load(created.id);
+      }
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create tag';
     } finally {
@@ -173,13 +226,18 @@
     }
   }
 
-  async function addParent() {
-    if (!selectedTag || !parentChoice) return;
+  async function addParent(parentId: number) {
+    if (!selectedTag || !parentId) return;
+    const tagId = selectedTag.id;
+    const draft = { name: editName, description: editDescription, color: editColor };
     busy = true;
     error = '';
     try {
-      await api.addTagParent(workspace.id, selectedTag.id, Number(parentChoice));
-      await load(selectedTag.id);
+      await api.addTagParent(workspace.id, tagId, parentId);
+      await load(tagId);
+      editName = draft.name;
+      editDescription = draft.description;
+      editColor = draft.color;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not add parent';
     } finally {
@@ -343,8 +401,11 @@
         <label>Name<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">Color<input type="color" bind:value={createColor} /></label>
         <label class="wide">Description<TextArea bind:value={createDescription} rows="4" /></label>
+        <label class="wide">Parent tags
+          <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
+        </label>
         <div class="detail-actions">
-          <AppButton on:click={() => (creating = false)}>Cancel</AppButton>
+          <AppButton on:click={() => { creating = false; restoreParentDraft(); }}>Cancel</AppButton>
           <AppButton type="submit" variant="primary" disabled={busy}>Create tag</AppButton>
         </div>
       </form>
@@ -379,7 +440,7 @@
 
       <div class="relationship-section">
         <div class="relationship-heading">
-          <strong>Direct parents</strong>
+          <strong>Parent tags</strong>
           <span>{selectedTag.parents.length}</span>
         </div>
         {#if selectedTag.parents.length}
@@ -394,14 +455,11 @@
             {/each}
           </div>
         {:else}
-          <p class="muted">No direct parents.</p>
+          <p class="muted">No parent tags.</p>
         {/if}
 
-        {#if workspace.role !== 'viewer' && parentOptions.length}
-          <div class="parent-control">
-            <TagSelect bind:value={parentChoice} options={parentOptions} emptyLabel="Choose a parent…" label="Parent tag" disabled={busy} />
-            <AppButton disabled={busy || !parentChoice} on:click={() => void addParent()}>Add parent</AppButton>
-          </div>
+        {#if workspace.role !== 'viewer'}
+          <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.map((tag) => tag.name)} searchable emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
         {/if}
       </div>
 
@@ -639,12 +697,6 @@
     padding: 0;
   }
 
-  .parent-control {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: .45rem;
-  }
-
   .muted { margin: 0; color: var(--muted); font-size: .8rem; }
 
   .merge-panel {
@@ -692,8 +744,7 @@
 
   @media (max-width: 520px) {
     .browser-toolbar,
-    .detail-form,
-    .parent-control { grid-template-columns: 1fr; }
+    .detail-form { grid-template-columns: 1fr; }
     .detail-form .wide,
     .detail-actions.wide { grid-column: auto; }
     .details-heading { align-items: flex-start; flex-direction: column; }

@@ -62,6 +62,7 @@
   let suggestedNewTags = normalizedTagNames(initialNewTags);
   let loading = true;
   let creatingTag = false;
+  let createdParentId = 0;
   let localError = '';
 
   $: {
@@ -146,7 +147,7 @@
   });
 
   function normalizeTagName(value: string): string {
-    return value.trim().toLowerCase();
+    return value.trim();
   }
 
   function normalizedTagNames(value: string): string[] {
@@ -161,8 +162,9 @@
     name: string;
     parent_tag_id: number | null;
     color: string;
+    asParent?: boolean;
   }) {
-    const name = normalizeTagName(input.name);
+    const name = input.name.trim();
     if (!name || creatingTag) return;
     creatingTag = true;
     localError = '';
@@ -177,7 +179,7 @@
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
         tags = await api.tags(workspace.id);
-        const concurrent = tags.find((tag) => tag.name.toLowerCase() === name);
+        const concurrent = tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
         if (!concurrent) throw reason;
         created = concurrent;
         if (
@@ -189,8 +191,9 @@
       }
 
       tags = await api.tags(workspace.id);
-      if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
-      suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion !== name);
+      if (input.asParent) createdParentId = created.id;
+      else if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
+      suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion.toLowerCase() !== name.toLowerCase());
     } catch (reason) {
       localError = reason instanceof Error ? reason.message : 'Could not create tag';
     } finally {
@@ -355,6 +358,7 @@
         suggestedNames={suggestedNewTags}
         disabled={workspace.role === 'viewer'}
         creating={creatingTag}
+        bind:createdParentId
         on:change={(event) => (tagIds = event.detail)}
         on:create={(event) => void createAndSelectTag(event.detail)}
       />

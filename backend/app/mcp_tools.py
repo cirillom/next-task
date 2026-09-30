@@ -110,13 +110,12 @@ def _status(db: Session, workspace_id: int, status_name: str | None) -> TaskStat
 
 
 def _tag_names(db: Session, workspace_id: int, names: list[str], create_missing: bool) -> list[int]:
-    cleaned = list(
-        dict.fromkeys(
-            name.strip().removeprefix("#").strip().lower()
-            for name in names
-            if name.strip().removeprefix("#").strip()
-        )
-    )
+    names_by_key = {}
+    for name in names:
+        cleaned_name = name.strip().removeprefix("#").strip()
+        if cleaned_name:
+            names_by_key.setdefault(cleaned_name.casefold(), cleaned_name)
+    cleaned = list(names_by_key.values())
     if any(len(name) > 120 for name in cleaned):
         raise ToolError("Tag names must be 120 characters or fewer")
     existing = (
@@ -124,7 +123,7 @@ def _tag_names(db: Session, workspace_id: int, names: list[str], create_missing:
             db.scalars(
                 select(Tag).where(
                     Tag.workspace_id == workspace_id,
-                    func.lower(Tag.name).in_(cleaned),
+                    func.lower(Tag.name).in_([name.lower() for name in cleaned]),
                 )
             ).all()
         )
