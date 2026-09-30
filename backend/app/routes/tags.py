@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,17 @@ def get_tag(db: Session, workspace_id: int, tag_id: int) -> Tag:
     if tag is None or tag.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Tag not found")
     return tag
+
+
+def tag_name_exists(
+    db: Session, workspace_id: int, name: str, exclude_id: int | None = None
+) -> bool:
+    query = select(Tag.id).where(
+        Tag.workspace_id == workspace_id, func.lower(Tag.name) == name.lower()
+    )
+    if exclude_id is not None:
+        query = query.where(Tag.id != exclude_id)
+    return db.scalar(query) is not None
 
 
 def merge_plan(
@@ -166,6 +177,8 @@ def create_tag(
         if payload.parent_tag_id is not None
         else None
     )
+    if tag_name_exists(db, workspace_id, payload.name):
+        raise HTTPException(status_code=409, detail="Tag name already exists")
     tag = Tag(
         workspace_id=workspace_id,
         **payload.model_dump(exclude={"parent_tag_id"}),
@@ -194,6 +207,8 @@ def update_tag(
 ) -> TagRead:
     require_editor(db, workspace_id, user)
     tag = get_tag(db, workspace_id, tag_id)
+    if payload.name is not None and tag_name_exists(db, workspace_id, payload.name, tag_id):
+        raise HTTPException(status_code=409, detail="Tag name already exists")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(tag, key, value)
     try:

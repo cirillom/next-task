@@ -197,7 +197,7 @@ def test_oauth_mcp_task_creation_and_account_revocation(create_user) -> None:
                         "description": "Get the unscented kind.",
                         "status_name": "todo",
                         "priority": 3,
-                        "tag_names": ["chores", "shopping"],
+                        "tag_names": ["chores", "Shopping"],
                     },
                 },
             },
@@ -209,7 +209,7 @@ def test_oauth_mcp_task_creation_and_account_revocation(create_user) -> None:
             task = db.scalar(select(Task).where(Task.title == "Buy detergent"))
             assert task is not None
             assert task.priority == 3
-            assert {tag.name for tag in task.tags} == {"chores", "shopping"}
+            assert {tag.name for tag in task.tags} == {"chores", "Shopping"}
 
         with TestClient(main_app) as account_client:
             login = account_client.post(
