@@ -54,7 +54,9 @@ export interface TagMergePreview {
 
 export interface Block {
   id: number;
-  reason: string;
+  reason: string | null;
+  blocking_task_id: number | null;
+  blocking_task: TaskSummary | null;
   blocked_at: string;
   unblocked_at: string | null;
 }
@@ -91,7 +93,9 @@ export interface Task {
   direct_tags: TagSummary[];
   inherited_tags: TagSummary[];
   current_block: Block | null;
+  active_blocks: Block[];
   blocking_history: Block[];
+  blocks_tasks: TaskSummary[];
   subtasks: TaskSummary[];
 }
 

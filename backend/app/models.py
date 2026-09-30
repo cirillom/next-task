@@ -233,7 +233,8 @@ class Task(Base):
     assignees: Mapped[list[User]] = relationship(secondary="task_assignees")
     tags: Mapped[list[Tag]] = relationship(secondary="task_tags", back_populates="tasks")
     blocks: Mapped[list[TaskBlock]] = relationship(
-        back_populates="task", cascade="all, delete-orphan", order_by="TaskBlock.blocked_at.desc()"
+        back_populates="task", cascade="all, delete-orphan", order_by="TaskBlock.blocked_at.desc()",
+        foreign_keys="TaskBlock.task_id",
     )
 
 
@@ -251,23 +252,32 @@ class TaskAssignee(Base):
 class TaskBlock(Base):
     __tablename__ = "task_blocks"
     __table_args__ = (
+        CheckConstraint(
+            "(reason IS NOT NULL AND blocking_task_id IS NULL) OR "
+            "(reason IS NULL AND blocking_task_id IS NOT NULL)",
+            name="task_block_kind",
+        ),
         Index(
-            "task_one_active_block",
-            "task_id",
+            "task_one_active_task_block",
+            "task_id", "blocking_task_id",
             unique=True,
-            sqlite_where=text("unblocked_at IS NULL"),
+            sqlite_where=text("blocking_task_id IS NOT NULL AND unblocked_at IS NULL"),
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    blocking_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="RESTRICT"), index=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text)
     blocked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
     )
     unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    task: Mapped[Task] = relationship(back_populates="blocks")
+    task: Mapped[Task] = relationship(back_populates="blocks", foreign_keys=[task_id])
+    blocking_task: Mapped[Task | None] = relationship(foreign_keys=[blocking_task_id])
 
 
 class Tag(Base):

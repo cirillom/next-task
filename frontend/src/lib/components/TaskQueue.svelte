@@ -33,7 +33,7 @@
         <TaskHierarchy {task} compact={true} on:open={(event) => dispatch('open', event.detail)} />
         <div class="queue-meta">
           {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
-          {#if task.current_block}<span class="blocked-chip">Blocked</span>{/if}
+          {#if task.current_block}<span class="blocked-chip">Blocked{task.active_blocks.length > 1 ? ` (${task.active_blocks.length})` : ''}</span>{/if}
           <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
           <span>{idleLabel(task)}</span>
           <span>Priority {task.priority}</span>
@@ -71,8 +71,8 @@
             type="button"
             class="queue-action"
             disabled={busyTaskId !== null}
-            aria-label={`Unblock ${task.title}`}
-            title="Unblock task"
+            aria-label={`${task.active_blocks.length > 1 ? 'Manage blockers for' : 'Unblock'} ${task.title}`}
+            title={task.active_blocks.length > 1 ? 'Manage blockers' : 'Unblock task'}
             on:click={() => dispatch('unblock', task)}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">

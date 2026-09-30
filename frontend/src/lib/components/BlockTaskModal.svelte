@@ -1,24 +1,38 @@
 <script lang="ts">
-  import { createEventDispatcher, tick } from 'svelte';
-  import type { Block } from '../api/types';
+  import { createEventDispatcher, onMount, tick } from 'svelte';
+  import { api } from '../api/client';
+  import type { Block, TaskSummary } from '../api/types';
   import { formatDateTime, localDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
   import AppButton from './AppButton.svelte';
   import TextArea from './TextArea.svelte';
+  import TaskSearchResults from './TaskSearchResults.svelte';
+  import BlockLabel from './BlockLabel.svelte';
 
   type AutoUnblockChoice = 'none' | 'tomorrow' | 'three-days' | 'week' | 'custom';
 
   export let taskTitle = '';
+  export let taskId = 0;
+  export let workspaceId = 0;
   export let history: Block[] = [];
   export let busy = false;
 
   const dispatch = createEventDispatcher<{
     close: void;
-    block: { reason: string; unblocked_at: string | null };
+    block: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null };
     reblock: { unblocked_at: string | null };
     deleteBlock: number;
+    unblock: number;
+    createTask: string;
+    openTask: number;
   }>();
   let reason = '';
+  let tasks: TaskSummary[] = [];
+  let blocker: TaskSummary | null = null;
+  let mentionQuery: string | null = null;
+  let mentionStart = 0;
+  let mentionCursor = 0;
+  let results: TaskSearchResults;
   let autoUnblockAt = '';
   let autoUnblockChoice: AutoUnblockChoice = 'none';
   let autoUnblockChoiceSelected = false;
@@ -34,8 +48,49 @@
 
   let minimumAutoUnblock = localDateTime();
 
+  onMount(async () => {
+    if (workspaceId) tasks = await api.tasks(workspaceId, { finished: false });
+  });
+
   function isActive(block: Block): boolean {
     return !block.unblocked_at || new Date(block.unblocked_at).getTime() > Date.now();
+  }
+
+  function newestFirst(a: Block, b: Block): number {
+    return Date.parse(b.blocked_at) - Date.parse(a.blocked_at) || b.id - a.id;
+  }
+
+  $: orderedHistory = [...history].sort((a, b) =>
+    Number(isActive(b)) - Number(isActive(a)) || newestFirst(a, b)
+  );
+  $: latestManualId = history.filter((block) => block.reason).sort(newestFirst)[0]?.id;
+
+  function updateMention(event: Event) {
+    const input = event.target as HTMLTextAreaElement;
+    reason = input.value;
+    mentionCursor = input.selectionStart;
+    const before = reason.slice(0, mentionCursor);
+    mentionStart = before.lastIndexOf('#');
+    mentionQuery = mentionStart >= 0 && !before.slice(mentionStart).includes('\n')
+      ? before.slice(mentionStart + 1) : null;
+  }
+
+  function chooseBlocker(task: TaskSummary) {
+    blocker = task;
+    reason = reason.slice(0, mentionStart) + reason.slice(mentionCursor);
+    mentionQuery = null;
+  }
+
+  function reasonKeydown(event: KeyboardEvent) {
+    if (mentionQuery === null) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      mentionQuery = null;
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      results?.selectFirst();
+    }
   }
 
   function close() {
@@ -59,13 +114,13 @@
 
   function submit() {
     const trimmed = reason.trim();
-    if (!trimmed || busy) return;
+    if ((!trimmed && !blocker) || busy) return;
     const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
     if (reblockMode) {
       dispatch('reblock', { unblocked_at: unblockedAt });
       return;
     }
-    dispatch('block', { reason: trimmed, unblocked_at: unblockedAt });
+    dispatch('block', blocker ? { blocking_task_id: blocker.id } : { reason: trimmed, unblocked_at: unblockedAt });
   }
 
   async function prepareReblock(block: Block) {
@@ -75,7 +130,7 @@
       dispatch('reblock', { unblocked_at: unblockedAt });
       return;
     }
-    reason = block.reason;
+    reason = block.reason || '';
     autoUnblockAt = '';
     autoUnblockChoice = 'none';
     reblockMode = true;
@@ -106,18 +161,36 @@
     </header>
 
     <form on:submit|preventDefault={submit}>
-      <label>
-        Blocking reason
-        <TextArea
-          bind:value={reason}
-          rows="4"
-          placeholder="What is preventing this task from moving forward?"
-          disabled={busy}
-          readonly={reblockMode}
-          required
-        />
-      </label>
-      <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
+      <div class="block-modal__body">
+      {#if blocker}
+        <div class="selected-blocker"><strong>{blocker.title} #{blocker.id}</strong><AppButton disabled={busy} on:click={() => (blocker = null)}>Remove</AppButton></div>
+      {:else}
+        <div class="reason-field">
+          <label for="blocking-reason">Blocking reason</label>
+          <TextArea
+            id="blocking-reason"
+            bind:value={reason}
+            rows="4"
+            placeholder="What is preventing this task from moving forward? Type # to find a task."
+            disabled={busy}
+            readonly={reblockMode}
+            required
+            on:input={updateMention}
+            on:blur={() => (mentionQuery = null)}
+            on:keydown={reasonKeydown}
+          />
+          {#if mentionQuery !== null && !reblockMode}
+            <TaskSearchResults
+              bind:this={results}
+              {tasks}
+              query={mentionQuery}
+              excludeIds={[taskId, ...history.filter(isActive).map((block) => block.blocking_task_id || 0)]}
+              on:select={(event) => chooseBlocker(event.detail)}
+              on:create={(event) => dispatch('createTask', event.detail)}
+            />
+          {/if}
+        </div>
+        <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
 
       <section class="auto-unblock-section" aria-label="Auto-unblock">
         <div class="auto-unblock-heading">
@@ -157,12 +230,12 @@
 
         {#if history.length}
           <ol class="block-history">
-            {#each history as block, index}
+            {#each orderedHistory as block (block.id)}
               <li class:active={isActive(block)}>
                 <div class="block-history__top">
-                  <strong>{block.reason}</strong>
+                  <strong><BlockLabel {block} on:openTask={(event) => dispatch('openTask', event.detail)} /></strong>
                   <div class="history-actions">
-                    {#if index === 0 && !isActive(block)}
+                    {#if block.id === latestManualId && !isActive(block)}
                       <button
                         type="button"
                         class="reblock-button"
@@ -172,7 +245,9 @@
                         Reblock with this reason
                       </button>
                     {/if}
-                    {#if !isActive(block)}
+                    {#if isActive(block)}
+                      <AppButton disabled={busy} on:click={() => dispatch('unblock', block.id)}>Unblock</AppButton>
+                    {:else}
                       <button
                         type="button"
                         class="trash-button"
@@ -205,10 +280,12 @@
           <p class="history-empty">This task has not been blocked before.</p>
         {/if}
       </section>
+      {/if}
+      </div>
 
       <footer class="block-modal__actions">
         <AppButton disabled={busy} on:click={close}>Cancel</AppButton>
-        <AppButton type="submit" variant="primary" disabled={busy || !reason.trim()}>
+        <AppButton type="submit" variant="primary" disabled={busy || (!reason.trim() && !blocker)}>
           {#if busy}
             {reblockMode ? 'Reblocking…' : 'Blocking…'}
           {:else}
@@ -224,7 +301,9 @@
   .block-modal {
     width: min(100%, 42rem);
     max-height: calc(100vh - 2rem);
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     border-radius: 1rem;
     background: var(--paper);
     box-shadow: 0 30px 90px rgba(0, 0, 0, .3);
@@ -232,6 +311,7 @@
 
   .block-modal__header {
     display: flex;
+    flex: 0 0 auto;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
@@ -242,9 +322,12 @@
   .block-modal__header h1 { margin: 0; font-size: 2rem; }
   .task-title { margin: .45rem 0 0; color: var(--muted); font-weight: 650; }
 
-  form { display: grid; gap: 0; padding: 1.25rem 1.4rem 0; }
+  form { display: flex; min-height: 0; flex-direction: column; }
+  .block-modal__body { min-height: 0; overflow-y: auto; padding: 1.25rem 1.4rem 0; }
   form :global(.app-text-area) { min-height: 7rem; line-height: 1.5; }
   form :global(.app-text-area[readonly]) { background: #f5f2ea; color: var(--muted); }
+  .selected-blocker { display: flex; align-items: center; justify-content: space-between; gap: .5rem; border: 1px solid var(--line); border-radius: .55rem; padding: .5rem .65rem; }
+  .reason-field { position: relative; display: grid; gap: .35rem; }
   .help { margin: .45rem 0 0; }
 
   .auto-unblock-section {
@@ -371,10 +454,11 @@
 
   .block-modal__actions {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-end;
     gap: .7rem;
     border-top: 1px solid var(--line);
-    margin: 1.25rem -1.4rem 0;
+    background: var(--paper);
     padding: 1rem 1.4rem;
   }
 

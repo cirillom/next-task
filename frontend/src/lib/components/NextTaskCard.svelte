@@ -4,6 +4,7 @@
   import type { Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
+  import BlockSummary from './BlockSummary.svelte';
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
@@ -12,7 +13,7 @@
   export let task: Task;
   export let readOnly = false;
 
-  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string }>();
+  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
@@ -50,9 +51,9 @@
     }
   }
 
-  function block(request: { reason: string; unblocked_at: string | null }) {
+  function block(request: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null }) {
     void runBlockingAction(
-      () => api.blockTask(task.id, request.reason, request.unblocked_at),
+      () => api.blockTask(task.id, request),
       'Could not block task'
     );
   }
@@ -163,6 +164,8 @@
     </div>
   {/if}
 
+  {#if task.active_blocks.length}<BlockSummary blocks={task.active_blocks} compact on:openTask={(event) => dispatch('open', event.detail)} />{/if}
+
   {#if !readOnly}
     <div class="recommended-actions">
       <button type="button" class="action-button finish-action" disabled={busy} on:click={finish}>
@@ -183,11 +186,16 @@
 
 {#if blockModalOpen}
   <BlockTaskModal
+    taskId={task.id}
+    workspaceId={task.workspace_id}
     taskTitle={task.title}
     history={task.blocking_history}
     {busy}
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
+    on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')}
+    on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }}
+    on:openTask={(event) => dispatch('open', event.detail)}
     on:reblock={(event) => reblock(event.detail)}
     on:deleteBlock={(event) => deleteBlock(event.detail)}
   />

@@ -104,7 +104,13 @@ def task_read(
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
     now = datetime.now(UTC)
-    current_block = next((block for block in task.blocks if block_is_active(block, now)), None)
+    active_blocks = [block for block in task.blocks if block_is_active(block, now)]
+    blocked_tasks = db.scalars(
+        select(Task).join(TaskBlock, TaskBlock.task_id == Task.id).where(
+            TaskBlock.blocking_task_id == task.id,
+            TaskBlock.unblocked_at.is_(None),
+        )
+    ).all()
     own_score = round(score_task(task), 2)
     return TaskRead(
         id=task.id,
@@ -132,8 +138,10 @@ def task_read(
         assignees=[UserRead.model_validate(user) for user in task.assignees],
         direct_tags=[TagSummary.model_validate(tag) for tag in task.tags],
         inherited_tags=[TagSummary.model_validate(tag) for tag in inherited],
-        current_block=BlockRead.model_validate(current_block) if current_block else None,
+        current_block=BlockRead.model_validate(active_blocks[0]) if active_blocks else None,
+        active_blocks=[BlockRead.model_validate(block) for block in active_blocks],
         blocking_history=[BlockRead.model_validate(block) for block in task.blocks],
+        blocks_tasks=[task_summary(blocked) for blocked in blocked_tasks],
         subtasks=[task_summary(subtask) for subtask in task.subtasks],
     )
 
@@ -342,6 +350,13 @@ def delete_task(
 ) -> Response:
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
+    now = datetime.now(UTC)
+    for block in db.scalars(select(TaskBlock).where(TaskBlock.blocking_task_id == task.id)):
+        block.reason = f'Deleted task: {task.title}'
+        block.blocking_task_id = None
+        if block.unblocked_at is None:
+            block.unblocked_at = now
+    db.flush()
     db.delete(task)
     db.commit()
     return Response(status_code=204)
@@ -362,14 +377,15 @@ def finish_task(
     for candidate in [task, *descendant_tasks(task)]:
         if candidate.finished_at is None:
             candidate.finished_at = now
-            active_block = db.scalar(
-                select(TaskBlock).where(
-                    TaskBlock.task_id == candidate.id,
-                    active_block_condition(now),
-                )
-            )
-            if active_block is not None:
-                active_block.unblocked_at = now
+            active_blocks = db.scalars(
+                select(TaskBlock).where(or_(
+                    (TaskBlock.task_id == candidate.id) & active_block_condition(now),
+                    (TaskBlock.blocking_task_id == candidate.id)
+                    & TaskBlock.unblocked_at.is_(None),
+                ))
+            ).all()
+            for block in active_blocks:
+                block.unblocked_at = now
             changed = True
     if changed:
         db.commit()
@@ -412,20 +428,38 @@ def block_task(
     now = datetime.now(UTC)
     if payload.unblocked_at is not None and payload.unblocked_at <= now:
         raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
-
-    active = db.scalar(
-        select(TaskBlock.id)
-        .where(TaskBlock.task_id == task.id, active_block_condition(now))
-        .limit(1)
-    )
-    if active is not None:
-        raise HTTPException(status_code=409, detail="Task is already blocked")
+    if payload.blocking_task_id is not None:
+        blocker = db.get(Task, payload.blocking_task_id)
+        if blocker is None or blocker.workspace_id != task.workspace_id:
+            raise HTTPException(status_code=422, detail="Blocking task must be in this workspace")
+        if blocker.id == task.id:
+            raise HTTPException(status_code=422, detail="A task cannot block itself")
+        if blocker.finished_at is not None:
+            raise HTTPException(status_code=422, detail="Blocking task must be unfinished")
+        reachable = select(TaskBlock.task_id.label("task_id")).where(
+            TaskBlock.blocking_task_id == task.id,
+            TaskBlock.unblocked_at.is_(None),
+        ).cte("reachable", recursive=True)
+        reachable = reachable.union(
+            select(TaskBlock.task_id).join(
+                reachable, TaskBlock.blocking_task_id == reachable.c.task_id
+            ).where(TaskBlock.unblocked_at.is_(None))
+        )
+        if db.scalar(select(reachable.c.task_id).where(reachable.c.task_id == blocker.id)):
+            raise HTTPException(status_code=422, detail="Task block would create a cycle")
+        if db.scalar(select(TaskBlock.id).where(
+            TaskBlock.task_id == task.id,
+            TaskBlock.blocking_task_id == blocker.id,
+            TaskBlock.unblocked_at.is_(None),
+        )):
+            raise HTTPException(status_code=409, detail="Task is already blocked by this task")
 
     task.last_worked_at = now
     db.add(
         TaskBlock(
             task_id=task.id,
             reason=payload.reason,
+            blocking_task_id=payload.blocking_task_id,
             unblocked_at=payload.unblocked_at,
         )
     )
@@ -433,7 +467,7 @@ def block_task(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Task is already blocked") from error
+        raise HTTPException(status_code=409, detail="Block already exists") from error
     db.refresh(task)
     return task_read(db, task)
 
@@ -447,15 +481,39 @@ def unblock_task(
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
     now = datetime.now(UTC)
-    active = db.scalar(
+    active = db.scalars(
         select(TaskBlock).where(
             TaskBlock.task_id == task.id,
             active_block_condition(now),
         )
-    )
-    if active is None:
+    ).all()
+    if not active:
         raise HTTPException(status_code=409, detail="Task is not blocked")
-    active.unblocked_at = now
+    if len(active) > 1:
+        raise HTTPException(status_code=409, detail="Choose which blocker to remove")
+    active[0].unblocked_at = now
+    db.commit()
+    db.refresh(task)
+    return task_read(db, task)
+
+
+@router.post("/{task_id}/blocks/{block_id}/unblock", response_model=TaskRead)
+def unblock_one(
+    task_id: int,
+    block_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    task = get_task_for_user(db, task_id, user)
+    require_editor(db, task.workspace_id, user)
+    block = db.scalar(select(TaskBlock).where(
+        TaskBlock.id == block_id, TaskBlock.task_id == task.id
+    ))
+    if block is None:
+        raise HTTPException(status_code=404, detail="Block not found")
+    if not block_is_active(block):
+        raise HTTPException(status_code=409, detail="Block is already resolved")
+    block.unblocked_at = datetime.now(UTC)
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -480,6 +538,7 @@ def reblock_task(
     active = db.scalar(
         select(TaskBlock).where(
             TaskBlock.task_id == task.id,
+            TaskBlock.blocking_task_id.is_(None),
             active_block_condition(now),
         )
     )
@@ -488,7 +547,7 @@ def reblock_task(
 
     previous = db.scalar(
         select(TaskBlock)
-        .where(TaskBlock.task_id == task.id)
+        .where(TaskBlock.task_id == task.id, TaskBlock.blocking_task_id.is_(None))
         .order_by(TaskBlock.blocked_at.desc(), TaskBlock.id.desc())
         .limit(1)
     )

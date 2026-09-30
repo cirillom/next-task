@@ -23,7 +23,7 @@
   export let taskVersion = 0;
   export let sessionTagId: number | null = null;
 
-  const dispatch = createEventDispatcher<{ openTask: number; end: void }>();
+  const dispatch = createEventDispatcher<{ openTask: number; end: void; createBlocker: { taskId: number; title: string } }>();
   const baseDocumentTitle = typeof document === 'undefined' ? 'Next Task' : document.title;
 
   let settings: PomodoroSettings | null = null;
@@ -268,10 +268,14 @@
 
   async function unblockListedTask(task: Task) {
     if (!task.current_block || unblockingTaskId !== null) return;
+    if (task.active_blocks.length > 1) {
+      dispatch('openTask', task.id);
+      return;
+    }
     unblockingTaskId = task.id;
     error = '';
     try {
-      await api.unblockTask(task.id);
+      await api.unblockOne(task.id, task.active_blocks[0].id);
       await loadSessionTasks();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not unblock task';
@@ -568,6 +572,7 @@
             readOnly={workspace.role === 'viewer'}
             on:changed={(event) => handlePinnedTaskChanged(event.detail)}
             on:open={(event) => dispatch('openTask', event.detail)}
+            on:createBlocker={(event) => dispatch('createBlocker', event.detail)}
             on:error={(event) => (error = event.detail)}
           />
 

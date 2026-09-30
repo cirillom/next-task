@@ -127,6 +127,12 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
     )
     assert cross_workspace.status_code == 422
 
+    detached = client.patch(f"/api/tasks/{second['id']}", json={"parent_task_id": None})
+    assert detached.status_code == 200
+    assert detached.json()["parent_task"] is None
+    assert client.get(f"/api/tasks/{first['id']}").json()["subtasks"] == []
+    assert client.get(f"/api/tasks/{second['id']}").status_code == 200
+
 
 def test_finishing_parent_cascades_and_reopening_child_reopens_ancestors(
     logged_in_client: Callable[[str], TestClient],
@@ -455,7 +461,7 @@ def test_finish_and_reopen_are_independent_from_status(
     assert reopened["status"]["id"] == task["status"]["id"]
 
 
-def test_only_one_active_block_and_repeated_history(
+def test_multiple_active_blocks_and_repeated_history(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
@@ -466,15 +472,18 @@ def test_only_one_active_block_and_repeated_history(
     assert blocked.status_code == 201
     assert blocked.json()["current_block"]["reason"] == "Waiting on hardware"
     duplicate = client.post(f"/api/tasks/{task['id']}/block", json={"reason": "Another reason"})
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == 201
+    assert len(duplicate.json()["active_blocks"]) == 2
 
-    assert client.post(f"/api/tasks/{task['id']}/unblock").status_code == 200
+    assert client.post(f"/api/tasks/{task['id']}/unblock").status_code == 409
+    first_id = blocked.json()["current_block"]["id"]
+    second_id = duplicate.json()["current_block"]["id"]
+    assert client.post(f"/api/tasks/{task['id']}/blocks/{first_id}/unblock").status_code == 200
+    assert client.post(f"/api/tasks/{task['id']}/blocks/{second_id}/unblock").status_code == 200
     again = client.post(f"/api/tasks/{task['id']}/block", json={"reason": "Waiting again"})
     assert again.status_code == 201
-    body = again.json()
-    assert body["current_block"]["reason"] == "Waiting again"
-    assert len(body["blocking_history"]) == 2
-    assert body["blocking_history"][1]["unblocked_at"] is not None
+    assert len(again.json()["blocking_history"]) == 3
+    assert len(again.json()["active_blocks"]) == 1
 
 
 def test_score_calculation_and_safe_formula(

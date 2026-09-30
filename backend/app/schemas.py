@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import WorkspaceRole
 
@@ -141,18 +141,20 @@ class TagSummary(ApiModel):
     color: str | None
 
 
-class BlockRead(ApiModel):
-    id: int
-    reason: str
-    blocked_at: UtcDateTime
-    unblocked_at: UtcDateTime | None
-
-
 class TaskSummary(ApiModel):
     id: int
     title: str
     finished_at: UtcDateTime | None
     unfinished_descendant_count: int = 0
+
+
+class BlockRead(ApiModel):
+    id: int
+    reason: str | None
+    blocking_task_id: int | None
+    blocking_task: TaskSummary | None
+    blocked_at: UtcDateTime
+    unblocked_at: UtcDateTime | None
 
 
 class TaskCreate(ApiModel):
@@ -215,18 +217,29 @@ class TaskRead(ApiModel):
     direct_tags: list[TagSummary]
     inherited_tags: list[TagSummary]
     current_block: BlockRead | None
+    active_blocks: list[BlockRead]
     blocking_history: list[BlockRead]
+    blocks_tasks: list[TaskSummary]
     subtasks: list[TaskSummary]
 
 
 class BlockCreate(ApiModel):
-    reason: str = Field(min_length=1, max_length=4000)
+    reason: str | None = Field(default=None, min_length=1, max_length=4000)
+    blocking_task_id: int | None = None
     unblocked_at: UtcDateTime | None = None
 
     @field_validator("reason")
     @classmethod
-    def clean_reason(cls, value: str) -> str:
-        return clean_required(value)
+    def clean_reason(cls, value: str | None) -> str | None:
+        return clean_required(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_kind(self) -> "BlockCreate":
+        if (self.reason is None) == (self.blocking_task_id is None):
+            raise ValueError("Choose either a blocking task or a manual reason")
+        if self.blocking_task_id is not None and self.unblocked_at is not None:
+            raise ValueError("Task blockers cannot auto-unblock")
+        return self
 
 
 class BlockReblock(ApiModel):

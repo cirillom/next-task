@@ -1,12 +1,9 @@
-import runpy
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-import pytest
-from app.database import SessionLocal, engine
+from app.database import SessionLocal
 from app.models import TaskBlock
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import IntegrityError
 
 
 def make_task(client: TestClient) -> dict:
@@ -224,41 +221,6 @@ def test_auto_unblock_must_be_in_the_future(
     )
     assert reblocked.status_code == 422
     assert reblocked.json()["detail"] == "Auto-unblock time must be in the future"
-
-
-def test_database_trigger_rejects_two_scheduled_active_blocks(
-    logged_in_client: Callable[[str], TestClient],
-) -> None:
-    client = logged_in_client("owner@example.com")
-    task = make_task(client)
-    migration = runpy.run_path(
-        "backend/alembic/versions/b71f3c9d4e20_enforce_scheduled_active_blocks.py"
-    )
-
-    with engine.begin() as connection:
-        connection.exec_driver_sql(migration["INSERT_TRIGGER"])
-        connection.exec_driver_sql(migration["UPDATE_TRIGGER"])
-
-    with SessionLocal() as db:
-        db.add(
-            TaskBlock(
-                task_id=task["id"],
-                reason="First scheduled block",
-                unblocked_at=datetime.now(UTC) + timedelta(hours=1),
-            )
-        )
-        db.commit()
-
-        db.add(
-            TaskBlock(
-                task_id=task["id"],
-                reason="Second scheduled block",
-                unblocked_at=datetime.now(UTC) + timedelta(hours=2),
-            )
-        )
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
 
 
 def test_finishing_tasks_ends_active_blocks_and_preserves_history(

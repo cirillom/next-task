@@ -33,6 +33,7 @@
   let loading = true;
   let error = '';
   let editorTaskId: number | null = null;
+  let editorBlockerTitle = '';
   let quickCaptureOpen = false;
   let draftCount = 0;
   let refreshKey = 0;
@@ -129,6 +130,12 @@
       return;
     }
     editorTaskId = taskId;
+    editorBlockerTitle = '';
+  }
+
+  function createBlocker(request: { taskId: number; title: string }) {
+    editorBlockerTitle = request.title;
+    editorTaskId = request.taskId;
   }
 
   function quickCaptureSaved() {
@@ -174,6 +181,7 @@
     taskVersion={focusTaskVersion}
     sessionTagId={focusTagId}
     on:openTask={(event) => openTask(event.detail)}
+    on:createBlocker={(event) => createBlocker(event.detail)}
     on:end={endFocus}
   />
 {:else}
@@ -205,8 +213,8 @@
         <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<TextField bind:value={firstWorkspaceName} required placeholder="Personal" /></label><AppButton type="submit" variant="primary">Create workspace</AppButton></form></section>
       {:else}
         {#key `${workspace.id}-${view}-${refreshKey}`}
-          {#if view === 'next'}<Next {workspace} on:openTask={(event) => openTask(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
-          {:else if view === 'tasks'}<Tasks {workspace} on:openTask={(event) => openTask(event.detail)} />
+          {#if view === 'next'}<Next {workspace} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
+          {:else if view === 'tasks'}<Tasks {workspace} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} />
           {:else if view === 'drafts'}<Drafts {workspace} on:openTask={(event) => openTask(event.detail)} />
           {:else if view === 'tags'}<Tags {workspace} />
           {:else if view === 'workspaces'}<Workspaces {workspace} {workspaces} on:select={(event) => selectWorkspace(event.detail)} on:created={(event) => { workspaces = [...workspaces, event.detail]; selectWorkspace(event.detail.id); }} on:updated={(event) => { workspaces = workspaces.map((item) => item.id === event.detail.id ? event.detail : item); workspace = event.detail; }} on:deleted={(event) => workspaceDeleted(event.detail)} />
@@ -232,6 +240,7 @@
     <TaskEditor
       {workspace}
       taskId={editorTaskId}
+      initialBlockerTitle={editorBlockerTitle}
       on:close={() => (editorTaskId = null)}
       on:changed={taskEditorChanged}
       on:saved={taskEditorSaved}
