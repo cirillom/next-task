@@ -171,6 +171,7 @@ class TaskCreate(ApiModel):
 
 
 class TaskUpdate(ApiModel):
+    workspace_id: int | None = None
     title: str | None = Field(default=None, min_length=1, max_length=500)
     description: str | None = None
     status_id: int | None = None

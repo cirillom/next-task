@@ -34,6 +34,8 @@
   export let draftBusyLabel = 'Saving…';
   export let cancelLabel = 'Cancel';
 
+  let selectedWorkspace = workspace;
+
   const dispatch = createEventDispatcher<{
     submit: TaskInput;
     draft: TaskInput;
@@ -66,6 +68,13 @@
   let creatingTag = false;
   let createdParentId = 0;
   let localError = '';
+  let optionLoadToken = 0;
+  const selections = new Map<number, {
+    statusId: number;
+    assigneeIds: number[];
+    tagIds: number[];
+    parentTaskId: number;
+  }>();
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedMembers = members.filter((member) => assigneeIds.includes(member.user_id));
@@ -78,7 +87,7 @@
   }
 
   export async function refreshRelatedTasks() {
-    parentTasks = await api.tasks(workspace.id, { finished: false });
+    parentTasks = await api.tasks(selectedWorkspace.id, { finished: false });
   }
 
   function toggleAssignee(userId: number) {
@@ -91,22 +100,64 @@
     return (member.display_name || member.email).trim().slice(0, 1).toUpperCase();
   }
 
-  onMount(async () => {
-    try {
-      [statuses, tags, members, parentTasks] = await Promise.all([
-        api.statuses(workspace.id),
-        api.tags(workspace.id),
-        api.members(workspace.id),
-        api.tasks(workspace.id, { finished: false })
-      ]);
-
-      if (!statuses.some((item) => item.id === statusId)) statusId = statuses[0]?.id || 0;
-
-    } catch (reason) {
-      localError = reason instanceof Error ? reason.message : 'Could not load task options';
-    } finally {
-      loading = false;
+  async function loadOptions(target: Workspace, switching = false): Promise<boolean> {
+    const token = ++optionLoadToken;
+    const previousStatusName = statuses.find((item) => item.id === statusId)?.name;
+    if (switching) {
+      selections.set(selectedWorkspace.id, {
+        statusId,
+        assigneeIds: [...assigneeIds],
+        tagIds: [...tagIds],
+        parentTaskId
+      });
     }
+    loading = true;
+    localError = '';
+    try {
+      const [loadedStatuses, loadedTags, loadedMembers, loadedParents] = await Promise.all([
+        api.statuses(target.id),
+        api.tags(target.id),
+        api.members(target.id),
+        api.tasks(target.id, { finished: false })
+      ]);
+      if (token !== optionLoadToken) return false;
+      statuses = loadedStatuses;
+      tags = loadedTags;
+      members = loadedMembers;
+      parentTasks = loadedParents;
+      selectedWorkspace = target;
+      const saved = selections.get(target.id);
+      if (saved) {
+        statusId = saved.statusId;
+        assigneeIds = saved.assigneeIds;
+        tagIds = saved.tagIds;
+        parentTaskId = saved.parentTaskId;
+      } else if (switching) {
+        statusId = statuses.find((item) => item.name.toLowerCase() === previousStatusName?.toLowerCase())?.id || statuses[0]?.id || 0;
+        assigneeIds = assigneeIds.filter((id) => members.some((member) => member.user_id === id));
+        tagIds = [];
+        parentTaskId = 0;
+        assigneeOpen = false;
+      }
+      if (!statuses.some((item) => item.id === statusId)) statusId = statuses[0]?.id || 0;
+      return true;
+    } catch (reason) {
+      if (token !== optionLoadToken) return false;
+      localError = reason instanceof Error ? reason.message : 'Could not load task options';
+      return false;
+    } finally {
+      if (token === optionLoadToken) loading = false;
+    }
+  }
+
+  export async function switchWorkspace(target: Workspace): Promise<boolean> {
+    if (target.id === selectedWorkspace.id) return true;
+    if (target.role === 'viewer' || busy || creatingTag) return false;
+    return loadOptions(target, true);
+  }
+
+  onMount(() => {
+    void loadOptions(workspace);
   });
 
   function normalizeTagName(value: string): string {
@@ -134,14 +185,14 @@
     try {
       let created: Tag;
       try {
-        created = await api.createTag(workspace.id, {
+        created = await api.createTag(selectedWorkspace.id, {
           name,
           color: input.color,
           parent_tag_id: input.parent_tag_id
         });
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
-        tags = await api.tags(workspace.id);
+        tags = await api.tags(selectedWorkspace.id);
         const concurrent = tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
         if (!concurrent) throw reason;
         created = concurrent;
@@ -149,11 +200,11 @@
           input.parent_tag_id &&
           !created.parents.some((parent) => parent.id === input.parent_tag_id)
         ) {
-          created = await api.addTagParent(workspace.id, created.id, input.parent_tag_id);
+          created = await api.addTagParent(selectedWorkspace.id, created.id, input.parent_tag_id);
         }
       }
 
-      tags = await api.tags(workspace.id);
+      tags = await api.tags(selectedWorkspace.id);
       if (input.asParent) createdParentId = created.id;
       else if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
       suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion.toLowerCase() !== name.toLowerCase());
@@ -166,6 +217,7 @@
 
   function taskInput(): TaskInput {
     return {
+      workspace_id: selectedWorkspace.id,
       title,
       description: description || null,
       status_id: statusId,
@@ -197,14 +249,14 @@
       <BlockSummary blocks={taskDetails.active_blocks} on:openTask={(event) => dispatch('openTask', event.detail)} />
     {/if}
     <div class="title-row">
-      <label>Title<TextField bind:value={title} maxlength="500" required disabled={workspace.role === 'viewer'} /></label>
+      <label>Title<TextField bind:value={title} maxlength="500" required disabled={selectedWorkspace.role === 'viewer'} /></label>
     </div>
 
     <div class="metadata-row">
-      <label>Status<select bind:value={statusId} disabled={workspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-      <label>Priority<NumberField bind:value={priority} min="1" disabled={workspace.role === 'viewer'} /></label>
-      <label>Due date<DateTimeInput bind:value={dueDate} disabled={workspace.role === 'viewer'} /></label>
-      <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={workspace.role === 'viewer'} /></label>
+      <label>Status<select bind:value={statusId} disabled={selectedWorkspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
+      <label>Priority<NumberField bind:value={priority} min="1" disabled={selectedWorkspace.role === 'viewer'} /></label>
+      <label>Due date<DateTimeInput bind:value={dueDate} disabled={selectedWorkspace.role === 'viewer'} /></label>
+      <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={selectedWorkspace.role === 'viewer'} /></label>
     </div>
 
     <section class="tags-section">
@@ -213,13 +265,13 @@
         {tags}
         selectedIds={tagIds}
         suggestedNames={suggestedNewTags}
-        disabled={workspace.role === 'viewer'}
+        disabled={selectedWorkspace.role === 'viewer'}
         creating={creatingTag}
         bind:createdParentId
         on:change={(event) => (tagIds = event.detail)}
         on:create={(event) => void createAndSelectTag(event.detail)}
       />
-      {#if taskDetails?.inherited_tags.length}
+      {#if selectedWorkspace.id === taskDetails?.workspace_id && taskDetails?.inherited_tags.length}
         <details class="inherited-tags" open>
           <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
           <div class="inherited-tag-list">
@@ -231,7 +283,7 @@
       {/if}
     </section>
 
-    <MarkdownEditor bind:value={description} disabled={workspace.role === 'viewer'} compact />
+    <MarkdownEditor bind:value={description} disabled={selectedWorkspace.role === 'viewer'} compact />
 
     <section class="assignee-section">
       <span class="field-label">Assignees</span>
@@ -239,7 +291,7 @@
         <button
           type="button"
           class="assignee-control"
-          disabled={workspace.role === 'viewer'}
+          disabled={selectedWorkspace.role === 'viewer'}
           aria-expanded={assigneeOpen}
           on:click={() => (assigneeOpen = !assigneeOpen)}
         >
@@ -255,7 +307,7 @@
           <span class="picker-caret" aria-hidden="true">⌄</span>
         </button>
 
-        {#if assigneeOpen && workspace.role !== 'viewer'}
+        {#if assigneeOpen && selectedWorkspace.role !== 'viewer'}
           <div class="assignee-menu">
             <div class="picker-menu-title">Assign people</div>
             {#each members as member (member.user_id)}
@@ -278,14 +330,14 @@
         {#if parentTaskId}
           <div class="relation-row">
             <button type="button" class="relation-link" on:click={() => dispatch('openTask', parentTaskId)}>{selectedParent?.title || 'Parent task'} #{parentTaskId}</button>
-            {#if workspace.role !== 'viewer'}<AppButton disabled={busy} on:click={() => (parentTaskId = 0)}>Remove parent</AppButton>{/if}
+            {#if selectedWorkspace.role !== 'viewer'}<AppButton disabled={busy} on:click={() => (parentTaskId = 0)}>Remove parent</AppButton>{/if}
           </div>
         {:else}
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
             placeholder="Search task to add as parent..."
-            disabled={workspace.role === 'viewer' || busy}
+            disabled={selectedWorkspace.role === 'viewer' || busy}
             on:select={(event) => (parentTaskId = event.detail.id)}
             on:create={(event) => dispatch('createRelated', { kind: 'parent', title: event.detail })}
           />
@@ -296,17 +348,17 @@
         <strong>Children {#if taskDetails?.subtasks.length}<small>{completedSubtasks} / {taskDetails.subtasks.length} complete</small>{/if}</strong>
         {#each taskDetails?.subtasks || [] as subtask (subtask.id)}
           <div class:finished={!!subtask.finished_at} class="subtask-row">
-            {#if workspace.role !== 'viewer'}
+            {#if selectedWorkspace.role !== 'viewer'}
               <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag} aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
             {:else}
               <span class="subtask-state" aria-hidden="true">{subtask.finished_at ? '✓' : '○'}</span>
             {/if}
             <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}</button>
             <small>#{subtask.id}</small>
-            {#if workspace.role !== 'viewer'}<AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>Remove</AppButton>{/if}
+            {#if selectedWorkspace.role !== 'viewer'}<AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>Remove</AppButton>{/if}
           </div>
         {/each}
-        {#if taskId && workspace.role !== 'viewer'}
+        {#if taskId && selectedWorkspace.role !== 'viewer'}
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
@@ -323,7 +375,7 @@
         {#each taskDetails?.blocks_tasks || [] as blocked (blocked.id)}
           <div class="block-row"><span aria-hidden="true">→</span><button type="button" class="relation-link" on:click={() => dispatch('openTask', blocked.id)}>{blocked.title} #{blocked.id}</button></div>
         {/each}
-        {#if taskId && workspace.role !== 'viewer'}
+        {#if taskId && selectedWorkspace.role !== 'viewer'}
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.blocks_tasks.map((blocked) => blocked.id) || [])]}
@@ -351,10 +403,10 @@
     <footer class="editor-actions">
       <span></span>
       <AppButton disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</AppButton>
-      {#if workspace.role !== 'viewer' && draftSubmitLabel}
+      {#if selectedWorkspace.role !== 'viewer' && draftSubmitLabel}
         <AppButton disabled={busy || creatingTag || !statusId || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</AppButton>
       {/if}
-      {#if workspace.role !== 'viewer'}<AppButton type="submit" variant="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>{/if}
+      {#if selectedWorkspace.role !== 'viewer'}<AppButton type="submit" variant="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>{/if}
     </footer>
   </form>
 {/if}

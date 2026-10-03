@@ -130,6 +130,58 @@ def test_pomodoro_session_is_one_synced_row_per_user(
         assert len(rows) == 1
 
 
+def test_pomodoro_session_keeps_combined_workspace_scope(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("combined-pomodoro@example.com")
+    first = client.post("/api/workspaces", json={"name": "Work"}).json()
+    second = client.post("/api/workspaces", json={"name": "Personal"}).json()
+    tag = client.post(
+        f"/api/workspaces/{second['id']}/tags", json={"name": "Today"}
+    ).json()
+    status = client.get(f"/api/workspaces/{second['id']}/statuses").json()[0]
+    task = client.post(
+        "/api/tasks",
+        json={
+            "workspace_id": second["id"],
+            "status_id": status["id"],
+            "title": "Second workspace task",
+        },
+    ).json()
+    scope = {
+        "workspace_ids": [first["id"], second["id"]],
+        "include_tag_ids": [tag["id"]],
+        "exclude_tag_ids": [],
+        "tag_match": "all",
+    }
+    created = client.post(
+        "/api/pomodoro/session",
+        json={"workspace_id": first["id"], "scope": scope},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["scope"] == scope
+    updated = client.put("/api/pomodoro/session/task", json={"task_id": task["id"]})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["task_id"] == task["id"]
+    assert client.get("/api/pomodoro/session").json()["scope"] == scope
+
+    outside = client.post("/api/workspaces", json={"name": "Outside focus"}).json()
+    outside_status = client.get(f"/api/workspaces/{outside['id']}/statuses").json()[0]
+    moved = client.patch(
+        f"/api/tasks/{task['id']}",
+        json={
+            "workspace_id": outside["id"],
+            "status_id": outside_status["id"],
+            "assignee_ids": [],
+            "tag_ids": [],
+        },
+    )
+    assert moved.status_code == 200, moved.text
+    resumed = client.get("/api/pomodoro/session").json()
+    assert resumed["scope"] == scope
+    assert resumed["task_id"] is None
+
+
 def test_notification_advances_but_alarm_waits_for_dismissal(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:

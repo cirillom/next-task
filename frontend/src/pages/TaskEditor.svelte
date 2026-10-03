@@ -8,6 +8,7 @@
   import TaskForm from '../lib/components/TaskForm.svelte';
 
   export let workspace: Workspace;
+  export let workspaces: Workspace[] = [];
   export let taskId = 0;
   export let initialTitle = '';
   export let initialParentTaskId = 0;
@@ -27,10 +28,30 @@
   let completionTarget: TaskSummary | null = null;
   let error = '';
   let form: TaskForm;
+  let formWorkspace = workspace;
+  let switchingWorkspace = false;
   let nestedIntent: 'parent' | 'child' | 'blocks' | 'blocker' | null = null;
   let nestedTitle = '';
 
   $: isDraft = task?.priority === 0;
+  $: movableWorkspaces = workspaces.filter((item) => item.role !== 'viewer');
+  $: linkedTask = !!task?.parent_task_id || !!task?.subtasks.length
+    || !!task?.blocking_history.some((block) => block.blocking_task_id !== null)
+    || !!task?.blocks_tasks.length;
+
+  async function changeWorkspace(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    const target = movableWorkspaces.find((item) => item.id === Number(select.value));
+    if (!target || !form) {
+      select.value = String(formWorkspace.id);
+      return;
+    }
+    switchingWorkspace = true;
+    const changed = await form.switchWorkspace(target);
+    switchingWorkspace = false;
+    if (changed) formWorkspace = target;
+    else select.value = String(formWorkspace.id);
+  }
 
   function taskSummary(item: Task): TaskSummary {
     return {
@@ -296,6 +317,22 @@
           <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
         </h1>
       </div>
+      <div class="header-workspace">
+        {#if taskId && workspace.role !== 'viewer' && movableWorkspaces.length > 1}
+          <label>Workspace
+            <select
+              value={formWorkspace.id}
+              disabled={busy || loading || switchingWorkspace || linkedTask}
+              title={linkedTask ? 'Remove parent, child, and task blocker links before moving this task.' : ''}
+              on:change={changeWorkspace}
+            >
+              {#each movableWorkspaces as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
+            </select>
+          </label>
+        {:else}
+          <span>Workspace</span><strong>{formWorkspace.name}</strong>
+        {/if}
+      </div>
       <div class="editor-header-actions">
         {#if task && workspace.role !== 'viewer'}
           {#if !isDraft}
@@ -345,6 +382,9 @@
     {:else if taskId && !task}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
+      {#if task && formWorkspace.id !== task.workspace_id}
+        <p class="notice workspace-move-notice">Review the destination status, tags, and assignees before saving. Tags start empty; shared members stay assigned.</p>
+      {/if}
       {#if isDraft}
         <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
       {/if}
@@ -399,7 +439,7 @@
 {/if}
 
 {#if nestedIntent}
-  <svelte:self {workspace} initialTitle={nestedTitle} initialParentTaskId={nestedIntent === 'child' ? taskId : 0} on:saved={(event) => void nestedSaved(event.detail)} on:close={() => (nestedIntent = null)} on:changed={(event) => dispatch('changed', event.detail)} on:openTask={(event) => dispatch('openTask', event.detail)} />
+  <svelte:self {workspace} {workspaces} initialTitle={nestedTitle} initialParentTaskId={nestedIntent === 'child' ? taskId : 0} on:saved={(event) => void nestedSaved(event.detail)} on:close={() => (nestedIntent = null)} on:changed={(event) => dispatch('changed', event.detail)} on:openTask={(event) => dispatch('openTask', event.detail)} />
 {/if}
 
 {#if completionTarget}
@@ -428,6 +468,11 @@
 
   .draft-notice { margin: 0 0 .65rem; }
   .editor-heading-copy { min-width: 0; }
+  .header-workspace { display: flex; flex: 0 1 auto; align-items: center; gap: .5rem; min-width: 0; margin-left: auto; font-size: .8rem; }
+  .header-workspace label { display: flex; align-items: center; gap: .5rem; min-width: 0; font-weight: 700; }
+  .header-workspace strong { overflow: hidden; color: var(--forest-2); text-overflow: ellipsis; white-space: nowrap; }
+  .header-workspace select { max-width: 13rem; }
+  .workspace-move-notice { margin: 0 0 .65rem; }
   .editor-header .eyebrow { margin-bottom: .25rem; }
   .editor-header h1 { font-size: 1.65rem; }
 
@@ -523,6 +568,7 @@
   @media (max-width: 600px) {
     .task-editor { padding: .75rem; }
     .editor-header { top: -.75rem; margin: -.75rem -.75rem .7rem; padding: .7rem .75rem; }
+    .header-workspace select { max-width: 7rem; }
     .finish-action span,
     .quick-action span { display: none; }
     .finish-action,

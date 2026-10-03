@@ -11,6 +11,8 @@
   import TagBadge from './TagBadge.svelte';
 
   export let task: Task;
+  export let workspaceName = '';
+  export let tagNames: Record<number, string> = {};
   export let readOnly = false;
 
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
@@ -105,7 +107,7 @@
 <article class="recommended-card">
   <div class="recommended-card__top">
     <div>
-      <p class="eyebrow">Recommended next</p>
+      <p class="eyebrow">Recommended next{workspaceName ? ` · ${workspaceName}` : ''}</p>
       <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
     </div>
     <div class="recommended-card__header-actions">
@@ -159,7 +161,7 @@
   {#if task.direct_tags.length}
     <div class="tag-row">
       {#each task.direct_tags as tag}
-        <TagBadge {tag} />
+        <TagBadge {tag}>{tagNames[tag.id] || tag.name}</TagBadge>
       {/each}
     </div>
   {/if}

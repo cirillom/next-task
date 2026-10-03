@@ -1,5 +1,6 @@
 import type {
   Member,
+  NextScope,
   PomodoroSession,
   PomodoroSettings,
   Status,
@@ -65,6 +66,7 @@ export const api = {
     workspace_id: number;
     tag_id: number | null;
     task_id?: number | null;
+    scope?: NextScope;
   }) => request<PomodoroSession>('/api/pomodoro/session', json('POST', body)),
   updatePomodoroSessionTask: (task_id: number | null) =>
     request<PomodoroSession>('/api/pomodoro/session/task', json('PUT', { task_id })),
@@ -151,6 +153,24 @@ export const api = {
       }
     }
     return request<Task[]>(`/api/tasks?${query}`);
+  },
+  nextTasks: async (scope: NextScope, tags: Tag[], blocked: boolean | null = false) => {
+    const byId = new Map(tags.map((tag) => [tag.id, tag]));
+    const tasks = await Promise.all(scope.workspace_ids.map((workspaceId) => {
+      const includes = scope.include_tag_ids.filter((id) => byId.get(id)?.workspace_id === workspaceId);
+      if (scope.include_tag_ids.length && !includes.length) return Promise.resolve([] as Task[]);
+      const excludes = scope.exclude_tag_ids.filter((id) => byId.get(id)?.workspace_id === workspaceId);
+      return api.tasks(workspaceId, {
+        finished: false,
+        blocked,
+        actionable: true,
+        mine: true,
+        include_tag_id: includes,
+        exclude_tag_id: excludes,
+        tag_match: scope.tag_match
+      });
+    }));
+    return tasks.flat().sort((left, right) => right.score - left.score || left.id - right.id);
   },
   drafts: (workspaceId: number) =>
     request<Task[]>(`/api/drafts?workspace_id=${encodeURIComponent(String(workspaceId))}`),

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -61,6 +61,7 @@ class PomodoroSession(Base):
     task_id: Mapped[int | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
     )
+    scope_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     phase: Mapped[str] = mapped_column(String(20), nullable=False, default="focus")
     state: Mapped[str] = mapped_column(String(20), nullable=False, default="ready")
     short_breaks_taken: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

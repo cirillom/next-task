@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ApiError, api } from './lib/api/client';
-  import type { User, Workspace } from './lib/api/types';
+  import type { NextScope, Task, User, Workspace } from './lib/api/types';
   import AppButton from './lib/components/AppButton.svelte';
   import TextField from './lib/components/TextField.svelte';
   import Login from './pages/Login.svelte';
@@ -38,8 +38,12 @@
   let draftCount = 0;
   let refreshKey = 0;
   let focusTaskVersion = 0;
-  let focusTagId: number | null = null;
+  let focusScope: NextScope | null = null;
+  let nextScope: NextScope | null = null;
+  let quickCaptureWorkspaceIds: number[] = [];
   let firstWorkspaceName = '';
+  $: nextEditableWorkspaceIds = (nextScope?.workspace_ids ?? workspaces.map((item) => item.id))
+    .filter((id) => workspaces.find((item) => item.id === id)?.role !== 'viewer');
 
   async function loadWorkspaces(preferredId?: number) {
     workspaces = await api.workspaces();
@@ -68,7 +72,7 @@
         const activeSession = await api.pomodoroSession();
         if (activeSession) {
           selectWorkspace(activeSession.workspace_id);
-          focusTagId = activeSession.tag_id;
+          focusScope = activeSession.scope;
         }
       }
       await loadDraftCount();
@@ -96,7 +100,7 @@
     workspace = remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)] || null;
     editorTaskId = null;
     quickCaptureOpen = false;
-    focusTagId = null;
+    focusScope = null;
     if (workspace) localStorage.setItem('next-task-workspace', String(workspace.id));
     else localStorage.removeItem('next-task-workspace');
     refreshKey += 1;
@@ -106,7 +110,7 @@
     try { const created = await api.createWorkspace(firstWorkspaceName); workspaces = [created]; selectWorkspace(created.id); }
     catch (reason) { error = reason instanceof Error ? reason.message : 'Could not create workspace'; }
   }
-  async function logout() { await api.logout(); user = null; workspaces = []; workspace = null; draftCount = 0; }
+  async function logout() { await api.logout(); user = null; workspaces = []; workspace = null; nextScope = null; draftCount = 0; }
 
   function taskEditorChanged() {
     if (view === 'focus') focusTaskVersion += 1;
@@ -114,8 +118,9 @@
     void loadDraftCount();
   }
 
-  function taskEditorSaved() {
+  function taskEditorSaved(saved: Task) {
     editorTaskId = null;
+    if (saved.workspace_id !== workspace?.id) selectWorkspace(saved.workspace_id);
     taskEditorChanged();
   }
 
@@ -124,16 +129,35 @@
     taskEditorChanged();
   }
 
-  function openTask(taskId: number) {
+  function openQuickCapture(workspaceIds: number[] = [workspace?.id ?? 0]) {
+    quickCaptureWorkspaceIds = workspaceIds;
+    quickCaptureOpen = true;
+  }
+
+  async function openTask(taskId: number) {
     if (taskId === 0) {
-      quickCaptureOpen = true;
+      openQuickCapture();
+      return;
+    }
+    try {
+      const task = await api.task(taskId);
+      if (task.workspace_id !== workspace?.id) selectWorkspace(task.workspace_id);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not open task';
       return;
     }
     editorTaskId = taskId;
     editorBlockerTitle = '';
   }
 
-  function createBlocker(request: { taskId: number; title: string }) {
+  async function createBlocker(request: { taskId: number; title: string }) {
+    try {
+      const task = await api.task(request.taskId);
+      if (task.workspace_id !== workspace?.id) selectWorkspace(task.workspace_id);
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not open task';
+      return;
+    }
     editorBlockerTitle = request.title;
     editorTaskId = request.taskId;
   }
@@ -143,14 +167,15 @@
     taskEditorChanged();
   }
 
-  async function startFocus(tagId: number | null) {
+  async function startFocus(scope: NextScope) {
     try {
       const activeSession = await api.pomodoroSession();
       if (activeSession) {
         selectWorkspace(activeSession.workspace_id);
-        focusTagId = activeSession.tag_id;
+        focusScope = activeSession.scope;
       } else {
-        focusTagId = tagId;
+        focusScope = scope;
+        if (scope.workspace_ids.length) selectWorkspace(scope.workspace_ids[0]);
       }
       focusTaskVersion = 0;
       navigate('focus');
@@ -161,7 +186,7 @@
 
   function endFocus() {
     editorTaskId = null;
-    focusTagId = null;
+    focusScope = null;
     navigate('next');
   }
 
@@ -177,10 +202,11 @@
   <Login on:authenticated={async (event) => { user = event.detail; await loadWorkspaces(); await loadDraftCount(); }} />
 {:else if workspace && view === 'focus'}
   <Focus
-    {workspace}
     taskVersion={focusTaskVersion}
-    sessionTagId={focusTagId}
+    sessionScope={focusScope || { workspace_ids: [workspace.id], include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' }}
+    {workspaces}
     on:openTask={(event) => openTask(event.detail)}
+    on:newTask={(event) => openQuickCapture(event.detail)}
     on:createBlocker={(event) => createBlocker(event.detail)}
     on:end={endFocus}
   />
@@ -190,8 +216,8 @@
       <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>Next Task</strong></button>
       {#if workspace}
         <div class="workspace-tools">
-          <label class="workspace-switcher"><span>Workspace</span><select value={workspace.id} on:change={(event) => selectWorkspace(Number(event.currentTarget.value))}>{#each workspaces as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-          {#if workspace.role !== 'viewer'}<AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>New task</span></AppButton>{/if}
+          {#if view !== 'next'}<label class="workspace-switcher"><span>Workspace</span><select value={workspace.id} on:change={(event) => selectWorkspace(Number(event.currentTarget.value))}>{#each workspaces as item}<option value={item.id}>{item.name}</option>{/each}</select></label>{/if}
+          {#if view === 'next' ? nextEditableWorkspaceIds.length : workspace.role !== 'viewer'}<AppButton variant="primary" className="new-task-button" on:click={() => openQuickCapture(view === 'next' ? nextEditableWorkspaceIds : [workspace?.id ?? 0])}>+ <span>New task</span></AppButton>{/if}
         </div>
       {/if}
       <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>Sign out</AppButton></div>
@@ -205,7 +231,7 @@
           </button>
         {/each}
       </nav>
-      {#if workspace}<div class="role-badge">{workspace.role}</div>{/if}
+      {#if workspace && view !== 'next'}<div class="role-badge">{workspace.role}</div>{/if}
     </aside>
     <main class="content">
       {#if error}<p class="error">{error}</p>{/if}
@@ -213,7 +239,7 @@
         <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<TextField bind:value={firstWorkspaceName} required placeholder="Personal" /></label><AppButton type="submit" variant="primary">Create workspace</AppButton></form></section>
       {:else}
         {#key `${workspace.id}-${view}-${refreshKey}`}
-          {#if view === 'next'}<Next {workspace} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
+          {#if view === 'next'}<Next {workspaces} userId={user.id} on:openTask={(event) => openTask(event.detail)} on:newTask={(event) => openQuickCapture(event.detail)} on:scopeChange={(event) => (nextScope = event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
           {:else if view === 'tasks'}<Tasks {workspace} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} />
           {:else if view === 'drafts'}<Drafts {workspace} on:openTask={(event) => openTask(event.detail)} />
           {:else if view === 'tags'}<Tags {workspace} />
@@ -233,17 +259,18 @@
   </div>
 {/if}
 
-{#if workspace && quickCaptureOpen}<QuickCapture {workspace} on:close={() => (quickCaptureOpen = false)} on:saved={quickCaptureSaved} />{/if}
+{#if workspace && quickCaptureOpen}<QuickCapture {workspace} destinationChoices={workspaces.filter((item) => quickCaptureWorkspaceIds.includes(item.id) && item.role !== 'viewer')} on:close={() => (quickCaptureOpen = false)} on:saved={quickCaptureSaved} />{/if}
 
 {#if workspace && editorTaskId !== null}
   {#key editorTaskId}
     <TaskEditor
       {workspace}
+      {workspaces}
       taskId={editorTaskId}
       initialBlockerTitle={editorBlockerTitle}
       on:close={() => (editorTaskId = null)}
       on:changed={taskEditorChanged}
-      on:saved={taskEditorSaved}
+      on:saved={(event) => taskEditorSaved(event.detail)}
       on:deleted={taskEditorDeleted}
       on:openTask={(event) => openTask(event.detail)}
     />

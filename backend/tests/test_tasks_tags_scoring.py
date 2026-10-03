@@ -32,6 +32,167 @@ def make_task(
     return response.json()
 
 
+def test_next_ownership_shows_assigned_and_own_unassigned_tasks_only(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    owner = logged_in_client("next-owner@example.com")
+    member = logged_in_client("next-member@example.com")
+    member_id = member.get("/api/auth/me").json()["id"]
+    first, first_statuses = make_workspace(owner, "Work")
+    second, second_statuses = make_workspace(owner, "Personal")
+    for workspace in (first, second):
+        response = owner.post(
+            f"/api/workspaces/{workspace['id']}/members",
+            json={"email": "next-member@example.com", "role": "editor"},
+        )
+        assert response.status_code == 201, response.text
+
+    owner_unassigned = make_task(owner, first, first_statuses, "Owner unassigned")
+    assigned = make_task(
+        owner, first, first_statuses, "Assigned to member", assignee_ids=[member_id]
+    )
+    own_unassigned = make_task(member, second, second_statuses, "Member unassigned")
+    own_assigned_away = make_task(
+        member,
+        second,
+        second_statuses,
+        "Member assigned away",
+        assignee_ids=[owner.get("/api/auth/me").json()["id"]],
+    )
+
+    first_results = member.get(
+        "/api/tasks", params={"workspace_id": first["id"], "actionable": True, "mine": True}
+    )
+    second_results = member.get(
+        "/api/tasks", params={"workspace_id": second["id"], "actionable": True, "mine": True}
+    )
+    assert first_results.status_code == second_results.status_code == 200
+    assert {task["id"] for task in first_results.json()} == {assigned["id"]}
+    assert {task["id"] for task in second_results.json()} == {own_unassigned["id"]}
+    assert owner_unassigned["id"] not in {task["id"] for task in first_results.json()}
+    assert own_assigned_away["id"] not in {task["id"] for task in second_results.json()}
+
+
+def test_moving_task_replaces_workspace_scoped_fields_without_losing_task_data(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    owner = logged_in_client("move-owner@example.com")
+    member = logged_in_client("move-member@example.com")
+    member_id = member.get("/api/auth/me").json()["id"]
+    source, source_statuses = make_workspace(owner, "Source")
+    target, target_statuses = make_workspace(owner, "Target")
+    for workspace in (source, target):
+        assert owner.post(
+            f"/api/workspaces/{workspace['id']}/members",
+            json={"email": "move-member@example.com", "role": "editor"},
+        ).status_code == 201
+    source_tag = owner.post(
+        f"/api/workspaces/{source['id']}/tags", json={"name": "Source tag"}
+    ).json()
+    target_tag = owner.post(
+        f"/api/workspaces/{target['id']}/tags", json={"name": "Target tag"}
+    ).json()
+    original = make_task(
+        owner,
+        source,
+        source_statuses,
+        "Keep this task",
+        description="Do not lose these notes",
+        assignee_ids=[member_id],
+        tag_ids=[source_tag["id"]],
+    )
+
+    missing_fields = owner.patch(
+        f"/api/tasks/{original['id']}",
+        json={"workspace_id": target["id"], "status_id": target_statuses[0]["id"]},
+    )
+    assert missing_fields.status_code == 422
+    invalid_status = owner.patch(
+        f"/api/tasks/{original['id']}",
+        json={
+            "workspace_id": target["id"],
+            "status_id": source_statuses[0]["id"],
+            "assignee_ids": [],
+            "tag_ids": [],
+        },
+    )
+    assert invalid_status.status_code == 422
+    invalid_tag = owner.patch(
+        f"/api/tasks/{original['id']}",
+        json={
+            "workspace_id": target["id"],
+            "status_id": target_statuses[0]["id"],
+            "assignee_ids": [],
+            "tag_ids": [source_tag["id"]],
+        },
+    )
+    assert invalid_tag.status_code == 422
+    outsider = logged_in_client("move-outsider@example.com")
+    outsider_id = outsider.get("/api/auth/me").json()["id"]
+    invalid_assignee = owner.patch(
+        f"/api/tasks/{original['id']}",
+        json={
+            "workspace_id": target["id"],
+            "status_id": target_statuses[0]["id"],
+            "assignee_ids": [outsider_id],
+            "tag_ids": [],
+        },
+    )
+    assert invalid_assignee.status_code == 422
+    assert owner.get(f"/api/tasks/{original['id']}").json()["workspace_id"] == source["id"]
+
+    moved = owner.patch(
+        f"/api/tasks/{original['id']}",
+        json={
+            "workspace_id": target["id"],
+            "status_id": target_statuses[0]["id"],
+            "assignee_ids": [member_id],
+            "tag_ids": [target_tag["id"]],
+        },
+    )
+    assert moved.status_code == 200, moved.text
+    result = moved.json()
+    assert result["id"] == original["id"]
+    assert result["workspace_id"] == target["id"]
+    assert result["status"]["id"] == target_statuses[0]["id"]
+    assert result["description"] == "Do not lose these notes"
+    assert [tag["id"] for tag in result["direct_tags"]] == [target_tag["id"]]
+    assert [assignee["id"] for assignee in result["assignees"]] == [member_id]
+    assert original["id"] not in {
+        task["id"] for task in owner.get("/api/tasks", params={"workspace_id": source["id"]}).json()
+    }
+    assert original["id"] in {
+        task["id"] for task in owner.get("/api/tasks", params={"workspace_id": target["id"]}).json()
+    }
+
+
+def test_moving_linked_task_requires_removing_relations_first(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("move-linked@example.com")
+    source, statuses = make_workspace(client, "Source")
+    target, target_statuses = make_workspace(client, "Target")
+    parent = make_task(client, source, statuses, "Parent")
+    child = make_task(client, source, statuses, "Child", parent_task_id=parent["id"])
+    payload = {
+        "workspace_id": target["id"],
+        "status_id": target_statuses[0]["id"],
+        "assignee_ids": [],
+        "tag_ids": [],
+    }
+    assert client.patch(f"/api/tasks/{parent['id']}", json=payload).status_code == 409
+    assert client.patch(f"/api/tasks/{child['id']}", json=payload).status_code == 409
+
+    blocker = make_task(client, source, statuses, "Blocker")
+    blocked = make_task(client, source, statuses, "Blocked")
+    assert client.post(
+        f"/api/tasks/{blocked['id']}/block", json={"blocking_task_id": blocker["id"]}
+    ).status_code == 201
+    assert client.patch(f"/api/tasks/{blocker['id']}", json=payload).status_code == 409
+    assert client.patch(f"/api/tasks/{blocked['id']}", json=payload).status_code == 409
+    assert client.get(f"/api/tasks/{blocked['id']}").json()["workspace_id"] == source["id"]
+
+
 @pytest.mark.parametrize(
     "timestamp",
     ["2026-09-09T14:30:00-03:00", "2026-09-09T23:00:00+05:30", "2026-09-09T17:30:00"],

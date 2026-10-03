@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth.security import get_current_user
 from app.database import get_db
 from app.models import Tag, Task, TaskAssignee, TaskBlock, User
+from app.pomodoro_models import PomodoroSession
 from app.schemas import (
     BlockCreate,
     BlockRead,
@@ -222,6 +223,15 @@ def actionable_ownership_condition(user_id: int):
     return or_(~any_assignee, assigned_to_user)
 
 
+def personal_actionable_condition(user_id: int):
+    any_assignee = exists().where(TaskAssignee.task_id == Task.id)
+    assigned_to_user = exists().where(
+        TaskAssignee.task_id == Task.id,
+        TaskAssignee.user_id == user_id,
+    )
+    return or_(assigned_to_user, (Task.created_by_user_id == user_id) & ~any_assignee)
+
+
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
     workspace_id: int,
@@ -234,6 +244,7 @@ def list_tasks(
     assignee_id: int | None = None,
     blocked: bool | None = None,
     actionable: bool = False,
+    mine: bool = False,
     search: str | None = Query(default=None, max_length=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -252,6 +263,8 @@ def list_tasks(
         )
     if actionable:
         query = query.where(actionable_ownership_condition(user.id))
+    if mine:
+        query = query.where(personal_actionable_condition(user.id))
     include_tag_ids = list(dict.fromkeys(include_tag_id or []))
     if tag_id is not None and tag_id not in include_tag_ids:
         include_tag_ids.append(tag_id)
@@ -328,13 +341,52 @@ def update_task(
     task = get_task_for_user(db, task_id, user)
     require_editor(db, task.workspace_id, user)
     values = payload.model_dump(exclude_unset=True)
+    target_workspace_id = values.pop("workspace_id", task.workspace_id)
+    if target_workspace_id is None:
+        raise HTTPException(status_code=422, detail="A task must have a workspace")
+    moving = target_workspace_id != task.workspace_id
+    if moving:
+        require_editor(db, target_workspace_id, user)
+        has_children = db.scalar(select(Task.id).where(Task.parent_task_id == task.id).limit(1))
+        if task.parent_task_id is not None or has_children is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Remove parent and child links before moving this task",
+            )
+        has_task_block = db.scalar(
+            select(TaskBlock.id).where(
+                or_(TaskBlock.task_id == task.id, TaskBlock.blocking_task_id == task.id),
+                TaskBlock.blocking_task_id.is_not(None),
+            ).limit(1)
+        )
+        if has_task_block is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Remove task-based blocking links before moving this task",
+            )
+        if any(key not in values for key in ("status_id", "assignee_ids", "tag_ids")):
+            raise HTTPException(
+                status_code=422,
+                detail="Moving a task requires a destination status, assignees, and tags",
+            )
     if "status_id" in values:
         if values["status_id"] is None:
             raise HTTPException(status_code=422, detail="A task must have a status")
-        validate_status(db, task.workspace_id, values["status_id"])
+        validate_status(db, target_workspace_id, values["status_id"])
     if "parent_task_id" in values:
-        validate_parent(db, task.workspace_id, values["parent_task_id"], task.id)
-    apply_task_relations(db, task, values.pop("assignee_ids", None), values.pop("tag_ids", None))
+        validate_parent(db, target_workspace_id, values["parent_task_id"], task.id)
+    if moving:
+        task.assignees = validate_assignees(db, target_workspace_id, values.pop("assignee_ids"))
+        task.tags = validate_tags(db, target_workspace_id, values.pop("tag_ids"))
+        task.workspace_id = target_workspace_id
+        for session in db.scalars(
+            select(PomodoroSession).where(PomodoroSession.task_id == task.id)
+        ):
+            session.task_id = None
+    else:
+        apply_task_relations(
+            db, task, values.pop("assignee_ids", None), values.pop("tag_ids", None)
+        )
     for key, value in values.items():
         setattr(task, key, value)
     db.commit()
