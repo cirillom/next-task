@@ -87,16 +87,17 @@ def test_pomodoro_session_is_one_synced_row_per_user(
 ) -> None:
     first = logged_in_client("synced-pomodoro@example.com")
     second = TestClient(first.app)
-    assert second.post(
-        "/api/auth/login",
-        json={"email": "synced-pomodoro@example.com", "password": "correct horse"},
-    ).status_code == 200
-    workspace = first.post("/api/workspaces", json={"name": "Focus"}).json()
-    statuses = first.get(f"/api/workspaces/{workspace['id']}/statuses").json()
+    assert (
+        second.post(
+            "/api/auth/login",
+            json={"email": "synced-pomodoro@example.com", "password": "correct horse"},
+        ).status_code
+        == 200
+    )
+    statuses = first.get("/api/statuses").json()
     task = first.post(
         "/api/tasks",
         json={
-            "workspace_id": workspace["id"],
             "title": "Shared task",
             "status_id": statuses[0]["id"],
         },
@@ -104,15 +105,13 @@ def test_pomodoro_session_is_one_synced_row_per_user(
 
     created = first.post(
         "/api/pomodoro/session",
-        json={"workspace_id": workspace["id"], "task_id": task["id"]},
+        json={"task_id": task["id"]},
     )
     assert created.status_code == 201
     assert created.json()["state"] == "ready"
     assert created.json()["phase"] == "focus"
 
-    duplicate = second.post(
-        "/api/pomodoro/session", json={"workspace_id": workspace["id"]}
-    )
+    duplicate = second.post("/api/pomodoro/session", json={})
     assert duplicate.status_code == 200
     assert duplicate.json()["task_id"] == task["id"]
 
@@ -134,10 +133,7 @@ def test_notification_advances_but_alarm_waits_for_dismissal(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("pomodoro-alerts@example.com")
-    workspace = client.post("/api/workspaces", json={"name": "Alerts"}).json()
-    assert client.post(
-        "/api/pomodoro/session", json={"workspace_id": workspace["id"]}
-    ).status_code == 201
+    assert client.post("/api/pomodoro/session", json={}).status_code == 201
     assert client.post("/api/pomodoro/session/start").json()["state"] == "running"
 
     with SessionLocal() as db:

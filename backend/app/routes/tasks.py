@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
-from app.models import Tag, Task, TaskAssignee, TaskBlock, User
+from app.models import Tag, Task, TaskBlock, User
 from app.schemas import (
     BlockCreate,
     BlockRead,
@@ -18,18 +18,15 @@ from app.schemas import (
     TaskRead,
     TaskSummary,
     TaskUpdate,
-    UserRead,
 )
 from app.services.scoring import score_task
 from app.services.tags import ancestor_ids, descendant_ids, tags_by_ids
 from app.services.tasks import (
     get_task_for_user,
-    validate_assignees,
     validate_parent,
     validate_status,
     validate_tags,
 )
-from app.services.workspaces import get_membership, require_editor
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -106,7 +103,9 @@ def task_read(
     now = datetime.now(UTC)
     active_blocks = [block for block in task.blocks if block_is_active(block, now)]
     blocked_tasks = db.scalars(
-        select(Task).join(TaskBlock, TaskBlock.task_id == Task.id).where(
+        select(Task)
+        .join(TaskBlock, TaskBlock.task_id == Task.id)
+        .where(
             TaskBlock.blocking_task_id == task.id,
             TaskBlock.unblocked_at.is_(None),
         )
@@ -114,9 +113,7 @@ def task_read(
     own_score = round(score_task(task), 2)
     return TaskRead(
         id=task.id,
-        created_by_user_id=task.created_by_user_id,
-        creator=UserRead.model_validate(task.creator),
-        workspace_id=task.workspace_id,
+        user_id=task.user_id,
         title=task.title,
         description=task.description,
         status=task.status,
@@ -135,7 +132,6 @@ def task_read(
         ranking_source_score=(
             None if ranking_source_score is None else round(ranking_source_score, 2)
         ),
-        assignees=[UserRead.model_validate(user) for user in task.assignees],
         direct_tags=[TagSummary.model_validate(tag) for tag in task.tags],
         inherited_tags=[TagSummary.model_validate(tag) for tag in inherited],
         current_block=BlockRead.model_validate(active_blocks[0]) if active_blocks else None,
@@ -204,54 +200,33 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
 def apply_task_relations(
     db: Session,
     task: Task,
-    assignee_ids: list[int] | None,
     tag_ids: list[int] | None,
 ) -> None:
-    if assignee_ids is not None:
-        task.assignees = validate_assignees(db, task.workspace_id, assignee_ids)
     if tag_ids is not None:
-        task.tags = validate_tags(db, task.workspace_id, tag_ids)
-
-
-def actionable_ownership_condition(user_id: int):
-    any_assignee = exists().where(TaskAssignee.task_id == Task.id)
-    assigned_to_user = exists().where(
-        TaskAssignee.task_id == Task.id,
-        TaskAssignee.user_id == user_id,
-    )
-    return or_(~any_assignee, assigned_to_user)
+        task.tags = validate_tags(db, task.user_id, tag_ids)
 
 
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
-    workspace_id: int,
     finished: bool | None = False,
     status_id: int | None = None,
     tag_id: int | None = None,
     include_tag_id: list[int] | None = Query(default=None),
     exclude_tag_id: list[int] | None = Query(default=None),
     tag_match: Literal["all", "any"] = "all",
-    assignee_id: int | None = None,
     blocked: bool | None = None,
     actionable: bool = False,
     search: str | None = Query(default=None, max_length=300),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TaskRead]:
-    get_membership(db, workspace_id, user.id)
-    query = select(Task).where(Task.workspace_id == workspace_id, Task.priority > 0)
+    query = select(Task).where(Task.user_id == user.id, Task.priority > 0)
     if finished is True:
         query = query.where(Task.finished_at.is_not(None))
     elif finished is False:
         query = query.where(Task.finished_at.is_(None))
     if status_id is not None:
         query = query.where(Task.status_id == status_id)
-    if assignee_id is not None:
-        query = query.where(
-            exists().where(TaskAssignee.task_id == Task.id, TaskAssignee.user_id == assignee_id)
-        )
-    if actionable:
-        query = query.where(actionable_ownership_condition(user.id))
     include_tag_ids = list(dict.fromkeys(include_tag_id or []))
     if tag_id is not None and tag_id not in include_tag_ids:
         include_tag_ids.append(tag_id)
@@ -296,14 +271,13 @@ def create_task(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TaskRead:
-    require_editor(db, payload.workspace_id, user)
-    validate_status(db, payload.workspace_id, payload.status_id)
-    validate_parent(db, payload.workspace_id, payload.parent_task_id)
-    values = payload.model_dump(exclude={"assignee_ids", "tag_ids"})
-    task = Task(created_by_user_id=user.id, **values)
+    validate_status(db, user.id, payload.status_id)
+    validate_parent(db, user.id, payload.parent_task_id)
+    values = payload.model_dump(exclude={"tag_ids"})
+    task = Task(user_id=user.id, **values)
     db.add(task)
     db.flush()
-    apply_task_relations(db, task, payload.assignee_ids, payload.tag_ids)
+    apply_task_relations(db, task, payload.tag_ids)
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -326,15 +300,14 @@ def update_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     values = payload.model_dump(exclude_unset=True)
     if "status_id" in values:
         if values["status_id"] is None:
             raise HTTPException(status_code=422, detail="A task must have a status")
-        validate_status(db, task.workspace_id, values["status_id"])
+        validate_status(db, task.user_id, values["status_id"])
     if "parent_task_id" in values:
-        validate_parent(db, task.workspace_id, values["parent_task_id"], task.id)
-    apply_task_relations(db, task, values.pop("assignee_ids", None), values.pop("tag_ids", None))
+        validate_parent(db, task.user_id, values["parent_task_id"], task.id)
+    apply_task_relations(db, task, values.pop("tag_ids", None))
     for key, value in values.items():
         setattr(task, key, value)
     db.commit()
@@ -349,10 +322,9 @@ def delete_task(
     user: User = Depends(get_current_user),
 ) -> Response:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     now = datetime.now(UTC)
     for block in db.scalars(select(TaskBlock).where(TaskBlock.blocking_task_id == task.id)):
-        block.reason = f'Deleted task: {task.title}'
+        block.reason = f"Deleted task: {task.title}"
         block.blocking_task_id = None
         if block.unblocked_at is None:
             block.unblocked_at = now
@@ -369,7 +341,6 @@ def finish_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     if task.priority == 0:
         raise HTTPException(status_code=409, detail="Finalize this draft before finishing it")
     now = datetime.now(UTC)
@@ -378,11 +349,13 @@ def finish_task(
         if candidate.finished_at is None:
             candidate.finished_at = now
             active_blocks = db.scalars(
-                select(TaskBlock).where(or_(
-                    (TaskBlock.task_id == candidate.id) & active_block_condition(now),
-                    (TaskBlock.blocking_task_id == candidate.id)
-                    & TaskBlock.unblocked_at.is_(None),
-                ))
+                select(TaskBlock).where(
+                    or_(
+                        (TaskBlock.task_id == candidate.id) & active_block_condition(now),
+                        (TaskBlock.blocking_task_id == candidate.id)
+                        & TaskBlock.unblocked_at.is_(None),
+                    )
+                )
             ).all()
             for block in active_blocks:
                 block.unblocked_at = now
@@ -400,7 +373,6 @@ def reopen_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     changed = False
     current: Task | None = task
     while current is not None:
@@ -422,7 +394,6 @@ def block_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     if task.priority == 0:
         raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
     now = datetime.now(UTC)
@@ -430,28 +401,34 @@ def block_task(
         raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
     if payload.blocking_task_id is not None:
         blocker = db.get(Task, payload.blocking_task_id)
-        if blocker is None or blocker.workspace_id != task.workspace_id:
-            raise HTTPException(status_code=422, detail="Blocking task must be in this workspace")
+        if blocker is None or blocker.user_id != task.user_id:
+            raise HTTPException(status_code=422, detail="Blocking task must belong to the user")
         if blocker.id == task.id:
             raise HTTPException(status_code=422, detail="A task cannot block itself")
         if blocker.finished_at is not None:
             raise HTTPException(status_code=422, detail="Blocking task must be unfinished")
-        reachable = select(TaskBlock.task_id.label("task_id")).where(
-            TaskBlock.blocking_task_id == task.id,
-            TaskBlock.unblocked_at.is_(None),
-        ).cte("reachable", recursive=True)
+        reachable = (
+            select(TaskBlock.task_id.label("task_id"))
+            .where(
+                TaskBlock.blocking_task_id == task.id,
+                TaskBlock.unblocked_at.is_(None),
+            )
+            .cte("reachable", recursive=True)
+        )
         reachable = reachable.union(
-            select(TaskBlock.task_id).join(
-                reachable, TaskBlock.blocking_task_id == reachable.c.task_id
-            ).where(TaskBlock.unblocked_at.is_(None))
+            select(TaskBlock.task_id)
+            .join(reachable, TaskBlock.blocking_task_id == reachable.c.task_id)
+            .where(TaskBlock.unblocked_at.is_(None))
         )
         if db.scalar(select(reachable.c.task_id).where(reachable.c.task_id == blocker.id)):
             raise HTTPException(status_code=422, detail="Task block would create a cycle")
-        if db.scalar(select(TaskBlock.id).where(
-            TaskBlock.task_id == task.id,
-            TaskBlock.blocking_task_id == blocker.id,
-            TaskBlock.unblocked_at.is_(None),
-        )):
+        if db.scalar(
+            select(TaskBlock.id).where(
+                TaskBlock.task_id == task.id,
+                TaskBlock.blocking_task_id == blocker.id,
+                TaskBlock.unblocked_at.is_(None),
+            )
+        ):
             raise HTTPException(status_code=409, detail="Task is already blocked by this task")
 
     task.last_worked_at = now
@@ -479,7 +456,6 @@ def unblock_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     now = datetime.now(UTC)
     active = db.scalars(
         select(TaskBlock).where(
@@ -505,10 +481,9 @@ def unblock_one(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
-    block = db.scalar(select(TaskBlock).where(
-        TaskBlock.id == block_id, TaskBlock.task_id == task.id
-    ))
+    block = db.scalar(
+        select(TaskBlock).where(TaskBlock.id == block_id, TaskBlock.task_id == task.id)
+    )
     if block is None:
         raise HTTPException(status_code=404, detail="Block not found")
     if not block_is_active(block):
@@ -527,7 +502,6 @@ def reblock_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     if task.priority == 0:
         raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
     now = datetime.now(UTC)
@@ -573,7 +547,6 @@ def delete_block_history_entry(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
-    require_editor(db, task.workspace_id, user)
     block = db.scalar(
         select(TaskBlock).where(TaskBlock.id == block_id, TaskBlock.task_id == task.id)
     )

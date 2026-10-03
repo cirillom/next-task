@@ -12,6 +12,7 @@ from app.auth.security import hash_password  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import User  # noqa: E402
+from app.services.user_defaults import add_default_statuses  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +35,8 @@ def create_user() -> Callable[[str, str, str], User]:
         with SessionLocal() as db:
             user = User(email=email, display_name=name, password_hash=hash_password(password))
             db.add(user)
+            db.flush()
+            add_default_statuses(db, user)
             db.commit()
             db.refresh(user)
             db.expunge(user)

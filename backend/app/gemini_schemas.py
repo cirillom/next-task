@@ -40,7 +40,6 @@ class GeneratedTask(StrictModel):
     status_name: str = Field(min_length=1, max_length=80)
     priority: int = Field(ge=1, le=5)
     due_date: date | None
-    assignee_emails: list[str] = Field(max_length=20)
     tag_names: list[str] = Field(max_length=12)
 
     @field_validator("title", "status_name")
@@ -58,7 +57,6 @@ class TextToTaskDraft(StrictModel):
     status_id: int
     priority: int
     due_date: date | None
-    assignee_ids: list[int]
     existing_tag_ids: list[int]
     new_tag_names: list[str]
     model: str

@@ -1,12 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Task, Workspace } from '../lib/api/types';
+  import type { Task } from '../lib/api/types';
   import { formatDateTime } from '../lib/format';
   import Markdown from '../lib/components/Markdown.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
 
-  export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number }>();
 
   let drafts: Task[] = [];
@@ -17,7 +16,7 @@
     loading = true;
     error = '';
     try {
-      drafts = await api.drafts(workspace.id);
+      drafts = await api.drafts();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load drafts';
     } finally {
@@ -58,12 +57,11 @@
           {/if}
           <div class="draft-meta">Captured {formatDateTime(draft.created_at)} · {draft.status.name}</div>
         </div>
-        {#if workspace.role !== 'viewer'}
+
           <AppButton variant="primary" className="edit-draft-button" on:click={() => dispatch('openTask', draft.id)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>
             Edit draft
           </AppButton>
-        {/if}
       </article>
     {/each}
   </div>

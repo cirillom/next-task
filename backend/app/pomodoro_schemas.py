@@ -27,7 +27,6 @@ class PomodoroSettingsUpdate(BaseModel):
 
 
 class PomodoroSessionCreate(BaseModel):
-    workspace_id: int
     tag_id: int | None = None
     task_id: int | None = None
 
@@ -37,7 +36,6 @@ class PomodoroSessionTaskUpdate(BaseModel):
 
 
 class PomodoroSessionRead(BaseModel):
-    workspace_id: int
     tag_id: int | None
     task_id: int | None
     phase: PomodoroPhase

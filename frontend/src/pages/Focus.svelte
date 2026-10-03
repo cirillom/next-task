@@ -8,8 +8,7 @@
     PomodoroSettings,
     Status,
     Tag,
-    Task,
-    Workspace
+    Task
   } from '../lib/api/types';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
@@ -19,7 +18,6 @@
   type TaskResolution = 'finished' | 'blocked';
   type DescriptionSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-  export let workspace: Workspace;
   export let taskVersion = 0;
   export let sessionTagId: number | null = null;
 
@@ -221,7 +219,7 @@
     selecting = true;
     error = '';
     try {
-      const ranked = await api.tasks(workspace.id, {
+      const ranked = await api.tasks({
         finished: false,
         blocked: false,
         actionable: true,
@@ -253,7 +251,7 @@
   async function loadSessionTasks() {
     listLoading = true;
     try {
-      sessionTasks = await api.tasks(workspace.id, {
+      sessionTasks = await api.tasks({
         finished: false,
         blocked: taskListBlocked,
         actionable: true,
@@ -285,7 +283,7 @@
   }
 
   function scheduleDescriptionSave(value: string) {
-    if (!currentTask || workspace.role === 'viewer') return;
+    if (!currentTask) return;
     descriptionDraft = value;
     descriptionSaveState = 'saving';
     window.clearTimeout(descriptionSaveTimer);
@@ -321,7 +319,7 @@
     ensureAudioContext();
     if (phase === 'focus' && !currentTask) await selectNextTask();
 
-    if (phase === 'focus' && currentTask && workspace.role !== 'viewer') {
+    if (phase === 'focus' && currentTask) {
       try {
         const updated = await api.updateTask(currentTask.id, { last_worked_at: new Date().toISOString() });
         currentTask = updated;
@@ -465,15 +463,14 @@
       try {
         const [loadedSettings, loadedStatuses, loadedTags, existingSession] = await Promise.all([
           api.pomodoroSettings(),
-          api.statuses(workspace.id),
-          api.tags(workspace.id),
+          api.statuses(),
+          api.tags(),
           api.pomodoroSession()
         ]);
         settings = loadedSettings;
         statuses = loadedStatuses;
         tags = loadedTags;
         const activeSession = existingSession ?? await api.createPomodoroSession({
-          workspace_id: workspace.id,
           tag_id: sessionTagId
         });
         await applySession(activeSession, false);
@@ -496,7 +493,7 @@
 
   onDestroy(() => {
     window.clearTimeout(descriptionSaveTimer);
-    if (currentTask && workspace.role !== 'viewer') {
+    if (currentTask) {
       pendingDescriptionSave = { taskId: currentTask.id, value: descriptionDraft };
       void drainDescriptionSave();
     }
@@ -507,7 +504,7 @@
   <header class="focus-header">
     <div class="focus-brand"><span class="focus-dot"></span><strong>Next Task</strong></div>
     <div class="focus-header-actions">
-      {#if workspace.role !== 'viewer' && phase === 'focus'}
+      {#if phase === 'focus'}
         <AppButton on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
       {/if}
       <AppButton on:click={endSession}>End session</AppButton>
@@ -569,7 +566,6 @@
           <TaskCard
             task={currentTask}
             {statuses}
-            readOnly={workspace.role === 'viewer'}
             on:changed={(event) => handlePinnedTaskChanged(event.detail)}
             on:open={(event) => dispatch('openTask', event.detail)}
             on:createBlocker={(event) => dispatch('createBlocker', event.detail)}
@@ -579,7 +575,7 @@
           <section class="focus-description-editor" aria-label="Task working notes">
             <div class="description-heading">
               <strong>Working notes</strong>
-              {#if workspace.role !== 'viewer' && descriptionSaveState !== 'idle'}
+              {#if descriptionSaveState !== 'idle'}
                 <span class:error-state={descriptionSaveState === 'error'} class="save-state" aria-live="polite">
                   {descriptionSaveState === 'saving' ? 'Saving…' : descriptionSaveState === 'saved' ? 'Saved' : 'Save failed'}
                 </span>
@@ -587,7 +583,7 @@
             </div>
             <MarkdownEditor
               bind:value={descriptionDraft}
-              disabled={workspace.role === 'viewer'}
+
               label=""
               placeholder="Take notes, update checklists, paste links, or write Markdown…"
               on:input={(event) => scheduleDescriptionSave(event.detail)}
@@ -600,9 +596,7 @@
         {:else}
           <div class="empty-focus">
             <p>No unfinished, unblocked tasks are available in this session scope.</p>
-            {#if workspace.role !== 'viewer'}
-              <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>Create a task</AppButton>
-            {/if}
+            <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>Create a task</AppButton>
           </div>
         {/if}
 
@@ -637,7 +631,7 @@
                 tasks={sessionTasks}
                 currentTaskId={currentTask?.id ?? null}
                 allowFocus={true}
-                allowUnblock={workspace.role !== 'viewer'}
+                allowUnblock={true}
                 busyTaskId={unblockingTaskId}
                 on:open={(event) => dispatch('openTask', event.detail)}
                 on:focus={(event) => focusTask(event.detail)}

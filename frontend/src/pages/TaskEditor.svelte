@@ -2,12 +2,11 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import { localDateTime } from '../lib/format';
-  import type { Task, TaskInput, TaskSummary, Workspace } from '../lib/api/types';
+  import type { Task, TaskInput, TaskSummary } from '../lib/api/types';
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
   import TaskCompletionDialog from '../lib/components/TaskCompletionDialog.svelte';
   import TaskForm from '../lib/components/TaskForm.svelte';
 
-  export let workspace: Workspace;
   export let taskId = 0;
   export let initialTitle = '';
   export let initialParentTaskId = 0;
@@ -66,7 +65,7 @@
     try {
       const saved = taskId
         ? await api.updateTask(taskId, input)
-        : await api.createTask({ ...input, workspace_id: workspace.id });
+        : await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not save task';
@@ -297,7 +296,7 @@
         </h1>
       </div>
       <div class="editor-header-actions">
-        {#if task && workspace.role !== 'viewer'}
+        {#if task}
           {#if !isDraft}
             <button
               type="button"
@@ -350,7 +349,6 @@
       {/if}
       <TaskForm
         bind:this={form}
-        {workspace}
         {taskId}
         initialTitle={task?.title || initialTitle}
         initialDescription={task?.description || ''}
@@ -359,7 +357,6 @@
         initialDueDate={task?.due_date || ''}
         initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}
         initialParentTaskId={task?.parent_task_id || initialParentTaskId}
-        initialAssigneeIds={task?.assignees.map((item) => item.id) || []}
         initialTagIds={task?.direct_tags.map((item) => item.id) || []}
         taskDetails={task}
         {busy}
@@ -384,7 +381,6 @@
 {#if task && blockModalOpen}
   <BlockTaskModal
     taskId={task.id}
-    workspaceId={workspace.id}
     taskTitle={task.title}
     history={task.blocking_history}
     {busy}
@@ -399,12 +395,11 @@
 {/if}
 
 {#if nestedIntent}
-  <svelte:self {workspace} initialTitle={nestedTitle} initialParentTaskId={nestedIntent === 'child' ? taskId : 0} on:saved={(event) => void nestedSaved(event.detail)} on:close={() => (nestedIntent = null)} on:changed={(event) => dispatch('changed', event.detail)} on:openTask={(event) => dispatch('openTask', event.detail)} />
+  <svelte:self initialTitle={nestedTitle} initialParentTaskId={nestedIntent === 'child' ? taskId : 0} on:saved={(event) => void nestedSaved(event.detail)} on:close={() => (nestedIntent = null)} on:changed={(event) => dispatch('changed', event.detail)} on:openTask={(event) => dispatch('openTask', event.detail)} />
 {/if}
 
 {#if completionTarget}
   <TaskCompletionDialog
-    workspaceId={workspace.id}
     taskId={completionTarget.id}
     taskTitle={completionTarget.title}
     {busy}

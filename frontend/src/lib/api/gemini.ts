@@ -12,7 +12,6 @@ export interface TextToTaskDraft {
   status_id: number;
   priority: number;
   due_date: string | null;
-  assignee_ids: number[];
   existing_tag_ids: number[];
   new_tag_names: string[];
   model: string;
@@ -28,9 +27,9 @@ export const geminiApi = {
   saveKey: (api_key: string) =>
     request<GeminiSettings>('/api/integrations/gemini', json('PUT', { api_key })),
   deleteKey: () => request<GeminiSettings>('/api/integrations/gemini', json('DELETE')),
-  taskDraft: (workspaceId: number, text: string) =>
+  taskDraft: (text: string) =>
     request<TextToTaskDraft>(
-      `/api/workspaces/${workspaceId}/task-drafts/from-text`,
+      '/api/task-drafts/from-text',
       json('POST', { text })
     )
 };

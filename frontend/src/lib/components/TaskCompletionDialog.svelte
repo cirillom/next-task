@@ -4,7 +4,6 @@
   import type { Task } from '../api/types';
   import AppButton from './AppButton.svelte';
 
-  export let workspaceId: number;
   export let taskId: number;
   export let taskTitle: string;
   export let busy = false;
@@ -41,8 +40,8 @@
   onMount(async () => {
     try {
       const [unfinished, finished] = await Promise.all([
-        api.tasks(workspaceId, { finished: false }),
-        api.tasks(workspaceId, { finished: true })
+        api.tasks({ finished: false }),
+        api.tasks({ finished: true })
       ]);
       rows = flattenDescendants([...unfinished, ...finished]);
     } catch (reason) {

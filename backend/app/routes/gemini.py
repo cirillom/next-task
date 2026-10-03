@@ -13,10 +13,9 @@ from app.gemini_schemas import (
     TextToTaskDraft,
     TextToTaskRequest,
 )
-from app.models import Tag, TaskStatus, User, WorkspaceMember
+from app.models import Tag, TaskStatus, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft
-from app.services.workspaces import require_editor
 
 router = APIRouter(tags=["gemini"])
 
@@ -64,16 +63,14 @@ def _normalize_tag(value: str) -> str:
 
 
 @router.post(
-    "/api/workspaces/{workspace_id}/task-drafts/from-text",
+    "/api/task-drafts/from-text",
     response_model=TextToTaskDraft,
 )
 def text_to_task(
-    workspace_id: int,
     payload: TextToTaskRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TextToTaskDraft:
-    membership = require_editor(db, workspace_id, user)
     if not user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=409,
@@ -81,30 +78,15 @@ def text_to_task(
         )
     statuses = list(
         db.scalars(
-            select(TaskStatus)
-            .where(TaskStatus.workspace_id == workspace_id)
-            .order_by(TaskStatus.id)
+            select(TaskStatus).where(TaskStatus.user_id == user.id).order_by(TaskStatus.id)
         ).all()
     )
-    members = list(
-        db.scalars(
-            select(WorkspaceMember)
-            .where(WorkspaceMember.workspace_id == workspace_id)
-            .order_by(WorkspaceMember.user_id)
-        ).all()
-    )
-    tags = list(
-        db.scalars(select(Tag).where(Tag.workspace_id == workspace_id).order_by(Tag.name)).all()
-    )
+    tags = list(db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name)).all())
     if not statuses:
-        raise HTTPException(status_code=409, detail="The workspace needs at least one status")
+        raise HTTPException(status_code=409, detail="Add a task status before using text to task")
     context = {
-        "name": membership.workspace.name,
         "today": date.today().isoformat(),
         "statuses": [{"name": item.name} for item in statuses],
-        "members": [
-            {"name": item.user.display_name, "email": item.user.email} for item in members
-        ],
         "existing_tags": [item.name for item in tags],
     }
     try:
@@ -117,14 +99,6 @@ def text_to_task(
 
     status_by_name = {item.name.casefold(): item for item in statuses}
     chosen_status = status_by_name.get(generated.status_name.casefold(), statuses[0])
-    member_by_email = {item.user.email.casefold(): item for item in members}
-    assignee_ids = list(
-        dict.fromkeys(
-            member_by_email[email.casefold()].user_id
-            for email in generated.assignee_emails
-            if email.casefold() in member_by_email
-        )
-    )
     tag_by_name = {item.name.casefold(): item for item in tags}
     existing_tag_ids: list[int] = []
     new_tag_names: list[str] = []
@@ -146,7 +120,6 @@ def text_to_task(
         status_id=chosen_status.id,
         priority=generated.priority,
         due_date=generated.due_date,
-        assignee_ids=assignee_ids,
         existing_tag_ids=existing_tag_ids,
         new_tag_names=new_tag_names,
         model=get_settings().gemini_model,

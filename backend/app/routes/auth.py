@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import User, UserSession
 from app.schemas import LoginRequest, Message, PasswordChange, SignUpRequest, UserRead
+from app.services.user_defaults import add_default_statuses
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
@@ -48,6 +49,7 @@ def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get
     )
     db.add(user)
     try:
+        add_default_statuses(db, user)
         db.commit()
     except IntegrityError as error:
         db.rollback()

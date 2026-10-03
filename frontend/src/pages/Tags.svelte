@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Tag, TagMergePreview, Workspace } from '../lib/api/types';
+  import type { Tag, TagMergePreview } from '../lib/api/types';
   import { tagHierarchyOrder, tagHierarchyPaths, tagHierarchyRows } from '../lib/tagHierarchy';
   import TagBadge from '../lib/components/TagBadge.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
@@ -28,7 +28,6 @@
     return SUGGESTED_TAG_COLORS[Math.floor(Math.random() * SUGGESTED_TAG_COLORS.length)];
   }
 
-  export let workspace: Workspace;
 
   let tags: Tag[] = [];
   let search = '';
@@ -111,7 +110,7 @@
 
   async function load(preferredId = selectedId) {
     try {
-      const loaded = await api.tags(workspace.id);
+      const loaded = await api.tags();
       tags = loaded;
 
       if (!expandedInitialized) {
@@ -179,7 +178,7 @@
     busy = true;
     error = '';
     try {
-      const created = await api.createTag(workspace.id, {
+      const created = await api.createTag({
         name: createName,
         description: createDescription,
         color: createColor,
@@ -189,13 +188,13 @@
         const draft = parentDraft;
         if (draft.tagId) {
           try {
-            await api.addTagParent(workspace.id, draft.tagId, created.id);
+            await api.addTagParent(draft.tagId, created.id);
           } finally {
             await load(draft.tagId);
             restoreParentDraft();
           }
         } else {
-          tags = await api.tags(workspace.id);
+          tags = await api.tags();
           restoreParentDraft(created.id);
         }
       } else {
@@ -213,7 +212,7 @@
     busy = true;
     error = '';
     try {
-      await api.updateTag(workspace.id, selectedTag.id, {
+      await api.updateTag(selectedTag.id, {
         name: editName,
         description: editDescription,
         color: editColor
@@ -233,7 +232,7 @@
     busy = true;
     error = '';
     try {
-      await api.addTagParent(workspace.id, tagId, parentId);
+      await api.addTagParent(tagId, parentId);
       await load(tagId);
       editName = draft.name;
       editDescription = draft.description;
@@ -250,7 +249,7 @@
     busy = true;
     error = '';
     try {
-      await api.removeTagParent(workspace.id, selectedTag.id, parentId);
+      await api.removeTagParent(selectedTag.id, parentId);
       await load(selectedTag.id);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not remove parent';
@@ -285,7 +284,6 @@
     mergeError = '';
     try {
       mergePreview = await api.tagMergePreview(
-        workspace.id,
         selectedTag.id,
         Number(mergeDestinationId)
       );
@@ -301,7 +299,7 @@
     busy = true;
     mergeError = '';
     try {
-      const merged = await api.mergeTag(workspace.id, selectedTag.id, mergeDestination.id);
+      const merged = await api.mergeTag(selectedTag.id, mergeDestination.id);
       mergeOpen = false;
       await load(merged.id);
     } catch (reason) {
@@ -319,7 +317,7 @@
     busy = true;
     error = '';
     try {
-      await api.deleteTag(workspace.id, selectedTag.id);
+      await api.deleteTag(selectedTag.id);
       selectedId = 0;
       await load(0);
     } catch (reason) {
@@ -346,9 +344,8 @@
   <aside class="panel hierarchy-browser">
     <div class="browser-toolbar">
       <TextField bind:value={search} type="search" aria-label="Search tags" placeholder="Search tags" />
-      {#if workspace.role !== 'viewer'}
+
         <AppButton variant="primary" on:click={startCreate}>New tag</AppButton>
-      {/if}
     </div>
 
     {#if !tags.length}
@@ -428,14 +425,13 @@
       {/if}
 
       <form class="detail-form" on:submit|preventDefault={saveEdit}>
-        <label>Name<TextField bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
-        <label class="color-field">Color<input type="color" bind:value={editColor} disabled={workspace.role === 'viewer'} /></label>
-        <label class="wide">Description<TextArea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'} /></label>
-        {#if workspace.role !== 'viewer'}
+        <label>Name<TextField bind:value={editName} maxlength="120" required  /></label>
+        <label class="color-field">Color<input type="color" bind:value={editColor}  /></label>
+        <label class="wide">Description<TextArea bind:value={editDescription} rows="4"  /></label>
+
           <div class="detail-actions wide">
             <AppButton type="submit" variant="primary" disabled={busy}>Save details</AppButton>
           </div>
-        {/if}
       </form>
 
       <div class="relationship-section">
@@ -448,9 +444,8 @@
             {#each selectedTag.parents as parent}
               <span>
                 <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}><TagBadge tag={parent} /></button>
-                {#if workspace.role !== 'viewer'}
+
                   <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
-                {/if}
               </span>
             {/each}
           </div>
@@ -458,9 +453,8 @@
           <p class="muted">No parent tags.</p>
         {/if}
 
-        {#if workspace.role !== 'viewer'}
+
           <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.map((tag) => tag.name)} searchable emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
-        {/if}
       </div>
 
       <div class="relationship-section">
@@ -479,7 +473,7 @@
         {/if}
       </div>
 
-      {#if workspace.role !== 'viewer'}
+
         {#if mergeOpen}
           <section class="merge-panel" aria-label="Merge tag">
             <div class="relationship-heading">
@@ -522,7 +516,6 @@
           <AppButton disabled={busy || mergeOpen} on:click={startMerge}>Merge into…</AppButton>
           <AppButton variant="danger" disabled={busy || mergeOpen} on:click={() => void remove()}>Delete tag</AppButton>
         </div>
-      {/if}
     {:else}
       <p class="empty">Select a tag to inspect it.</p>
     {/if}

@@ -1,9 +1,8 @@
 # Next Task
 
-Next Task is a small, self-hosted task manager that ranks unfinished work with a
-workspace-configurable score. It supports multiple workspaces, owner/editor/viewer
-roles, Markdown task descriptions, subtasks, assignees, blocking history, and a
-Tag Studio-style inheritance DAG.
+Next Task is a small, self-hosted task manager that ranks each user's unfinished
+work with a personal scoring formula. It supports Markdown task descriptions,
+subtasks, blocking history, and a Tag Studio-style inheritance DAG.
 
 There is no offline synchronization; the service worker caches only the application shell.
 
@@ -99,9 +98,8 @@ docker compose --env-file ../.env exec next-task uv run python -m app.cli reset-
 
 Existing sessions for that user are revoked. Both CLI commands accept
 `--password-stdin` for controlled automation without putting a password in process
-arguments. After signing in, create the first workspace in the UI; its creator
-becomes owner and the `todo` and `doing` statuses plus a default scoring formula
-are created together.
+arguments. New users receive `todo` and `doing` statuses and the default scoring
+formula. Each user can edit statuses and their scoring formula in Settings.
 
 ## Local development
 
@@ -156,26 +154,37 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-Rollback one revision during development with `uv run alembic downgrade -1`.
+The workspace removal migration retains every task under its creator's `user_id`.
+It merges the user's statuses and tags from all their former workspaces. Equivalent
+statuses and standalone tags can be shared; conflicting names receive distinct
+numbered names. Task IDs, drafts, due dates, blocking history, and Pomodoro
+sessions remain in place. Parent and blocking-task links between different users
+are detached; blocking-task links
+become text reasons so their history remains visible. The oldest workspace owned
+by each user supplies their scoring formula. Before deploying this migration,
+stop the app and back up the SQLite database, including its WAL file if present.
+The migration cannot be downgraded because that would require recreating the
+former sharing model; restore the backup to roll back. Earlier Alembic revisions
+remain in the repository so an existing production database can upgrade.
+
 Never replace migrations with `Base.metadata.create_all()` in production.
 
 ## Gemini text to task
 
 Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
-After selecting a workspace, editors and owners can use **+ New task**, enter natural
-language in Quick Capture, choose **Text to task**, and review an editable task before
-anything is created. The review includes title, Markdown description, status, priority,
-due date, assignees, existing tags, and suggested new tags.
+Use **+ New task** to enter natural language in Quick Capture, choose **Text to task**,
+and review an editable task before anything is created. The review includes title,
+Markdown description, status, priority, due date, existing tags, and suggested new tags.
 
 Quick Capture can also save text as a draft. Drafts are full task records that can keep
-status, due date, hierarchy, assignees, tags, and other task metadata while remaining on
+status, due date, hierarchy, tags, and other task metadata while remaining on
 the dedicated **Drafts** page. **Save draft** keeps priority 0; **Save as task** assigns a
 normal priority. Drafts are excluded from normal task lists, Next, and Pomodoro
 until activated.
 
-Drafting sends the entered text plus the selected workspace statuses, members, and tag
-names to Gemini. The personal API key is encrypted in SQLite and is never returned to
-the browser after it is saved. Server-side encryption requires a stable value of at least
+Drafting sends the entered text plus the user's statuses and tag names to Gemini.
+The personal API key is encrypted in SQLite and is never returned to the browser
+after it is saved. Server-side encryption requires a stable value of at least
 32 characters:
 
 ```dotenv

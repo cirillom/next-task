@@ -1,5 +1,4 @@
 import type {
-  Member,
   PomodoroSession,
   PomodoroSettings,
   Status,
@@ -7,8 +6,7 @@ import type {
   TagMergePreview,
   Task,
   TaskInput,
-  User,
-  Workspace
+  User
 } from './types';
 
 export class ApiError extends Error {
@@ -62,7 +60,6 @@ export const api = {
     request<PomodoroSettings>('/api/pomodoro/settings', json('PUT', body)),
   pomodoroSession: () => request<PomodoroSession | null>('/api/pomodoro/session'),
   createPomodoroSession: (body: {
-    workspace_id: number;
     tag_id: number | null;
     task_id?: number | null;
   }) => request<PomodoroSession>('/api/pomodoro/session', json('POST', body)),
@@ -76,73 +73,56 @@ export const api = {
     request<PomodoroSession>('/api/pomodoro/session/dismiss', json('POST')),
   endPomodoroSession: () => request<void>('/api/pomodoro/session', json('DELETE')),
 
-  workspaces: () => request<Workspace[]>('/api/workspaces'),
-  createWorkspace: (name: string) =>
-    request<Workspace>('/api/workspaces', json('POST', { name })),
-  updateWorkspace: (id: number, body: Partial<Pick<Workspace, 'name' | 'scoring_formula'>>) =>
-    request<Workspace>(`/api/workspaces/${id}`, json('PATCH', body)),
-  deleteWorkspace: (id: number) => request<void>(`/api/workspaces/${id}`, json('DELETE')),
-  members: (id: number) => request<Member[]>(`/api/workspaces/${id}/members`),
-  addMember: (id: number, email: string, role: string) =>
-    request<Member>(`/api/workspaces/${id}/members`, json('POST', { email, role })),
-  updateMember: (id: number, userId: number, role: string) =>
-    request<Member>(`/api/workspaces/${id}/members/${userId}`, json('PATCH', { role })),
-  removeMember: (id: number, userId: number) =>
-    request<void>(`/api/workspaces/${id}/members/${userId}`, json('DELETE')),
+  scoringSettings: () => request<{ scoring_formula: string }>('/api/settings/scoring'),
+  updateScoringSettings: (scoring_formula: string) =>
+    request<{ scoring_formula: string }>('/api/settings/scoring', json('PUT', { scoring_formula })),
+  statuses: () => request<Status[]>('/api/statuses'),
+  createStatus: (name: string, score_value: number) =>
+    request<Status>('/api/statuses', json('POST', { name, score_value })),
+  updateStatus: (statusId: number, body: Partial<Status>) =>
+    request<Status>(`/api/statuses/${statusId}`, json('PATCH', body)),
+  deleteStatus: (statusId: number) =>
+    request<void>(`/api/statuses/${statusId}`, json('DELETE')),
 
-  statuses: (id: number) => request<Status[]>(`/api/workspaces/${id}/statuses`),
-  createStatus: (id: number, name: string, score_value: number) =>
-    request<Status>(`/api/workspaces/${id}/statuses`, json('POST', { name, score_value })),
-  updateStatus: (workspaceId: number, statusId: number, body: Partial<Status>) =>
-    request<Status>(
-      `/api/workspaces/${workspaceId}/statuses/${statusId}`,
-      json('PATCH', body)
-    ),
-  deleteStatus: (workspaceId: number, statusId: number) =>
-    request<void>(`/api/workspaces/${workspaceId}/statuses/${statusId}`, json('DELETE')),
-
-  tags: (id: number) => request<Tag[]>(`/api/workspaces/${id}/tags`),
+  tags: () => request<Tag[]>('/api/tags'),
   createTag: (
-    id: number,
     body: {
       name: string;
       description?: string;
       color?: string;
       parent_tag_id?: number | null;
     }
-  ) => request<Tag>(`/api/workspaces/${id}/tags`, json('POST', body)),
-  updateTag: (workspaceId: number, tagId: number, body: Partial<Tag>) =>
-    request<Tag>(`/api/workspaces/${workspaceId}/tags/${tagId}`, json('PATCH', body)),
-  deleteTag: (workspaceId: number, tagId: number) =>
-    request<void>(`/api/workspaces/${workspaceId}/tags/${tagId}`, json('DELETE')),
-  addTagParent: (workspaceId: number, tagId: number, parent_tag_id: number) =>
+  ) => request<Tag>('/api/tags', json('POST', body)),
+  updateTag: (tagId: number, body: Partial<Tag>) =>
+    request<Tag>(`/api/tags/${tagId}`, json('PATCH', body)),
+  deleteTag: (tagId: number) => request<void>(`/api/tags/${tagId}`, json('DELETE')),
+  addTagParent: (tagId: number, parent_tag_id: number) =>
     request<Tag>(
-      `/api/workspaces/${workspaceId}/tags/${tagId}/parents`,
+      `/api/tags/${tagId}/parents`,
       json('POST', { parent_tag_id })
     ),
-  removeTagParent: (workspaceId: number, tagId: number, parentId: number) =>
+  removeTagParent: (tagId: number, parentId: number) =>
     request<Tag>(
-      `/api/workspaces/${workspaceId}/tags/${tagId}/parents/${parentId}`,
+      `/api/tags/${tagId}/parents/${parentId}`,
       json('DELETE')
     ),
-  tagMergePreview: (workspaceId: number, tagId: number, destinationTagId: number) =>
+  tagMergePreview: (tagId: number, destinationTagId: number) =>
     request<TagMergePreview>(
-      `/api/workspaces/${workspaceId}/tags/${tagId}/merge-preview?destination_tag_id=${encodeURIComponent(String(destinationTagId))}`
+      `/api/tags/${tagId}/merge-preview?destination_tag_id=${encodeURIComponent(String(destinationTagId))}`
     ),
-  mergeTag: (workspaceId: number, tagId: number, destinationTagId: number) =>
+  mergeTag: (tagId: number, destinationTagId: number) =>
     request<Tag>(
-      `/api/workspaces/${workspaceId}/tags/${tagId}/merge`,
+      `/api/tags/${tagId}/merge`,
       json('POST', { destination_tag_id: destinationTagId })
     ),
 
   tasks: (
-    workspaceId: number,
     params: Record<
       string,
       string | number | boolean | null | undefined | readonly (string | number | boolean)[]
     > = {}
   ) => {
-    const query = new URLSearchParams({ workspace_id: String(workspaceId) });
+    const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (Array.isArray(value)) {
         for (const item of value) query.append(key, String(item));
@@ -152,14 +132,12 @@ export const api = {
     }
     return request<Task[]>(`/api/tasks?${query}`);
   },
-  drafts: (workspaceId: number) =>
-    request<Task[]>(`/api/drafts?workspace_id=${encodeURIComponent(String(workspaceId))}`),
+  drafts: () => request<Task[]>('/api/drafts'),
   createDraft: (
-    body: Pick<TaskInput, 'title'> &
-      Partial<Omit<TaskInput, 'workspace_id' | 'title' | 'priority'>> & { workspace_id: number }
+    body: Pick<TaskInput, 'title'> & Partial<Omit<TaskInput, 'title' | 'priority'>>
   ) => request<Task>('/api/drafts', json('POST', body)),
   task: (id: number) => request<Task>(`/api/tasks/${id}`),
-  createTask: (body: TaskInput & { workspace_id: number }) =>
+  createTask: (body: TaskInput) =>
     request<Task>('/api/tasks', json('POST', body)),
   updateTask: (id: number, body: Partial<TaskInput>) =>
     request<Task>(`/api/tasks/${id}`, json('PATCH', body)),
