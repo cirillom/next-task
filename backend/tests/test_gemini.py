@@ -18,12 +18,6 @@ def save_key(client: TestClient, key: str = "AIza-test-key-with-enough-character
     return response.json()
 
 
-def make_workspace(client: TestClient) -> tuple[dict, list[dict]]:
-    workspace = client.post("/api/workspaces", json={"name": "Product"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
-    return workspace, statuses
-
-
 def test_gemini_key_is_encrypted_and_never_returned(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
@@ -53,21 +47,13 @@ def test_gemini_key_is_encrypted_and_never_returned(
     assert removed.json()["configured"] is False
 
 
-def test_text_to_task_maps_only_valid_workspace_values(
+def test_text_to_task_maps_only_valid_user_values(
     logged_in_client: Callable[[str], TestClient],
-    create_user: Callable[[str, str, str], User],
     monkeypatch,
 ) -> None:
     client = logged_in_client("owner@example.com")
-    teammate = create_user("teammate@example.com", name="Team Mate")
-    workspace, statuses = make_workspace(client)
-    client.post(
-        f"/api/workspaces/{workspace['id']}/members",
-        json={"email": teammate.email, "role": "editor"},
-    )
-    existing = client.post(
-        f"/api/workspaces/{workspace['id']}/tags", json={"name": "backend"}
-    ).json()
+    statuses = client.get("/api/statuses").json()
+    existing = client.post("/api/tags", json={"name": "backend"}).json()
     save_key(client)
     captured: dict = {}
 
@@ -79,13 +65,12 @@ def test_text_to_task_maps_only_valid_workspace_values(
             status_name="doing",
             priority=3,
             due_date="2026-09-08",
-            assignee_emails=["teammate@example.com", "outside@example.com"],
             tag_names=["#Backend", "ai", "AI", ""],
         )
 
     monkeypatch.setattr(gemini_routes, "generate_task_draft", fake_generate)
     response = client.post(
-        f"/api/workspaces/{workspace['id']}/task-drafts/from-text",
+        "/api/task-drafts/from-text",
         json={"text": "Have Team Mate ship AI task drafting by Tuesday"},
     )
 
@@ -96,7 +81,6 @@ def test_text_to_task_maps_only_valid_workspace_values(
         "status_id": statuses[1]["id"],
         "priority": 3,
         "due_date": "2026-09-08",
-        "assignee_ids": [teammate.id],
         "existing_tag_ids": [existing["id"]],
         "new_tag_names": ["ai"],
         "model": "gemini-3.8-flash",
@@ -104,49 +88,38 @@ def test_text_to_task_maps_only_valid_workspace_values(
     assert captured["api_key"] == "AIza-test-key-with-enough-characters"
     assert captured["text"].startswith("Have Team Mate")
     assert captured["context"]["existing_tags"] == ["backend"]
-    assert {item["name"] for item in captured["context"]["members"]} == {
-        "Test User",
-        "Team Mate",
-    }
+    assert "members" not in captured["context"]
 
 
-def test_text_to_task_requires_own_key_and_editor_access(
+def test_text_to_task_requires_own_key(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],
 ) -> None:
     owner = logged_in_client("owner@example.com")
     viewer = create_user("viewer@example.com")
-    workspace, _statuses = make_workspace(owner)
 
     missing = owner.post(
-        f"/api/workspaces/{workspace['id']}/task-drafts/from-text",
+        "/api/task-drafts/from-text",
         json={"text": "Create something"},
     )
     assert missing.status_code == 409
 
-    owner.post(
-        f"/api/workspaces/{workspace['id']}/members",
-        json={"email": viewer.email, "role": "viewer"},
-    )
     viewer_client = TestClient(owner.app)
     viewer_client.post(
         "/api/auth/login",
         json={"email": viewer.email, "password": "correct horse"},
     )
-    save_key(viewer_client)
     denied = viewer_client.post(
-        f"/api/workspaces/{workspace['id']}/task-drafts/from-text",
+        "/api/task-drafts/from-text",
         json={"text": "Create something"},
     )
-    assert denied.status_code == 403
+    assert denied.status_code == 409
 
 
 def gemini_context() -> dict:
     return {
-        "name": "Personal",
         "today": "2026-09-03",
         "statuses": [{"name": "todo"}],
-        "members": [{"name": "Owner", "email": "owner@example.com"}],
         "existing_tags": [],
     }
 
@@ -159,16 +132,13 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
         assert "max_output_tokens" not in body
         assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
-        assert body["response_format"]["schema"]["properties"]["status_name"]["enum"] == [
-            "todo"
-        ]
+        assert body["response_format"]["schema"]["properties"]["status_name"]["enum"] == ["todo"]
         generated = {
             "title": "Buy groceries",
             "description": None,
             "status_name": "todo",
             "priority": 1,
             "due_date": None,
-            "assignee_emails": [],
             "tag_names": ["errands"],
         }
         return httpx.Response(

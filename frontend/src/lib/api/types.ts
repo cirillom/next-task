@@ -1,5 +1,3 @@
-export type Role = 'owner' | 'editor' | 'viewer';
-
 export interface User {
   id: number;
   email: string;
@@ -7,24 +5,8 @@ export interface User {
   created_at: string;
 }
 
-export interface Workspace {
-  id: number;
-  name: string;
-  scoring_formula: string | null;
-  created_at: string;
-  role: Role;
-}
-
-export interface Member {
-  user_id: number;
-  email: string;
-  display_name: string;
-  role: Role;
-}
-
 export interface Status {
   id: number;
-  workspace_id: number;
   name: string;
   score_value: number;
 }
@@ -36,7 +18,6 @@ export interface TagSummary {
 }
 
 export interface Tag extends TagSummary {
-  workspace_id: number;
   description: string | null;
   direct_task_count: number;
   parents: TagSummary[];
@@ -70,9 +51,7 @@ export interface TaskSummary {
 
 export interface Task {
   id: number;
-  created_by_user_id: number;
-  creator: User;
-  workspace_id: number;
+  user_id: number;
   title: string;
   description: string | null;
   status: Status;
@@ -89,7 +68,6 @@ export interface Task {
   ranking_score: number;
   ranking_source_task_id: number | null;
   ranking_source_score: number | null;
-  assignees: User[];
   direct_tags: TagSummary[];
   inherited_tags: TagSummary[];
   current_block: Block | null;
@@ -100,7 +78,6 @@ export interface Task {
 }
 
 export interface TaskInput {
-  workspace_id?: number;
   title: string;
   description: string | null;
   status_id: number;
@@ -108,7 +85,6 @@ export interface TaskInput {
   due_date: string | null;
   last_worked_at: string | null;
   parent_task_id: number | null;
-  assignee_ids: number[];
   tag_ids: number[];
 }
 
@@ -124,7 +100,6 @@ export type PomodoroPhase = 'focus' | 'short-break' | 'long-break';
 export type PomodoroState = 'ready' | 'running' | 'ringing';
 
 export interface PomodoroSession {
-  workspace_id: number;
   tag_id: number | null;
   task_id: number | null;
   phase: PomodoroPhase;

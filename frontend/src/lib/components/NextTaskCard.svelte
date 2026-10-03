@@ -153,7 +153,6 @@
       class:overdue={!!task.due_date && task.due_date < localDate()}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
-    {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
   {#if task.direct_tags.length}
@@ -187,7 +186,6 @@
 {#if blockModalOpen}
   <BlockTaskModal
     taskId={task.id}
-    workspaceId={task.workspace_id}
     taskTitle={task.title}
     history={task.blocking_history}
     {busy}
@@ -203,7 +201,6 @@
 
 {#if completionOpen}
   <TaskCompletionDialog
-    workspaceId={task.workspace_id}
     taskId={task.id}
     taskTitle={task.title}
     {busy}

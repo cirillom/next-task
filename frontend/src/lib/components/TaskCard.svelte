@@ -172,7 +172,6 @@
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
-    {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
   {#if task.direct_tags.length}
@@ -227,11 +226,11 @@
 </article>
 
 {#if blockModalOpen}
-  <BlockTaskModal taskTitle={task.title} taskId={task.id} workspaceId={task.workspace_id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
+  <BlockTaskModal taskTitle={task.title} taskId={task.id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
 {/if}
 
 {#if completionOpen}
-  <TaskCompletionDialog workspaceId={task.workspace_id} taskId={task.id} taskTitle={task.title} {busy} on:close={() => (completionOpen = false)} on:confirm={() => void confirmFinish()} />
+  <TaskCompletionDialog taskId={task.id} taskTitle={task.title} {busy} on:close={() => (completionOpen = false)} on:confirm={() => void confirmFinish()} />
 {/if}
 
 <style>

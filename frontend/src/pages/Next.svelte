@@ -1,13 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Tag, Task, Workspace } from '../lib/api/types';
+  import type { Tag, Task } from '../lib/api/types';
   import NextTaskCard from '../lib/components/NextTaskCard.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
   import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
 
-  export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number; startFocus: number | null; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
@@ -21,7 +20,7 @@
     if (showLoading) loading = true;
     error = '';
     try {
-      tasks = await api.tasks(workspace.id, {
+      tasks = await api.tasks({
         finished: false,
         blocked: false,
         actionable: true,
@@ -46,9 +45,9 @@
   onMount(() => {
     void (async () => {
       try {
-        [tags] = await Promise.all([api.tags(workspace.id), loadTasks()]);
+        [tags] = await Promise.all([api.tags(), loadTasks()]);
       } catch (reason) {
-        error = reason instanceof Error ? reason.message : 'Could not load workspace';
+        error = reason instanceof Error ? reason.message : 'Could not load tasks';
         loading = false;
       }
     })();
@@ -68,7 +67,7 @@
 
 <div class="page-heading">
   <div><p class="eyebrow">Ranked for you</p><h1>Next task</h1></div>
-  {#if workspace.role !== 'viewer'}<AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>{/if}
+  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
 </div>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -90,7 +89,7 @@
   {:else if !loading}
     <NextTaskCard
       task={tasks[0]}
-      readOnly={workspace.role === 'viewer'}
+
       on:changed={(event) => void replaceTask(event.detail)}
       on:open={(event) => dispatch('openTask', event.detail)}
       on:createBlocker={(event) => dispatch('createBlocker', event.detail)}

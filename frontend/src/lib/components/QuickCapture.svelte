@@ -2,12 +2,11 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
-  import type { Task, TaskInput, Workspace } from '../api/types';
+  import type { Task, TaskInput } from '../api/types';
   import TaskForm from './TaskForm.svelte';
   import AppButton from './AppButton.svelte';
   import TextArea from './TextArea.svelte';
 
-  export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ close: void; saved: Task }>();
 
   type Stage = 'capture' | 'review';
@@ -38,7 +37,6 @@
       status_id: 0,
       priority: 1,
       due_date: null,
-      assignee_ids: [],
       existing_tag_ids: [],
       new_tag_names: [],
       model: ''
@@ -52,7 +50,6 @@
     error = '';
     try {
       const saved = await api.createDraft({
-        workspace_id: workspace.id,
         title: parsed.title,
         description: parsed.description
       });
@@ -69,7 +66,7 @@
     busy = true;
     error = '';
     try {
-      proposal = await geminiApi.taskDraft(workspace.id, captureText);
+      proposal = await geminiApi.taskDraft(captureText);
       reviewSource = 'gemini';
       stage = 'review';
     } catch (reason) {
@@ -91,7 +88,7 @@
     busy = true;
     error = '';
     try {
-      const saved = await api.createTask({ ...input, workspace_id: workspace.id });
+      const saved = await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create task';
@@ -105,7 +102,7 @@
     error = '';
     try {
       const { priority: _priority, ...draftInput } = input;
-      const saved = await api.createDraft({ ...draftInput, workspace_id: workspace.id });
+      const saved = await api.createDraft(draftInput);
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create draft';
@@ -161,13 +158,11 @@
         <p class="notice">Gemini filled the task using <code>{proposal.model}</code>. Review anything you want before creating it.</p>
       {/if}
       <TaskForm
-        {workspace}
         initialTitle={proposal.title}
         initialDescription={proposal.description || ''}
         initialStatusId={proposal.status_id}
         initialPriority={proposal.priority}
         initialDueDate={proposal.due_date || ''}
-        initialAssigneeIds={proposal.assignee_ids}
         initialTagIds={proposal.existing_tag_ids}
         initialNewTags={proposal.new_tag_names.join(', ')}
         {busy}

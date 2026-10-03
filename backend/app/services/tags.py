@@ -38,8 +38,8 @@ def descendant_ids(db: Session, tag_id: int) -> set[int]:
 def validate_relationship(db: Session, child: Tag, parent: Tag) -> None:
     if child.id == parent.id:
         raise HTTPException(status_code=422, detail="A tag cannot be its own parent")
-    if child.workspace_id != parent.workspace_id:
-        raise HTTPException(status_code=422, detail="Tags must belong to the same workspace")
+    if child.user_id != parent.user_id:
+        raise HTTPException(status_code=422, detail="Tags must belong to the same user")
     if child.id in ancestor_ids(db, [parent.id]):
         raise HTTPException(status_code=422, detail="Tag relationship would create a cycle")
 
