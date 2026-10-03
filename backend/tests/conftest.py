@@ -1,10 +1,13 @@
 import os
+import tempfile
 from collections.abc import Callable, Generator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["NEXT_TASK_DATABASE_URL"] = "sqlite:///./data/test-next-task.sqlite3"
+_test_database_path = Path(tempfile.mkdtemp(prefix="next-task-tests-")) / "next-task.sqlite3"
+os.environ["NEXT_TASK_DATABASE_URL"] = f"sqlite:///{_test_database_path.as_posix()}"
 os.environ["NEXT_TASK_COOKIE_SECURE"] = "false"
 os.environ["NEXT_TASK_CREDENTIAL_SECRET"] = "test-credential-secret-at-least-thirty-two-characters"
 
@@ -34,6 +37,7 @@ def create_user() -> Callable[[str, str, str], User]:
         with SessionLocal() as db:
             user = User(email=email, display_name=name, password_hash=hash_password(password))
             db.add(user)
+            db.flush()
             db.commit()
             db.refresh(user)
             db.expunge(user)

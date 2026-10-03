@@ -20,9 +20,7 @@ class PomodoroSettings(Base):
             "short_breaks_before_long BETWEEN 1 AND 12",
             name="pomodoro_short_breaks_before_long_range",
         ),
-        CheckConstraint(
-            "alert_mode IN ('notification', 'alarm')", name="pomodoro_alert_mode"
-        ),
+        CheckConstraint("alert_mode IN ('notification', 'alarm')", name="pomodoro_alert_mode"),
     )
 
     user_id: Mapped[int] = mapped_column(
@@ -43,17 +41,12 @@ class PomodoroSession(Base):
         CheckConstraint(
             "phase IN ('focus', 'short-break', 'long-break')", name="pomodoro_session_phase"
         ),
-        CheckConstraint(
-            "state IN ('ready', 'running', 'ringing')", name="pomodoro_session_state"
-        ),
+        CheckConstraint("state IN ('ready', 'running', 'ringing')", name="pomodoro_session_state"),
         CheckConstraint("short_breaks_taken >= 0", name="pomodoro_short_breaks_taken_positive"),
     )
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    workspace_id: Mapped[int] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )
     tag_id: Mapped[int | None] = mapped_column(
         ForeignKey("tags.id", ondelete="SET NULL"), nullable=True

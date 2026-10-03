@@ -2,18 +2,16 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
+  import RankingBoost from './RankingBoost.svelte';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import BlockSummary from './BlockSummary.svelte';
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
-  import RankingBoost from './RankingBoost.svelte';
   import TagBadge from './TagBadge.svelte';
 
   export let task: Task;
-  export let workspaceName = '';
-  export let tagNames: Record<number, string> = {};
   export let readOnly = false;
 
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
@@ -108,11 +106,10 @@
 <article class="recommended-card">
   <div class="recommended-card__top">
     <div>
-      <p class="eyebrow">Recommended next{workspaceName ? ` · ${workspaceName}` : ''}</p>
+      <p class="eyebrow">Recommended next</p>
       <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
     </div>
     <div class="recommended-card__header-actions">
-      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
       {#if !readOnly}
         <button
           type="button"
@@ -129,6 +126,7 @@
         </button>
       {/if}
       <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   </div>
 
@@ -155,14 +153,13 @@
       class="date-meta"
       class:overdue={!!task.due_date && task.due_date < localDate()}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    {#if !task.finished_at}<span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>{/if}
-    {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
   </div>
 
   {#if task.direct_tags.length}
     <div class="tag-row">
       {#each task.direct_tags as tag}
-        <TagBadge {tag}>{tagNames[tag.id] || tag.name}</TagBadge>
+        <TagBadge {tag} />
       {/each}
     </div>
   {/if}
@@ -190,7 +187,6 @@
 {#if blockModalOpen}
   <BlockTaskModal
     taskId={task.id}
-    workspaceId={task.workspace_id}
     taskTitle={task.title}
     history={task.blocking_history}
     {busy}
@@ -206,7 +202,6 @@
 
 {#if completionOpen}
   <TaskCompletionDialog
-    workspaceId={task.workspace_id}
     taskId={task.id}
     taskTitle={task.title}
     {busy}

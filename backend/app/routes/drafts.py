@@ -9,13 +9,11 @@ from app.models import Task, User
 from app.routes.tasks import apply_task_relations, task_read
 from app.schemas import TaskRead, TaskUpdate
 from app.services.tasks import validate_parent
-from app.services.workspaces import get_membership, require_editor
 
 router = APIRouter(prefix="/api/drafts", tags=["drafts"])
 
 
 class DraftCreate(TaskUpdate):
-    workspace_id: int
     title: str = Field(min_length=1, max_length=500)
 
     @field_validator("title")
@@ -29,16 +27,14 @@ class DraftCreate(TaskUpdate):
 
 @router.get("", response_model=list[TaskRead])
 def list_drafts(
-    workspace_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TaskRead]:
-    get_membership(db, workspace_id, user.id)
     drafts = list(
         db.scalars(
             select(Task)
             .where(
-                Task.workspace_id == workspace_id,
+                Task.user_id == user.id,
                 Task.priority == 0,
                 Task.finished_at.is_(None),
             )
@@ -56,21 +52,13 @@ def create_draft(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TaskRead:
-    require_editor(db, payload.workspace_id, user)
-    validate_parent(db, payload.workspace_id, payload.parent_task_id)
+    validate_parent(db, user.id, payload.parent_task_id)
 
-    values = payload.model_dump(
-        exclude={"workspace_id", "priority", "assignee_ids", "tag_ids"}
-    )
-    task = Task(
-        created_by_user_id=user.id,
-        workspace_id=payload.workspace_id,
-        priority=0,
-        **values,
-    )
+    values = payload.model_dump(exclude={"priority", "tag_ids"})
+    task = Task(user_id=user.id, priority=0, **values)
     db.add(task)
     db.flush()
-    apply_task_relations(db, task, payload.assignee_ids, payload.tag_ids)
+    apply_task_relations(db, task, payload.tag_ids)
     db.commit()
     db.refresh(task)
     return task_read(db, task)

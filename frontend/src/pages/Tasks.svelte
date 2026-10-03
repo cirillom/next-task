@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Member, Tag, Task, Workspace } from '../lib/api/types';
+  import type { Tag, Task } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TagPicker from '../lib/components/TagPicker.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
@@ -13,19 +13,16 @@
   type SortDirection = 'asc' | 'desc';
   type TagMatch = 'all' | 'any';
 
-  export let workspace: Workspace;
   const dispatch = createEventDispatcher<{ openTask: number; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
   let tags: Tag[] = [];
-  let members: Member[] = [];
   let search = '';
   let finishedFilter: FinishedFilter = 'unfinished';
   let blockedFilter: BlockedFilter = 'all';
   let includeTagIds: number[] = [];
   let excludeTagIds: number[] = [];
   let tagMatch: TagMatch = 'all';
-  let assigneeFilter = '';
   let sortField: SortField = 'score';
   let sortDirection: SortDirection = 'desc';
   let filtersOpen = false;
@@ -38,8 +35,7 @@
     finishedFilter !== 'unfinished',
     blockedFilter !== 'all',
     includeTagIds.length > 0,
-    excludeTagIds.length > 0,
-    assigneeFilter !== ''
+    excludeTagIds.length > 0
   ].filter(Boolean).length;
 
   function taskParams(finished: boolean) {
@@ -49,7 +45,6 @@
       include_tag_id: includeTagIds,
       exclude_tag_id: excludeTagIds,
       tag_match: tagMatch,
-      assignee_id: assigneeFilter ? Number(assigneeFilter) : null,
       blocked:
         blockedFilter === 'all'
           ? null
@@ -62,14 +57,14 @@
   async function loadTasks(): Promise<Task[]> {
     if (finishedFilter === 'all') {
       const [unfinished, finished] = await Promise.all([
-        api.tasks(workspace.id, taskParams(false)),
-        api.tasks(workspace.id, taskParams(true))
+        api.tasks(taskParams(false)),
+        api.tasks(taskParams(true))
       ]);
       return [...unfinished, ...finished];
     }
 
     const finished = finishedFilter === 'finished';
-    return api.tasks(workspace.id, taskParams(finished));
+    return api.tasks(taskParams(finished));
   }
 
   function timestampValue(value: string | null): number | null {
@@ -164,10 +159,9 @@
     loading = true;
     error = '';
     try {
-      [tags, members, tasks] = await Promise.all([
-        api.tags(workspace.id),
-        api.members(workspace.id),
-        loadTasks()
+      [tags, tasks] = await Promise.all([
+        api.tags(),
+                loadTasks()
       ]);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load tasks';
@@ -211,7 +205,6 @@
     includeTagIds = [];
     excludeTagIds = [];
     tagMatch = 'all';
-    assigneeFilter = '';
     void refreshTasks();
   }
 
@@ -239,7 +232,7 @@
 
 <div class="page-heading">
   <div><p class="eyebrow">Browse and search</p><h1>Tasks</h1></div>
-  {#if workspace.role !== 'viewer'}<AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>{/if}
+  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
 </div>
 
 <section class="filter-bar tasks-toolbar">
@@ -280,16 +273,6 @@
           </label>
 
           <label>
-            Assignee
-            <select bind:value={assigneeFilter} on:change={refreshTasks}>
-              <option value="">All</option>
-              {#each members as member (member.user_id)}
-                <option value={String(member.user_id)}>{member.display_name}</option>
-              {/each}
-            </select>
-          </label>
-
-          <label>
             Blocked
             <select bind:value={blockedFilter} on:change={refreshTasks}>
               <option value="all">All</option>
@@ -297,6 +280,7 @@
               <option value="unblocked">Not blocked</option>
             </select>
           </label>
+
 
           <div class="tag-filter">
             <span class="field-label">Include tags</span>
@@ -398,7 +382,7 @@
   {#each orderedTasks as task (task.id)}
     <TaskCard
       {task}
-      readOnly={workspace.role === 'viewer'}
+
       on:changed={() => void refreshTasks()}
       on:open={(event) => dispatch('openTask', event.detail)}
       on:createBlocker={(event) => dispatch('createBlocker', event.detail)}

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
-from app.models import Tag, Task, User, WorkspaceMember
+from app.models import Tag, Task, User
 from app.pomodoro_models import PomodoroSession, PomodoroSettings
 from app.pomodoro_schemas import (
     NextScope,
@@ -82,7 +82,6 @@ def _session_read(session: PomodoroSession, now: datetime) -> PomodoroSessionRea
     values = {
         key: getattr(session, key)
         for key in (
-            "workspace_id",
             "tag_id",
             "task_id",
             "phase",
@@ -94,10 +93,7 @@ def _session_read(session: PomodoroSession, now: datetime) -> PomodoroSessionRea
     scope = (
         NextScope.model_validate_json(session.scope_json)
         if session.scope_json
-        else NextScope(
-            workspace_ids=[session.workspace_id],
-            include_tag_ids=[session.tag_id] if session.tag_id is not None else [],
-        )
+        else NextScope(include_tag_ids=[session.tag_id] if session.tag_id is not None else [])
     )
     return PomodoroSessionRead.model_validate({**values, "scope": scope, "server_now": now})
 
@@ -116,41 +112,25 @@ def _require_session(db: Session, user_id: int) -> PomodoroSession:
 def _validate_scope(
     db: Session,
     user_id: int,
-    workspace_id: int,
     tag_id: int | None,
     task_id: int | None,
     scope: NextScope | None = None,
 ) -> None:
-    workspace_ids = list(dict.fromkeys(scope.workspace_ids)) if scope else [workspace_id]
-    if workspace_id not in workspace_ids:
-        raise HTTPException(status_code=422, detail="Session workspace must be in scope")
-    memberships = set(db.scalars(
-        select(WorkspaceMember.workspace_id).where(
-            WorkspaceMember.user_id == user_id,
-            WorkspaceMember.workspace_id.in_(workspace_ids),
-        )
-    ).all())
-    if len(memberships) != len(workspace_ids):
-        raise HTTPException(status_code=404, detail="Workspace not found")
     if tag_id is not None:
-        tag = db.scalar(select(Tag).where(Tag.id == tag_id, Tag.workspace_id == workspace_id))
+        tag = db.scalar(select(Tag).where(Tag.id == tag_id, Tag.user_id == user_id))
         if tag is None:
-            raise HTTPException(status_code=422, detail="Tag must belong to the session workspace")
+            raise HTTPException(status_code=422, detail="Tag must belong to the user")
     if scope:
         scoped_tag_ids = set(scope.include_tag_ids + scope.exclude_tag_ids)
         tags = db.scalars(select(Tag).where(Tag.id.in_(scoped_tag_ids))).all()
-        if len(tags) != len(scoped_tag_ids) or any(
-            tag.workspace_id not in memberships for tag in tags
-        ):
+        if len(tags) != len(scoped_tag_ids) or any(tag.user_id != user_id for tag in tags):
             raise HTTPException(
-                status_code=422, detail="Session tags must belong to scoped workspaces"
+                status_code=422, detail="Session tags must belong to the user"
             )
     if task_id is not None:
-        task = db.scalar(
-            select(Task).where(Task.id == task_id, Task.workspace_id.in_(workspace_ids))
-        )
+        task = db.scalar(select(Task).where(Task.id == task_id, Task.user_id == user_id))
         if task is None:
-            raise HTTPException(status_code=422, detail="Task must belong to a session workspace")
+            raise HTTPException(status_code=422, detail="Task must belong to the user")
 
 
 @router.get("/settings", response_model=PomodoroSettingsRead)
@@ -206,9 +186,7 @@ def create_pomodoro_session(
         response.status_code = status.HTTP_200_OK
         return _session_read(existing, now)
 
-    _validate_scope(
-        db, user.id, payload.workspace_id, payload.tag_id, payload.task_id, payload.scope
-    )
+    _validate_scope(db, user.id, payload.tag_id, payload.task_id, payload.scope)
     session = PomodoroSession(
         user_id=user.id,
         **payload.model_dump(exclude={"scope"}),
@@ -236,7 +214,6 @@ def update_pomodoro_session_task(
     _validate_scope(
         db,
         user.id,
-        session.workspace_id,
         session.tag_id,
         payload.task_id,
         _session_read(session, datetime.now(UTC)).scope,

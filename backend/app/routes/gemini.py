@@ -15,10 +15,9 @@ from app.gemini_schemas import (
     TextToTaskDraft,
     TextToTaskRequest,
 )
-from app.models import Tag, User, WorkspaceMember
+from app.models import Tag, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
-from app.services.workspaces import require_editor
 
 router = APIRouter(tags=["gemini"])
 
@@ -96,35 +95,22 @@ def _normalize_tag(value: str) -> str:
 
 
 @router.post(
-    "/api/workspaces/{workspace_id}/task-drafts/from-text",
+    "/api/task-drafts/from-text",
     response_model=TextToTaskDraft,
 )
 def text_to_task(
-    workspace_id: int,
     payload: TextToTaskRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TextToTaskDraft:
-    membership = require_editor(db, workspace_id, user)
     if not user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=409,
             detail="Add a Gemini API key in Settings before using text to task",
         )
-    members = list(
-        db.scalars(
-            select(WorkspaceMember)
-            .where(WorkspaceMember.workspace_id == workspace_id)
-            .order_by(WorkspaceMember.user_id)
-        ).all()
-    )
-    tags = list(
-        db.scalars(select(Tag).where(Tag.workspace_id == workspace_id).order_by(Tag.name)).all()
-    )
+    tags = list(db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name)).all())
     context = {
-        "name": membership.workspace.name,
         "today": date.today().isoformat(),
-        "members": [{"name": item.user.display_name, "email": item.user.email} for item in members],
         "existing_tags": [item.name for item in tags],
     }
     try:
@@ -136,14 +122,6 @@ def text_to_task(
     except GeminiServiceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
-    member_by_email = {item.user.email.casefold(): item for item in members}
-    assignee_ids = list(
-        dict.fromkeys(
-            member_by_email[email.casefold()].user_id
-            for email in generated.assignee_emails
-            if email.casefold() in member_by_email
-        )
-    )
     tag_by_name = {item.name.casefold(): item for item in tags}
     existing_tag_ids: list[int] = []
     new_tag_names: list[str] = []
@@ -164,7 +142,6 @@ def text_to_task(
         description=generated.description.strip() if generated.description else None,
         priority=generated.priority,
         due_date=generated.due_date,
-        assignee_ids=assignee_ids,
         existing_tag_ids=existing_tag_ids,
         new_tag_names=new_tag_names,
         model=model,

@@ -1,25 +1,8 @@
-export type Role = 'owner' | 'editor' | 'viewer';
-
 export interface User {
   id: number;
   email: string;
   display_name: string;
   created_at: string;
-}
-
-export interface Workspace {
-  id: number;
-  name: string;
-  scoring_formula: string | null;
-  created_at: string;
-  role: Role;
-}
-
-export interface Member {
-  user_id: number;
-  email: string;
-  display_name: string;
-  role: Role;
 }
 
 export interface TagSummary {
@@ -30,7 +13,6 @@ export interface TagSummary {
 }
 
 export interface Tag extends TagSummary {
-  workspace_id: number;
   description: string | null;
   direct_task_count: number;
   parents: TagSummary[];
@@ -64,9 +46,7 @@ export interface TaskSummary {
 
 export interface Task {
   id: number;
-  created_by_user_id: number;
-  creator: User;
-  workspace_id: number;
+  user_id: number;
   title: string;
   description: string | null;
   priority: number;
@@ -82,7 +62,6 @@ export interface Task {
   ranking_score: number;
   ranking_source_task_id: number | null;
   ranking_source_score: number | null;
-  assignees: User[];
   direct_tags: TagSummary[];
   inherited_tags: TagSummary[];
   current_block: Block | null;
@@ -93,14 +72,12 @@ export interface Task {
 }
 
 export interface TaskInput {
-  workspace_id?: number;
   title: string;
   description: string | null;
   priority: number;
   due_date: string | null;
   last_worked_at: string | null;
   parent_task_id: number | null;
-  assignee_ids: number[];
   tag_ids: number[];
 }
 
@@ -115,8 +92,13 @@ export interface PomodoroSettings {
 export type PomodoroPhase = 'focus' | 'short-break' | 'long-break';
 export type PomodoroState = 'ready' | 'running' | 'ringing';
 
+export interface NextScope {
+  include_tag_ids: number[];
+  exclude_tag_ids: number[];
+  tag_match: 'all' | 'any';
+}
+
 export interface PomodoroSession {
-  workspace_id: number;
   tag_id: number | null;
   task_id: number | null;
   scope: NextScope;
@@ -125,11 +107,4 @@ export interface PomodoroSession {
   short_breaks_taken: number;
   ends_at: string | null;
   server_now: string;
-}
-
-export interface NextScope {
-  workspace_ids: number[];
-  include_tag_ids: number[];
-  exclude_tag_ids: number[];
-  tag_match: 'all' | 'any';
 }
