@@ -1,7 +1,7 @@
 """add pomodoro settings
 
 Revision ID: a4c1e7d9b205
-Revises: 8d2f4b7c1a90
+Revises: 53f7a6b9c2d1
 Create Date: 2026-09-04 15:30:00
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a4c1e7d9b205"
-down_revision: str | None = "8d2f4b7c1a90"
+down_revision: str | None = "53f7a6b9c2d1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

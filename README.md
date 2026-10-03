@@ -5,10 +5,7 @@ workspace-configurable score. It supports multiple workspaces, owner/editor/view
 roles, Markdown task descriptions, subtasks, assignees, blocking history, and a
 Tag Studio-style inheritance DAG.
 
-One production image contains both entrypoints: FastAPI serves the REST API and
-built Svelte PWA, and a separate isolated process serves the authenticated MCP
-gateway. Both use SQLite in a mounted `/data` directory. There is no offline
-synchronization; the service worker caches only the application shell.
+There is no offline synchronization; the service worker caches only the application shell.
 
 Dates throughout the UI use `dd/mm/yyyy`, and date/time fields use
 `dd/mm/yyyy HH:mm` with a 24-hour clock in the device's timezone. API timestamps
@@ -80,9 +77,8 @@ The local bump command only updates the four version files. It does not commit,
 tag, or publish anything, and restores those files if a package manager fails.
 
 The homeserver keeps only deployment configuration in `~/services/next-task`.
-Its Compose file pulls the published image, mounts persistent state from
-`/mnt/hdd/next-task/data`, and runs the private web app plus a loopback-only MCP
-gateway. Tailscale Funnel provides public HTTPS only for the gateway.
+Its Compose file pulls the published image and mounts persistent state from
+`/mnt/hdd/next-task/data`.
 
 ```bash
 cd ~/services/next-task
@@ -163,48 +159,6 @@ uv run alembic check
 Rollback one revision during development with `uv run alembic downgrade -1`.
 Never replace migrations with `Base.metadata.create_all()` in production.
 
-## ChatGPT MCP connector
-
-The connector lets ChatGPT use Next Task tools directly. Your ChatGPT subscription
-handles the conversation and natural-language interpretation; this server never calls
-an OpenAI model API and does not need an OpenAI API key.
-
-The production Compose file binds the isolated MCP process to host loopback. Give it a
-public HTTPS URL with Tailscale Funnel and set that exact origin in
-`NEXT_TASK_MCP_PUBLIC_URL` before starting either container:
-
-```bash
-sudo tailscale funnel --bg --https=8443 8765
-tailscale funnel status
-```
-
-The connector URL is the public origin plus `/mcp`, for example:
-
-```text
-https://homeserver.tail195af8.ts.net:8443/mcp
-```
-
-To connect:
-
-1. In Next Task, open **Settings → ChatGPT task connector** and copy the URL.
-2. In ChatGPT, enable **Developer mode** in **Settings → Security and login**.
-3. Open **Settings → Plugins**, add a custom connector, and paste the URL.
-4. Sign in on the Next Task authorization page and approve the connection.
-
-Then ask naturally, for example:
-
-```text
-In my Home workspace, create a high-priority task to buy detergent tomorrow and tag it shopping.
-```
-
-ChatGPT first inspects the selected workspace's statuses, tags, and members, proposes the
-task fields, and asks for confirmation before calling a write tool. It can list and inspect
-tasks, create and update them, mark them finished or reopened, and block or unblock them.
-
-OAuth uses authorization code with PKCE. Access and refresh tokens are stored only as
-hashes, registered client secrets are encrypted with `NEXT_TASK_CREDENTIAL_SECRET`, and
-each user can revoke all ChatGPT connections from Next Task Settings.
-
 ## Gemini text to task
 
 Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
@@ -216,8 +170,8 @@ due date, assignees, existing tags, and suggested new tags.
 Quick Capture can also save text as a draft. Drafts are full task records that can keep
 status, due date, hierarchy, assignees, tags, and other task metadata while remaining on
 the dedicated **Drafts** page. **Save draft** keeps priority 0; **Save as task** assigns a
-normal priority. Drafts are excluded from normal task lists, Next, Pomodoro, and MCP task
-listings until activated.
+normal priority. Drafts are excluded from normal task lists, Next, and Pomodoro
+until activated.
 
 Drafting sends the entered text plus the selected workspace statuses, members, and tag
 names to Gemini. The personal API key is encrypted in SQLite and is never returned to
