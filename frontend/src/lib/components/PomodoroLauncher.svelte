@@ -1,21 +1,18 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
-  import type { PomodoroSession, PomodoroSettings, Tag } from '../api/types';
-  import TagSelect from './TagSelect.svelte';
+  import type { PomodoroSession, PomodoroSettings } from '../api/types';
   import AppButton from './AppButton.svelte';
 
-  export let tags: Tag[] = [];
   export let recommendedTaskTitle = '';
 
-  const dispatch = createEventDispatcher<{ start: number | null; scopeChange: number | null }>();
+  const dispatch = createEventDispatcher<{ start: void }>();
   let settings: PomodoroSettings | null = null;
   let activeSession: PomodoroSession | null = null;
   let activeRemainingSeconds = 0;
   let serverClockOffset = 0;
   let refreshTicks = 0;
   let timer: number;
-  let selectedTagId: number | '' = '';
   let error = '';
 
   function updateRemaining() {
@@ -67,16 +64,8 @@
     return () => window.clearInterval(timer);
   });
 
-  function selectedScope(): number | null {
-    return selectedTagId ? Number(selectedTagId) : null;
-  }
-
-  function changeScope() {
-    dispatch('scopeChange', selectedScope());
-  }
-
   function startSession() {
-    dispatch('start', selectedScope());
+    dispatch('start');
   }
 </script>
 
@@ -106,12 +95,6 @@
     {/if}
   </div>
 
-  <label class="tag-filter">
-    <span>Session tag</span>
-    <TagSelect bind:value={selectedTagId} options={tags.map((tag) => ({ tag }))} emptyValue="" emptyLabel="All tags" label="Session tag" disabled={!!activeSession} on:change={changeScope} />
-    <small>{activeSession ? 'The active session keeps its original scope.' : 'Includes child tags.'}</small>
-  </label>
-
   <AppButton
     variant="primary"
     className="start-button"
@@ -128,7 +111,7 @@
 <style>
   .pomodoro-launcher {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(10rem, 14rem) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
@@ -179,20 +162,6 @@
     font-size: .8rem;
   }
 
-  .tag-filter {
-    display: grid;
-    gap: .2rem;
-    margin: 0;
-    font-size: .72rem;
-    font-weight: 800;
-  }
-
-  .tag-filter small {
-    color: var(--muted);
-    font-size: .68rem;
-    font-weight: 500;
-  }
-
   :global(.start-button) {
     display: inline-flex;
     align-items: center;
@@ -203,10 +172,6 @@
   @media (max-width: 840px) {
     .pomodoro-launcher {
       grid-template-columns: auto 1fr;
-    }
-
-    .tag-filter {
-      grid-column: 1 / -1;
     }
 
     :global(.start-button) {

@@ -127,9 +127,17 @@ export interface PomodoroSession {
   workspace_id: number;
   tag_id: number | null;
   task_id: number | null;
+  scope: NextScope;
   phase: PomodoroPhase;
   state: PomodoroState;
   short_breaks_taken: number;
   ends_at: string | null;
   server_now: string;
+}
+
+export interface NextScope {
+  workspace_ids: number[];
+  include_tag_ids: number[];
+  exclude_tag_ids: number[];
+  tag_match: 'all' | 'any';
 }

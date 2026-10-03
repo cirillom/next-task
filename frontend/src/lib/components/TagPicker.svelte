@@ -13,6 +13,7 @@
   export let disabled = false;
   export let creating = false;
   export let allowCreate = true;
+  export let displayName: (tag: Tag) => string = (tag) => tag.name;
   export let createdParentId = 0;
 
   const dispatch = createEventDispatcher<{
@@ -119,9 +120,9 @@
     <div class="selected-tags" aria-label="Selected direct tags">
       {#each selectedTags as tag (tag.id)}
         <TagBadge {tag} selected>
-          {tag.name}
+          {displayName(tag)}
           {#if !disabled}
-            <button type="button" aria-label={`Remove ${tag.name}`} on:click={() => remove(tag.id)}>×</button>
+            <button type="button" aria-label={`Remove ${displayName(tag)}`} on:click={() => remove(tag.id)}>×</button>
           {/if}
         </TagBadge>
       {/each}
@@ -151,7 +152,7 @@
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
-              <TagBadge tag={result.tag} selected={selectedIds.includes(result.tag.id)} />
+              <TagBadge tag={result.tag} selected={selectedIds.includes(result.tag.id)}>{displayName(result.tag)}</TagBadge>
               {#each contextPaths(result.tag) as path}
                 <small>{path}</small>
               {/each}
