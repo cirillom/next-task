@@ -7,7 +7,6 @@
     PomodoroSession,
     PomodoroSettings,
     NextScope,
-    Status,
     Tag,
     Task,
     Workspace
@@ -29,7 +28,6 @@
 
   let settings: PomodoroSettings | null = null;
   let session: PomodoroSession | null = null;
-  let statuses: Status[] = [];
   let tags: Tag[] = [];
   let currentTask: Task | null = null;
   let sessionTasks: Task[] = [];
@@ -468,10 +466,7 @@
         ]);
         settings = loadedSettings;
         sessionScope = existingSession?.scope || sessionScope;
-        [statuses, tags] = await Promise.all([
-          Promise.all(sessionScope.workspace_ids.map((id) => api.statuses(id))).then((items) => items.flat()),
-          Promise.all(sessionScope.workspace_ids.map((id) => api.tags(id))).then((items) => items.flat())
-        ]);
+        tags = (await Promise.all(sessionScope.workspace_ids.map((id) => api.tags(id)))).flat();
         const activeSession = existingSession ?? await api.createPomodoroSession({
           workspace_id: sessionScope.workspace_ids[0],
           tag_id: null,
@@ -569,7 +564,6 @@
         {:else if currentTask}
           <TaskCard
             task={currentTask}
-            statuses={statuses.filter((item) => item.workspace_id === currentTask?.workspace_id)}
             readOnly={currentTaskReadOnly}
             on:changed={(event) => handlePinnedTaskChanged(event.detail)}
             on:open={(event) => dispatch('openTask', event.detail)}

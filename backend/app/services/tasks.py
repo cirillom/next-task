@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Tag, Task, TaskStatus, User, WorkspaceMember
+from app.models import Tag, Task, User, WorkspaceMember
 
 
 def get_task_for_user(db: Session, task_id: int, user: User) -> Task:
@@ -10,13 +10,6 @@ def get_task_for_user(db: Session, task_id: int, user: User) -> Task:
     if task is None or db.get(WorkspaceMember, (user.id, task.workspace_id)) is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
-
-
-def validate_status(db: Session, workspace_id: int, status_id: int) -> TaskStatus:
-    item = db.get(TaskStatus, status_id)
-    if item is None or item.workspace_id != workspace_id:
-        raise HTTPException(status_code=422, detail="Status must belong to the task workspace")
-    return item
 
 
 def validate_assignees(db: Session, workspace_id: int, user_ids: list[int]) -> list[User]:

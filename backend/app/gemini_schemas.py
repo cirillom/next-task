@@ -37,13 +37,12 @@ class TextToTaskRequest(StrictModel):
 class GeneratedTask(StrictModel):
     title: str = Field(min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=20_000)
-    status_name: str = Field(min_length=1, max_length=80)
     priority: int = Field(ge=1, le=5)
     due_date: date | None
     assignee_emails: list[str] = Field(max_length=20)
     tag_names: list[str] = Field(max_length=12)
 
-    @field_validator("title", "status_name")
+    @field_validator("title")
     @classmethod
     def clean_required(cls, value: str) -> str:
         cleaned = value.strip()
@@ -55,7 +54,6 @@ class GeneratedTask(StrictModel):
 class TextToTaskDraft(StrictModel):
     title: str
     description: str | None
-    status_id: int
     priority: int
     due_date: date | None
     assignee_ids: list[int]

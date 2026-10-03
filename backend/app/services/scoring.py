@@ -3,7 +3,11 @@ import math
 import operator
 from datetime import UTC, datetime
 
-from app.models import Task
+from sqlalchemy import select
+from sqlalchemy.orm import object_session
+
+from app.models import Tag, Task
+from app.services.tags import ancestor_ids
 
 DAY_SECONDS = 24 * 60 * 60
 VARIABLES = {
@@ -12,10 +16,10 @@ VARIABLES = {
     "idleDays",
     "dueOffsetDays",
     "hasDueDate",
-    "statusValue",
+    "tagValue",
 }
 DEFAULT_SCORING_FORMULA = (
-    "priority * 25 + ageDays * 0.25 + idleDays * 1.0 + statusValue * 20 + "
+    "priority * 25 + ageDays * 0.25 + idleDays * 1.0 + tagValue * 20 + "
     "((50 * exp(dueOffsetDays / 7) if dueOffsetDays < 0 else "
     "50 + dueOffsetDays * 20) if hasDueDate > 0 else 0)"
 )
@@ -114,13 +118,20 @@ def score_variables(task: Task, now: datetime | None = None) -> dict[str, float]
     created_at = _utc(task.created_at)
     last_worked_at = _utc(task.last_worked_at) if task.last_worked_at else created_at
     due_offset = float((now.astimezone().date() - task.due_date).days) if task.due_date else 0.0
+    direct_ids = {tag.id for tag in task.tags}
+    db = object_session(task)
+    if db is not None and direct_ids:
+        effective_ids = direct_ids | ancestor_ids(db, direct_ids)
+        tag_value = sum(db.scalars(select(Tag.score_value).where(Tag.id.in_(effective_ids))))
+    else:
+        tag_value = sum(tag.score_value for tag in task.tags)
     return {
         "priority": float(task.priority),
         "ageDays": max(0.0, (now - created_at).total_seconds() / DAY_SECONDS),
         "idleDays": max(0.0, (now - last_worked_at).total_seconds() / DAY_SECONDS),
         "dueOffsetDays": due_offset,
         "hasDueDate": 1.0 if task.due_date else 0.0,
-        "statusValue": float(task.status.score_value),
+        "tagValue": float(tag_value),
     }
 
 

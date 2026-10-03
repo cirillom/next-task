@@ -27,7 +27,6 @@ from app.services.tasks import (
     get_task_for_user,
     validate_assignees,
     validate_parent,
-    validate_status,
     validate_tags,
 )
 from app.services.workspaces import get_membership, require_editor
@@ -120,7 +119,6 @@ def task_read(
         workspace_id=task.workspace_id,
         title=task.title,
         description=task.description,
-        status=task.status,
         priority=task.priority,
         due_date=task.due_date,
         last_worked_at=task.last_worked_at,
@@ -236,7 +234,6 @@ def personal_actionable_condition(user_id: int):
 def list_tasks(
     workspace_id: int,
     finished: bool | None = False,
-    status_id: int | None = None,
     tag_id: int | None = None,
     include_tag_id: list[int] | None = Query(default=None),
     exclude_tag_id: list[int] | None = Query(default=None),
@@ -255,8 +252,6 @@ def list_tasks(
         query = query.where(Task.finished_at.is_not(None))
     elif finished is False:
         query = query.where(Task.finished_at.is_(None))
-    if status_id is not None:
-        query = query.where(Task.status_id == status_id)
     if assignee_id is not None:
         query = query.where(
             exists().where(TaskAssignee.task_id == Task.id, TaskAssignee.user_id == assignee_id)
@@ -310,7 +305,6 @@ def create_task(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     require_editor(db, payload.workspace_id, user)
-    validate_status(db, payload.workspace_id, payload.status_id)
     validate_parent(db, payload.workspace_id, payload.parent_task_id)
     values = payload.model_dump(exclude={"assignee_ids", "tag_ids"})
     task = Task(created_by_user_id=user.id, **values)
@@ -364,15 +358,11 @@ def update_task(
                 status_code=409,
                 detail="Remove task-based blocking links before moving this task",
             )
-        if any(key not in values for key in ("status_id", "assignee_ids", "tag_ids")):
+        if any(key not in values for key in ("assignee_ids", "tag_ids")):
             raise HTTPException(
                 status_code=422,
-                detail="Moving a task requires a destination status, assignees, and tags",
+                detail="Moving a task requires destination assignees and tags",
             )
-    if "status_id" in values:
-        if values["status_id"] is None:
-            raise HTTPException(status_code=422, detail="A task must have a status")
-        validate_status(db, target_workspace_id, values["status_id"])
     if "parent_task_id" in values:
         validate_parent(db, target_workspace_id, values["parent_task_id"], task.id)
     if moving:

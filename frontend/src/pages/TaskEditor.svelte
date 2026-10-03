@@ -383,7 +383,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
       {#if task && formWorkspace.id !== task.workspace_id}
-        <p class="notice workspace-move-notice">Review the destination status, tags, and assignees before saving. Tags start empty; shared members stay assigned.</p>
+        <p class="notice workspace-move-notice">Review the destination tags and assignees before saving. Tags start empty; shared members stay assigned.</p>
       {/if}
       {#if isDraft}
         <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
@@ -394,7 +394,6 @@
         {taskId}
         initialTitle={task?.title || initialTitle}
         initialDescription={task?.description || ''}
-        initialStatusId={task?.status.id || 0}
         initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
         initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}

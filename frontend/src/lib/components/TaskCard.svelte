@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
-  import type { Status, Task } from '../api/types';
+  import type { Task } from '../api/types';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import BlockSummary from './BlockSummary.svelte';
@@ -12,7 +12,6 @@
   import TaskHierarchy from './TaskHierarchy.svelte';
 
   export let task: Task;
-  export let statuses: Status[] = [];
   export let readOnly = false;
 
   const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
@@ -168,7 +167,7 @@
   {/if}
 
   <div class="meta-row">
-    {#if readOnly}<span class="priority" title="Priority">{task.priority}</span><span>{task.status.name}</span>{/if}
+    {#if readOnly}<span class="priority" title="Priority">{task.priority}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
     <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
@@ -198,13 +197,6 @@
       <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
       </button>
-
-      <div class="status-select">
-        <select aria-label="Status" disabled={busy} value={task.status.id} on:change={(event) => act(() => api.updateTask(task.id, { status_id: Number(event.currentTarget.value) }))}>
-          {#each statuses as status}<option value={status.id}>{status.name}</option>{/each}
-        </select>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
-      </div>
 
       <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
         <DateTimeInput
@@ -265,11 +257,6 @@
   .block-action { color: #8a4d36; }
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
-  .status-select { position: relative; display: inline-flex; height: 2rem; align-items: center; }
-  .status-select select { height: 100%; max-width: 11rem; appearance: none; border: 1px solid #c8cec6; border-radius: .55rem; background: #f4f7f2; color: var(--forest-2); padding: 0 1.8rem 0 .65rem; font-size: .78rem; font-weight: 750; line-height: 1; cursor: pointer; }
-  .status-select select:hover:not(:disabled) { border-color: #9daa9f; background: #fff; }
-  .status-select select:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
-  .status-select > svg { position: absolute; right: .52rem; width: .85rem; height: .85rem; pointer-events: none; fill: none; stroke: var(--forest-2); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 
   .priority-stepper { display: inline-grid; height: 2rem; grid-template-columns: 1.65rem auto 1.65rem; align-items: stretch; overflow: hidden; border: 1px solid #cfcbc0; border-radius: .5rem; background: #fbfaf6; }
   .priority-stepper button { min-width: 0; border: 0; border-radius: 0; background: transparent; padding: 0; font-size: .95rem; line-height: 1; }
@@ -285,6 +272,5 @@
     .ranking-boost { font-size: .67rem; }
     .finish-action span, .quick-action span { display: none; }
     .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
-    .status-select select { max-width: 8.5rem; }
   }
 </style>

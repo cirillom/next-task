@@ -3,7 +3,6 @@ import type {
   NextScope,
   PomodoroSession,
   PomodoroSettings,
-  Status,
   Tag,
   TagMergePreview,
   Task,
@@ -92,17 +91,6 @@ export const api = {
   removeMember: (id: number, userId: number) =>
     request<void>(`/api/workspaces/${id}/members/${userId}`, json('DELETE')),
 
-  statuses: (id: number) => request<Status[]>(`/api/workspaces/${id}/statuses`),
-  createStatus: (id: number, name: string, score_value: number) =>
-    request<Status>(`/api/workspaces/${id}/statuses`, json('POST', { name, score_value })),
-  updateStatus: (workspaceId: number, statusId: number, body: Partial<Status>) =>
-    request<Status>(
-      `/api/workspaces/${workspaceId}/statuses/${statusId}`,
-      json('PATCH', body)
-    ),
-  deleteStatus: (workspaceId: number, statusId: number) =>
-    request<void>(`/api/workspaces/${workspaceId}/statuses/${statusId}`, json('DELETE')),
-
   tags: (id: number) => request<Tag[]>(`/api/workspaces/${id}/tags`),
   createTag: (
     id: number,
@@ -110,6 +98,7 @@ export const api = {
       name: string;
       description?: string;
       color?: string;
+      score_value?: number;
       parent_tag_id?: number | null;
     }
   ) => request<Tag>(`/api/workspaces/${id}/tags`, json('POST', body)),

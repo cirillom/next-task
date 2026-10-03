@@ -8,13 +8,11 @@ from fastapi.testclient import TestClient
 
 def make_task(client: TestClient) -> dict:
     workspace = client.post("/api/workspaces", json={"name": "Blocking"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
     response = client.post(
         "/api/tasks",
         json={
             "workspace_id": workspace["id"],
             "title": "Blocked task",
-            "status_id": statuses[0]["id"],
         },
     )
     assert response.status_code == 201
@@ -228,14 +226,12 @@ def test_finishing_tasks_ends_active_blocks_and_preserves_history(
 ) -> None:
     client = logged_in_client("owner@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Completion blocking"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
 
     parent = client.post(
         "/api/tasks",
         json={
             "workspace_id": workspace["id"],
             "title": "Blocked parent",
-            "status_id": statuses[0]["id"],
         },
     ).json()
     child = client.post(
@@ -243,7 +239,6 @@ def test_finishing_tasks_ends_active_blocks_and_preserves_history(
         json={
             "workspace_id": workspace["id"],
             "title": "Blocked child",
-            "status_id": statuses[0]["id"],
             "parent_task_id": parent["id"],
         },
     ).json()

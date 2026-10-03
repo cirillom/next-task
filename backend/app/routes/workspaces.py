@@ -8,7 +8,6 @@ from app.database import get_db
 from app.models import (
     Task,
     TaskAssignee,
-    TaskStatus,
     User,
     Workspace,
     WorkspaceMember,
@@ -18,9 +17,6 @@ from app.schemas import (
     MemberCreate,
     MemberRead,
     MemberUpdate,
-    StatusCreate,
-    StatusRead,
-    StatusUpdate,
     WorkspaceCreate,
     WorkspaceRead,
     WorkspaceUpdate,
@@ -29,7 +25,6 @@ from app.services.scoring import DEFAULT_SCORING_FORMULA, FormulaError, validate
 from app.services.workspaces import (
     ensure_owner_remains,
     get_membership,
-    require_editor,
     require_owner,
 )
 
@@ -68,12 +63,6 @@ def create_workspace(
     db.add(workspace)
     db.flush()
     db.add(WorkspaceMember(user_id=user.id, workspace_id=workspace.id, role=WorkspaceRole.OWNER))
-    db.add_all(
-        [
-            TaskStatus(workspace_id=workspace.id, name="todo", score_value=0),
-            TaskStatus(workspace_id=workspace.id, name="doing", score_value=1),
-        ]
-    )
     db.commit()
     db.refresh(workspace)
     return workspace_read(workspace, WorkspaceRole.OWNER)
@@ -220,81 +209,4 @@ def remove_member(
         )
     db.delete(membership)
     db.commit()
-    return Response(status_code=204)
-
-
-@router.get("/{workspace_id}/statuses", response_model=list[StatusRead])
-def list_statuses(
-    workspace_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> list[TaskStatus]:
-    get_membership(db, workspace_id, user.id)
-    return list(
-        db.scalars(
-            select(TaskStatus)
-            .where(TaskStatus.workspace_id == workspace_id)
-            .order_by(TaskStatus.id)
-        ).all()
-    )
-
-
-@router.post("/{workspace_id}/statuses", response_model=StatusRead, status_code=201)
-def create_status(
-    workspace_id: int,
-    payload: StatusCreate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> TaskStatus:
-    require_editor(db, workspace_id, user)
-    item = TaskStatus(workspace_id=workspace_id, **payload.model_dump())
-    db.add(item)
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Status name already exists") from error
-    db.refresh(item)
-    return item
-
-
-@router.patch("/{workspace_id}/statuses/{status_id}", response_model=StatusRead)
-def update_status(
-    workspace_id: int,
-    status_id: int,
-    payload: StatusUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> TaskStatus:
-    require_editor(db, workspace_id, user)
-    item = db.get(TaskStatus, status_id)
-    if item is None or item.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Status not found")
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(item, key, value)
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Status name already exists") from error
-    return item
-
-
-@router.delete("/{workspace_id}/statuses/{status_id}", status_code=204)
-def delete_status(
-    workspace_id: int,
-    status_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> Response:
-    require_editor(db, workspace_id, user)
-    item = db.get(TaskStatus, status_id)
-    if item is None or item.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Status not found")
-    db.delete(item)
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Status is in use") from error
     return Response(status_code=204)

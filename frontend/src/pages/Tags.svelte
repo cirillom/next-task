@@ -8,6 +8,7 @@
   import TextField from '../lib/components/TextField.svelte';
   import TagSelect from '../lib/components/TagSelect.svelte';
   import TextArea from '../lib/components/TextArea.svelte';
+  import NumberField from '../lib/components/NumberField.svelte';
 
   const SUGGESTED_TAG_COLORS = [
     '#587b6a',
@@ -40,12 +41,14 @@
   let createName = '';
   let createDescription = '';
   let createColor = randomTagColor();
+  let createScoreValue = 0;
   let createParentChoice = 0;
-  let parentDraft: { tagId: number; name: string; description: string; color: string; parentChoice: number } | null = null;
+  let parentDraft: { tagId: number; name: string; description: string; color: string; scoreValue: number; parentChoice: number } | null = null;
 
   let editName = '';
   let editDescription = '';
   let editColor = '';
+  let editScoreValue = 0;
   let parentChoice = 0;
 
   let mergeOpen = false;
@@ -84,6 +87,7 @@
     editName = tag.name;
     editDescription = tag.description || '';
     editColor = tag.color || '#587b6a';
+    editScoreValue = tag.score_value;
     parentChoice = 0;
   }
 
@@ -138,6 +142,7 @@
     search = '';
     createDescription = '';
     createColor = randomTagColor();
+    createScoreValue = 0;
     createParentChoice = 0;
     error = '';
   }
@@ -145,11 +150,12 @@
   function startCreateParent(name: string) {
     if (!creating && !selectedTag) return;
     parentDraft = creating
-      ? { tagId: 0, name: createName, description: createDescription, color: createColor, parentChoice: createParentChoice }
-      : { tagId: selectedTag!.id, name: editName, description: editDescription, color: editColor, parentChoice: parentChoice };
+      ? { tagId: 0, name: createName, description: createDescription, color: createColor, scoreValue: createScoreValue, parentChoice: createParentChoice }
+      : { tagId: selectedTag!.id, name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue, parentChoice: parentChoice };
     createName = name;
     createDescription = '';
     createColor = randomTagColor();
+    createScoreValue = 0;
     createParentChoice = 0;
     creating = true;
     error = '';
@@ -162,6 +168,7 @@
       editName = parentDraft.name;
       editDescription = parentDraft.description;
       editColor = parentDraft.color;
+      editScoreValue = parentDraft.scoreValue;
       parentChoice = parentDraft.parentChoice;
       creating = false;
     } else {
@@ -169,6 +176,7 @@
       createName = parentDraft.name;
       createDescription = parentDraft.description;
       createColor = parentDraft.color;
+      createScoreValue = parentDraft.scoreValue;
       createParentChoice = newParentId || parentDraft.parentChoice;
       creating = true;
     }
@@ -183,6 +191,7 @@
         name: createName,
         description: createDescription,
         color: createColor,
+        score_value: createScoreValue,
         parent_tag_id: createParentChoice || null
       });
       if (parentDraft) {
@@ -216,7 +225,8 @@
       await api.updateTag(workspace.id, selectedTag.id, {
         name: editName,
         description: editDescription,
-        color: editColor
+        color: editColor,
+        score_value: editScoreValue
       });
       await load(selectedTag.id);
     } catch (reason) {
@@ -229,7 +239,7 @@
   async function addParent(parentId: number) {
     if (!selectedTag || !parentId) return;
     const tagId = selectedTag.id;
-    const draft = { name: editName, description: editDescription, color: editColor };
+    const draft = { name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue };
     busy = true;
     error = '';
     try {
@@ -238,6 +248,7 @@
       editName = draft.name;
       editDescription = draft.description;
       editColor = draft.color;
+      editScoreValue = draft.scoreValue;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not add parent';
     } finally {
@@ -400,6 +411,8 @@
       <form class="detail-form" on:submit|preventDefault={create}>
         <label>Name<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">Color<input type="color" bind:value={createColor} /></label>
+        <label>Tag value<NumberField step="any" bind:value={createScoreValue} required /></label>
+        <p class="wide muted">Tag values contribute to task ranking through tagValue. Parent tag values are included once.</p>
         <label class="wide">Description<TextArea bind:value={createDescription} rows="4" /></label>
         <label class="wide">Parent tags
           <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
@@ -430,6 +443,7 @@
       <form class="detail-form" on:submit|preventDefault={saveEdit}>
         <label>Name<TextField bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
         <label class="color-field">Color<input type="color" bind:value={editColor} disabled={workspace.role === 'viewer'} /></label>
+        <label>Tag value<NumberField step="any" bind:value={editScoreValue} required disabled={workspace.role === 'viewer'} /></label>
         <label class="wide">Description<TextArea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'} /></label>
         {#if workspace.role !== 'viewer'}
           <div class="detail-actions wide">

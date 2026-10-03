@@ -236,7 +236,7 @@
     <main class="content">
       {#if error}<p class="error">{error}</p>{/if}
       {#if !workspace}
-        <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, statuses, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<TextField bind:value={firstWorkspaceName} required placeholder="Personal" /></label><AppButton type="submit" variant="primary">Create workspace</AppButton></form></section>
+        <section class="onboarding panel"><p class="eyebrow">Start here</p><h1>Create your first workspace</h1><p>A workspace keeps its tasks, tags, members, and score formula together.</p><form on:submit|preventDefault={createFirstWorkspace}><label>Workspace name<TextField bind:value={firstWorkspaceName} required placeholder="Personal" /></label><AppButton type="submit" variant="primary">Create workspace</AppButton></form></section>
       {:else}
         {#key `${workspace.id}-${view}-${refreshKey}`}
           {#if view === 'next'}<Next {workspaces} userId={user.id} on:openTask={(event) => openTask(event.detail)} on:newTask={(event) => openQuickCapture(event.detail)} on:scopeChange={(event) => (nextScope = event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />

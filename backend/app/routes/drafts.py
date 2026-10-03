@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
-from app.models import Task, TaskStatus, User
+from app.models import Task, User
 from app.routes.tasks import apply_task_relations, task_read
 from app.schemas import TaskRead, TaskUpdate
-from app.services.tasks import validate_parent, validate_status
+from app.services.tasks import validate_parent
 from app.services.workspaces import get_membership, require_editor
 
 router = APIRouter(prefix="/api/drafts", tags=["drafts"])
@@ -57,29 +57,14 @@ def create_draft(
     user: User = Depends(get_current_user),
 ) -> TaskRead:
     require_editor(db, payload.workspace_id, user)
-    status_id = payload.status_id
-    if status_id is None:
-        default_status = db.scalar(
-            select(TaskStatus)
-            .where(TaskStatus.workspace_id == payload.workspace_id)
-            .order_by(TaskStatus.id)
-            .limit(1)
-        )
-        if default_status is None:
-            raise HTTPException(
-                status_code=422, detail="Workspace needs a task status before drafting"
-            )
-        status_id = default_status.id
-    validate_status(db, payload.workspace_id, status_id)
     validate_parent(db, payload.workspace_id, payload.parent_task_id)
 
     values = payload.model_dump(
-        exclude={"workspace_id", "priority", "status_id", "assignee_ids", "tag_ids"}
+        exclude={"workspace_id", "priority", "assignee_ids", "tag_ids"}
     )
     task = Task(
         created_by_user_id=user.id,
         workspace_id=payload.workspace_id,
-        status_id=status_id,
         priority=0,
         **values,
     )

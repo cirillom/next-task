@@ -3,16 +3,14 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 
 
-def make_workspace(client: TestClient) -> tuple[dict, list[dict]]:
+def make_workspace(client: TestClient) -> dict:
     workspace = client.post("/api/workspaces", json={"name": "Hierarchy ranking"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
-    return workspace, statuses
+    return workspace
 
 
 def make_task(
     client: TestClient,
     workspace: dict,
-    statuses: list[dict],
     title: str,
     priority: int,
     parent_task_id: int | None = None,
@@ -22,7 +20,6 @@ def make_task(
         json={
             "workspace_id": workspace["id"],
             "title": title,
-            "status_id": statuses[0]["id"],
             "priority": priority,
             "parent_task_id": parent_task_id,
         },
@@ -35,13 +32,12 @@ def test_parent_score_lifts_children_but_siblings_keep_own_score_order(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace, statuses = make_workspace(client)
+    workspace = make_workspace(client)
 
-    parent = make_task(client, workspace, statuses, "Parent", priority=4)
+    parent = make_task(client, workspace, "Parent", priority=4)
     child_a = make_task(
         client,
         workspace,
-        statuses,
         "Child A",
         priority=2,
         parent_task_id=parent["id"],
@@ -49,12 +45,11 @@ def test_parent_score_lifts_children_but_siblings_keep_own_score_order(
     child_b = make_task(
         client,
         workspace,
-        statuses,
         "Child B",
         priority=1,
         parent_task_id=parent["id"],
     )
-    unrelated = make_task(client, workspace, statuses, "Unrelated", priority=3)
+    unrelated = make_task(client, workspace, "Unrelated", priority=3)
 
     tasks = client.get(
         "/api/tasks",
@@ -86,13 +81,12 @@ def test_hierarchy_ranking_does_not_force_low_score_family_above_unrelated_work(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace, statuses = make_workspace(client)
+    workspace = make_workspace(client)
 
-    parent = make_task(client, workspace, statuses, "Low parent", priority=1)
+    parent = make_task(client, workspace, "Low parent", priority=1)
     important = make_task(
         client,
         workspace,
-        statuses,
         "Important child",
         priority=5,
         parent_task_id=parent["id"],
@@ -100,12 +94,11 @@ def test_hierarchy_ranking_does_not_force_low_score_family_above_unrelated_work(
     minor = make_task(
         client,
         workspace,
-        statuses,
         "Minor child",
         priority=1,
         parent_task_id=parent["id"],
     )
-    unrelated = make_task(client, workspace, statuses, "Unrelated", priority=3)
+    unrelated = make_task(client, workspace, "Unrelated", priority=3)
 
     tasks = client.get(
         "/api/tasks",
@@ -124,18 +117,17 @@ def test_actionable_ranking_keeps_real_scores_without_parent_boost(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace, statuses = make_workspace(client)
+    workspace = make_workspace(client)
 
-    parent = make_task(client, workspace, statuses, "Urgent parent", priority=4)
+    parent = make_task(client, workspace, "Urgent parent", priority=4)
     child = make_task(
         client,
         workspace,
-        statuses,
         "Low child",
         priority=1,
         parent_task_id=parent["id"],
     )
-    unrelated = make_task(client, workspace, statuses, "Unrelated", priority=3)
+    unrelated = make_task(client, workspace, "Unrelated", priority=3)
 
     tasks = client.get(
         "/api/tasks",

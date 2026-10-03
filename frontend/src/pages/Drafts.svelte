@@ -56,7 +56,7 @@
           {#if draft.description}
             <div class="draft-description"><Markdown source={draft.description} /></div>
           {/if}
-          <div class="draft-meta">Captured {formatDateTime(draft.created_at)} · {draft.status.name}</div>
+          <div class="draft-meta">Captured {formatDateTime(draft.created_at)}</div>
         </div>
         {#if workspace.role !== 'viewer'}
           <AppButton variant="primary" className="edit-draft-button" on:click={() => dispatch('openTask', draft.id)}>

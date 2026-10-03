@@ -100,8 +100,8 @@ docker compose --env-file ../.env exec next-task uv run python -m app.cli reset-
 Existing sessions for that user are revoked. Both CLI commands accept
 `--password-stdin` for controlled automation without putting a password in process
 arguments. After signing in, create the first workspace in the UI; its creator
-becomes owner and the `todo` and `doing` statuses plus a default scoring formula
-are created together.
+becomes owner and a default scoring formula is created with it. Create tags for
+any workflow labels you want, such as `todo` or `doing`.
 
 ## Local development
 
@@ -156,7 +156,9 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-Rollback one revision during development with `uv run alembic downgrade -1`.
+Most revisions can be rolled back during development with `uv run alembic downgrade -1`.
+The status-to-tag migration cannot be reversed without losing tag assignments;
+back up the database before upgrading production.
 Never replace migrations with `Base.metadata.create_all()` in production.
 
 ## Gemini text to task
@@ -164,16 +166,16 @@ Never replace migrations with `Base.metadata.create_all()` in production.
 Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
 After selecting a workspace, editors and owners can use **+ New task**, enter natural
 language in Quick Capture, choose **Text to task**, and review an editable task before
-anything is created. The review includes title, Markdown description, status, priority,
+anything is created. The review includes title, Markdown description, priority,
 due date, assignees, existing tags, and suggested new tags.
 
 Quick Capture can also save text as a draft. Drafts are full task records that can keep
-status, due date, hierarchy, assignees, tags, and other task metadata while remaining on
+due date, hierarchy, assignees, tags, and other task metadata while remaining on
 the dedicated **Drafts** page. **Save draft** keeps priority 0; **Save as task** assigns a
 normal priority. Drafts are excluded from normal task lists, Next, and Pomodoro
 until activated.
 
-Drafting sends the entered text plus the selected workspace statuses, members, and tag
+Drafting sends the entered text plus the selected workspace members and tag
 names to Gemini. The personal API key is encrypted in SQLite and is never returned to
 the browser after it is saved. Server-side encryption requires a stable value of at least
 32 characters:
@@ -190,7 +192,9 @@ it is lost or replaced, users must save their Gemini keys again.
 
 Scores are calculated when tasks are read and are not persisted. Available
 variables are `priority`, `ageDays`, `idleDays`, `dueOffsetDays`, `hasDueDate`, and
-`statusValue`. `hasDueDate` is `1` when a due date exists and `0` otherwise. The
+`tagValue`. `tagValue` sums the score values of a task's direct tags and all their
+parent tags, counting each tag once. Tag values can be edited on the **Tags** page.
+`hasDueDate` is `1` when a due date exists and `0` otherwise. The
 `dueOffsetDays` value is negative before the due date, zero on the due date, and
 positive after it. Formulas accept numbers, arithmetic, comparisons, boolean
 operations, the `exp()` function, and Python-style conditional expressions.
@@ -201,7 +205,7 @@ The default formula is:
 priority * 25
 + ageDays * 0.25
 + idleDays * 1.00
-+ statusValue * 20
++ tagValue * 20
 + (
     (
         50 * exp(dueOffsetDays / 7)

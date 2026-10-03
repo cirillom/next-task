@@ -60,7 +60,6 @@
     return {
       title: parsed.title,
       description: parsed.description,
-      status_id: 0,
       priority: 1,
       due_date: null,
       assignee_ids: [],
@@ -201,7 +200,6 @@
         workspace={destination}
         initialTitle={proposal.title}
         initialDescription={proposal.description || ''}
-        initialStatusId={proposal.status_id}
         initialPriority={proposal.priority}
         initialDueDate={proposal.due_date || ''}
         initialAssigneeIds={proposal.assignee_ids}

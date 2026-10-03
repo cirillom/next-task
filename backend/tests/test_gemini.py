@@ -18,10 +18,9 @@ def save_key(client: TestClient, key: str = "AIza-test-key-with-enough-character
     return response.json()
 
 
-def make_workspace(client: TestClient) -> tuple[dict, list[dict]]:
+def make_workspace(client: TestClient) -> dict:
     workspace = client.post("/api/workspaces", json={"name": "Product"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
-    return workspace, statuses
+    return workspace
 
 
 def test_gemini_key_is_encrypted_and_never_returned(
@@ -60,7 +59,7 @@ def test_text_to_task_maps_only_valid_workspace_values(
 ) -> None:
     client = logged_in_client("owner@example.com")
     teammate = create_user("teammate@example.com", name="Team Mate")
-    workspace, statuses = make_workspace(client)
+    workspace = make_workspace(client)
     client.post(
         f"/api/workspaces/{workspace['id']}/members",
         json={"email": teammate.email, "role": "editor"},
@@ -76,7 +75,6 @@ def test_text_to_task_maps_only_valid_workspace_values(
         return GeneratedTask(
             title="Ship task drafting",
             description="Add a reviewed **AI draft**.",
-            status_name="doing",
             priority=3,
             due_date="2026-09-08",
             assignee_emails=["teammate@example.com", "outside@example.com"],
@@ -93,7 +91,6 @@ def test_text_to_task_maps_only_valid_workspace_values(
     assert response.json() == {
         "title": "Ship task drafting",
         "description": "Add a reviewed **AI draft**.",
-        "status_id": statuses[1]["id"],
         "priority": 3,
         "due_date": "2026-09-08",
         "assignee_ids": [teammate.id],
@@ -116,7 +113,7 @@ def test_text_to_task_requires_own_key_and_editor_access(
 ) -> None:
     owner = logged_in_client("owner@example.com")
     viewer = create_user("viewer@example.com")
-    workspace, _statuses = make_workspace(owner)
+    workspace = make_workspace(owner)
 
     missing = owner.post(
         f"/api/workspaces/{workspace['id']}/task-drafts/from-text",
@@ -145,7 +142,6 @@ def gemini_context() -> dict:
     return {
         "name": "Personal",
         "today": "2026-09-03",
-        "statuses": [{"name": "todo"}],
         "members": [{"name": "Owner", "email": "owner@example.com"}],
         "existing_tags": [],
     }
@@ -159,13 +155,10 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
         assert "max_output_tokens" not in body
         assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
-        assert body["response_format"]["schema"]["properties"]["status_name"]["enum"] == [
-            "todo"
-        ]
+        assert "status_name" not in body["response_format"]["schema"]["properties"]
         generated = {
             "title": "Buy groceries",
             "description": None,
-            "status_name": "todo",
             "priority": 1,
             "due_date": None,
             "assignee_emails": [],

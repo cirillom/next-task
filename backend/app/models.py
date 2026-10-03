@@ -91,9 +91,6 @@ class Workspace(Base):
     members: Mapped[list[WorkspaceMember]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )
-    statuses: Mapped[list[TaskStatus]] = relationship(
-        back_populates="workspace", cascade="all, delete-orphan"
-    )
     tasks: Mapped[list[Task]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )
@@ -120,28 +117,12 @@ class WorkspaceMember(Base):
     workspace: Mapped[Workspace] = relationship(back_populates="members")
 
 
-class TaskStatus(Base):
-    __tablename__ = "task_statuses"
-    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    workspace_id: Mapped[int] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
-    )
-    name: Mapped[str] = mapped_column(String(80), nullable=False)
-    score_value: Mapped[float] = mapped_column(Float, default=0, server_default="0")
-
-    workspace: Mapped[Workspace] = relationship(back_populates="statuses")
-    tasks: Mapped[list[Task]] = relationship(back_populates="status")
-
-
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         CheckConstraint("priority >= 0", name="task_priority_positive"),
         Index("ix_tasks_workspace_id", "workspace_id"),
         Index("ix_tasks_parent_task_id", "parent_task_id"),
-        Index("ix_tasks_status_id", "status_id"),
         Index("ix_tasks_created_by_user_id", "created_by_user_id"),
     )
 
@@ -150,7 +131,6 @@ class Task(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    status_id: Mapped[int] = mapped_column(ForeignKey("task_statuses.id", ondelete="RESTRICT"))
     priority: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     due_date: Mapped[date | None] = mapped_column(Date)
     last_worked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -168,7 +148,6 @@ class Task(Base):
 
     creator: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
     workspace: Mapped[Workspace] = relationship(back_populates="tasks")
-    status: Mapped[TaskStatus] = relationship(back_populates="tasks")
     parent: Mapped[Task | None] = relationship(
         remote_side=[id], back_populates="subtasks", foreign_keys=[parent_task_id]
     )
@@ -234,6 +213,7 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     color: Mapped[str | None] = mapped_column(String(32))
+    score_value: Mapped[float] = mapped_column(Float, default=0, server_default="0")
 
     workspace: Mapped[Workspace] = relationship(back_populates="tags")
     tasks: Mapped[list[Task]] = relationship(secondary="task_tags", back_populates="tags")
