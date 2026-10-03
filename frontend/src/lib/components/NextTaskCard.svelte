@@ -148,7 +148,6 @@
 
   <div class="meta-row">
     <span class="priority">Priority {task.priority}</span>
-    <span>{task.status.name}</span>
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     <span
       class="date-meta"

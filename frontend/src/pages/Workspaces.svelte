@@ -1,11 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Member, Role, Status, Workspace } from '../lib/api/types';
+  import type { Member, Role, Workspace } from '../lib/api/types';
   import AppButton from '../lib/components/AppButton.svelte';
   import TextField from '../lib/components/TextField.svelte';
   import TextArea from '../lib/components/TextArea.svelte';
-  import NumberField from '../lib/components/NumberField.svelte';
 
   export let workspace: Workspace;
   export let workspaces: Workspace[];
@@ -17,24 +16,18 @@
   }>();
 
   let members: Member[] = [];
-  let statuses: Status[] = [];
   let workspaceName = workspace.name;
   let formula = workspace.scoring_formula || '';
   let newWorkspaceName = '';
   let memberEmail = '';
   let memberRole: Role = 'editor';
-  let statusName = '';
-  let statusValue = 0;
   let error = '';
   let notice = '';
   let deleting = false;
 
   async function load() {
     try {
-      [members, statuses] = await Promise.all([
-        api.members(workspace.id),
-        api.statuses(workspace.id)
-      ]);
+      members = await api.members(workspace.id);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not load workspace settings';
     }
@@ -67,7 +60,7 @@
     if (
       !window.confirm(
         `Delete workspace “${workspace.name}”?\n\n` +
-          'This permanently deletes all tasks, subtasks, tags, statuses, workspace memberships, assignments, task-tag links, and blocking history in this workspace.\n\n' +
+          'This permanently deletes all tasks, subtasks, tags, workspace memberships, assignments, task-tag links, and blocking history in this workspace.\n\n' +
           'User accounts will not be deleted. This action cannot be undone.'
       )
     ) return;
@@ -113,40 +106,6 @@
     }
   }
 
-  async function addStatus() {
-    try {
-      await api.createStatus(workspace.id, statusName, statusValue);
-      statusName = '';
-      statusValue = 0;
-      await load();
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not create status';
-    }
-  }
-
-  async function saveStatus(item: Status) {
-    try {
-      await api.updateStatus(workspace.id, item.id, {
-        name: item.name,
-        score_value: item.score_value
-      });
-      notice = 'Status saved.';
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not save status';
-      await load();
-    }
-  }
-
-  async function removeStatus(item: Status) {
-    if (!window.confirm(`Delete status “${item.name}”?`)) return;
-    try {
-      await api.deleteStatus(workspace.id, item.id);
-      await load();
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not delete status';
-    }
-  }
-
   onMount(load);
 </script>
 
@@ -164,10 +123,8 @@
 
   <div class="settings-stack">
     {#if workspace.role === 'owner'}
-      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<TextField bind:value={workspaceName} required /></label><label>Scoring formula<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, statusValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><AppButton type="submit" variant="primary">Save settings</AppButton></form></section>
+      <section class="panel"><h2>Workspace settings</h2><form on:submit|preventDefault={saveWorkspace}><label>Name<TextField bind:value={workspaceName} required /></label><label>Scoring formula<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, tagValue. tagValue sums assigned tags and their parents once each. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><AppButton type="submit" variant="primary">Save settings</AppButton></form></section>
     {/if}
-
-    <section class="panel"><h2>Statuses</h2><div class="editable-list">{#each statuses as item}<div class="editable-row"><TextField bind:value={item.name} disabled={workspace.role === 'viewer'} aria-label="Status name" /><NumberField step="any" bind:value={item.score_value} disabled={workspace.role === 'viewer'} aria-label="Score value" />{#if workspace.role !== 'viewer'}<AppButton on:click={() => saveStatus(item)}>Save</AppButton><AppButton variant="danger" on:click={() => removeStatus(item)}>Delete</AppButton>{/if}</div>{/each}</div>{#if workspace.role !== 'viewer'}<form class="inline-control" on:submit|preventDefault={addStatus}><TextField bind:value={statusName} placeholder="New status" required /><NumberField step="any" bind:value={statusValue} aria-label="Score value" /><AppButton type="submit">Add status</AppButton></form>{/if}</section>
 
     <section class="panel"><h2>Members</h2><div class="member-list">{#each members as member}<div><span><strong>{member.display_name}</strong><small>{member.email}</small></span>{#if workspace.role === 'owner'}<select value={member.role} on:change={(event) => changeRole(member, event.currentTarget.value as Role)}><option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><AppButton variant="danger" on:click={() => removeMember(member)}>Remove</AppButton>{:else}<span class="role-badge">{member.role}</span>{/if}</div>{/each}</div>{#if workspace.role === 'owner'}<form class="inline-control" on:submit|preventDefault={addMember}><TextField bind:value={memberEmail} placeholder="Existing username or email" autocomplete="off" required /><select bind:value={memberRole}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="owner">Owner</option></select><AppButton type="submit">Add member</AppButton></form>{/if}</section>
 
@@ -177,7 +134,7 @@
         <h2>Delete workspace</h2>
         <div class="danger-warning">
           <strong>This permanently deletes everything stored in “{workspace.name}”.</strong>
-          <p>All tasks and subtasks, tags, statuses, workspace memberships, assignments, task-tag links, and blocking history in this workspace will be removed.</p>
+          <p>All tasks and subtasks, tags, workspace memberships, assignments, task-tag links, and blocking history in this workspace will be removed.</p>
           <p><strong>User accounts will not be deleted.</strong> This action cannot be undone.</p>
         </div>
         <AppButton variant="danger-solid" className="delete-workspace-button" disabled={deleting} on:click={deleteWorkspace}>{deleting ? 'Deleting workspace…' : 'Delete workspace permanently'}</AppButton>

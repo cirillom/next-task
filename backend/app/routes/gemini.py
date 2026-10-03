@@ -13,7 +13,7 @@ from app.gemini_schemas import (
     TextToTaskDraft,
     TextToTaskRequest,
 )
-from app.models import Tag, TaskStatus, User, WorkspaceMember
+from app.models import Tag, User, WorkspaceMember
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft
 from app.services.workspaces import require_editor
@@ -79,13 +79,6 @@ def text_to_task(
             status_code=409,
             detail="Add a Gemini API key in Settings before using text to task",
         )
-    statuses = list(
-        db.scalars(
-            select(TaskStatus)
-            .where(TaskStatus.workspace_id == workspace_id)
-            .order_by(TaskStatus.id)
-        ).all()
-    )
     members = list(
         db.scalars(
             select(WorkspaceMember)
@@ -96,12 +89,9 @@ def text_to_task(
     tags = list(
         db.scalars(select(Tag).where(Tag.workspace_id == workspace_id).order_by(Tag.name)).all()
     )
-    if not statuses:
-        raise HTTPException(status_code=409, detail="The workspace needs at least one status")
     context = {
         "name": membership.workspace.name,
         "today": date.today().isoformat(),
-        "statuses": [{"name": item.name} for item in statuses],
         "members": [
             {"name": item.user.display_name, "email": item.user.email} for item in members
         ],
@@ -115,8 +105,6 @@ def text_to_task(
     except GeminiServiceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
-    status_by_name = {item.name.casefold(): item for item in statuses}
-    chosen_status = status_by_name.get(generated.status_name.casefold(), statuses[0])
     member_by_email = {item.user.email.casefold(): item for item in members}
     assignee_ids = list(
         dict.fromkeys(
@@ -143,7 +131,6 @@ def text_to_task(
     return TextToTaskDraft(
         title=generated.title.strip(),
         description=generated.description.strip() if generated.description else None,
-        status_id=chosen_status.id,
         priority=generated.priority,
         due_date=generated.due_date,
         assignee_ids=assignee_ids,

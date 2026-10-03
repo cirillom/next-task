@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Member, Status, Tag, Task, Workspace } from '../lib/api/types';
+  import type { Member, Tag, Task, Workspace } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TagPicker from '../lib/components/TagPicker.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
@@ -17,13 +17,11 @@
   const dispatch = createEventDispatcher<{ openTask: number; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
-  let statuses: Status[] = [];
   let tags: Tag[] = [];
   let members: Member[] = [];
   let search = '';
   let finishedFilter: FinishedFilter = 'unfinished';
   let blockedFilter: BlockedFilter = 'all';
-  let statusFilter = '';
   let includeTagIds: number[] = [];
   let excludeTagIds: number[] = [];
   let tagMatch: TagMatch = 'all';
@@ -39,7 +37,6 @@
   $: activeFilterCount = [
     finishedFilter !== 'unfinished',
     blockedFilter !== 'all',
-    statusFilter !== '',
     includeTagIds.length > 0,
     excludeTagIds.length > 0,
     assigneeFilter !== ''
@@ -49,7 +46,6 @@
     return {
       finished,
       search,
-      status_id: statusFilter ? Number(statusFilter) : null,
       include_tag_id: includeTagIds,
       exclude_tag_id: excludeTagIds,
       tag_match: tagMatch,
@@ -168,8 +164,7 @@
     loading = true;
     error = '';
     try {
-      [statuses, tags, members, tasks] = await Promise.all([
-        api.statuses(workspace.id),
+      [tags, members, tasks] = await Promise.all([
         api.tags(workspace.id),
         api.members(workspace.id),
         loadTasks()
@@ -213,7 +208,6 @@
   function clearFilters() {
     finishedFilter = 'unfinished';
     blockedFilter = 'all';
-    statusFilter = '';
     includeTagIds = [];
     excludeTagIds = [];
     tagMatch = 'all';
@@ -301,16 +295,6 @@
               <option value="all">All</option>
               <option value="blocked">Blocked</option>
               <option value="unblocked">Not blocked</option>
-            </select>
-          </label>
-
-          <label>
-            Status
-            <select bind:value={statusFilter} on:change={refreshTasks}>
-              <option value="">All</option>
-              {#each statuses as status (status.id)}
-                <option value={String(status.id)}>{status.name}</option>
-              {/each}
             </select>
           </label>
 
@@ -414,7 +398,6 @@
   {#each orderedTasks as task (task.id)}
     <TaskCard
       {task}
-      {statuses}
       readOnly={workspace.role === 'viewer'}
       on:changed={() => void refreshTasks()}
       on:open={(event) => dispatch('openTask', event.detail)}

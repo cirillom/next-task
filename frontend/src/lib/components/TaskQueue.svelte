@@ -40,7 +40,6 @@
           <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
           <span>{idleLabel(task)}</span>
           <span>Priority {task.priority}</span>
-          <span>{task.status.name}</span>
           <span>Score {task.score.toFixed(1)}</span>
         </div>
       </div>

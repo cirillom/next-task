@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { ApiError, api } from '../api/client';
-  import type { Member, Status, Tag, Task, TaskInput, TaskSummary, Workspace } from '../api/types';
+  import type { Member, Tag, Task, TaskInput, TaskSummary, Workspace } from '../api/types';
   import { formatDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
@@ -17,7 +17,6 @@
   export let taskId = 0;
   export let initialTitle = '';
   export let initialDescription = '';
-  export let initialStatusId = 0;
   export let initialPriority = 1;
   export let initialDueDate = '';
   export let initialLastWorked = '';
@@ -48,14 +47,12 @@
     blockTarget: TaskSummary;
   }>();
 
-  let statuses: Status[] = [];
   let tags: Tag[] = [];
   let members: Member[] = [];
   let parentTasks: Task[] = [];
 
   let title = initialTitle;
   let description = initialDescription;
-  let statusId = initialStatusId;
   let priority = initialPriority;
   let dueDate = initialDueDate;
   let lastWorked = initialLastWorked;
@@ -70,7 +67,6 @@
   let localError = '';
   let optionLoadToken = 0;
   const selections = new Map<number, {
-    statusId: number;
     assigneeIds: number[];
     tagIds: number[];
     parentTaskId: number;
@@ -102,10 +98,8 @@
 
   async function loadOptions(target: Workspace, switching = false): Promise<boolean> {
     const token = ++optionLoadToken;
-    const previousStatusName = statuses.find((item) => item.id === statusId)?.name;
     if (switching) {
       selections.set(selectedWorkspace.id, {
-        statusId,
         assigneeIds: [...assigneeIds],
         tagIds: [...tagIds],
         parentTaskId
@@ -114,32 +108,27 @@
     loading = true;
     localError = '';
     try {
-      const [loadedStatuses, loadedTags, loadedMembers, loadedParents] = await Promise.all([
-        api.statuses(target.id),
+      const [loadedTags, loadedMembers, loadedParents] = await Promise.all([
         api.tags(target.id),
         api.members(target.id),
         api.tasks(target.id, { finished: false })
       ]);
       if (token !== optionLoadToken) return false;
-      statuses = loadedStatuses;
       tags = loadedTags;
       members = loadedMembers;
       parentTasks = loadedParents;
       selectedWorkspace = target;
       const saved = selections.get(target.id);
       if (saved) {
-        statusId = saved.statusId;
         assigneeIds = saved.assigneeIds;
         tagIds = saved.tagIds;
         parentTaskId = saved.parentTaskId;
       } else if (switching) {
-        statusId = statuses.find((item) => item.name.toLowerCase() === previousStatusName?.toLowerCase())?.id || statuses[0]?.id || 0;
         assigneeIds = assigneeIds.filter((id) => members.some((member) => member.user_id === id));
         tagIds = [];
         parentTaskId = 0;
         assigneeOpen = false;
       }
-      if (!statuses.some((item) => item.id === statusId)) statusId = statuses[0]?.id || 0;
       return true;
     } catch (reason) {
       if (token !== optionLoadToken) return false;
@@ -220,7 +209,6 @@
       workspace_id: selectedWorkspace.id,
       title,
       description: description || null,
-      status_id: statusId,
       priority,
       due_date: dueDate || null,
       last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
@@ -253,7 +241,6 @@
     </div>
 
     <div class="metadata-row">
-      <label>Status<select bind:value={statusId} disabled={selectedWorkspace.role === 'viewer'}>{#each statuses as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
       <label>Priority<NumberField bind:value={priority} min="1" disabled={selectedWorkspace.role === 'viewer'} /></label>
       <label>Due date<DateTimeInput bind:value={dueDate} disabled={selectedWorkspace.role === 'viewer'} /></label>
       <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} disabled={selectedWorkspace.role === 'viewer'} /></label>
@@ -404,9 +391,9 @@
       <span></span>
       <AppButton disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</AppButton>
       {#if selectedWorkspace.role !== 'viewer' && draftSubmitLabel}
-        <AppButton disabled={busy || creatingTag || !statusId || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</AppButton>
+        <AppButton disabled={busy || creatingTag || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</AppButton>
       {/if}
-      {#if selectedWorkspace.role !== 'viewer'}<AppButton type="submit" variant="primary" disabled={busy || creatingTag || !statusId || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>{/if}
+      {#if selectedWorkspace.role !== 'viewer'}<AppButton type="submit" variant="primary" disabled={busy || creatingTag || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>{/if}
     </footer>
   </form>
 {/if}
@@ -422,7 +409,7 @@
 
   .metadata-row {
     display: grid;
-    grid-template-columns: 1.2fr .65fr 1fr 1.25fr;
+    grid-template-columns: .65fr 1fr 1.25fr;
     gap: .55rem;
   }
 

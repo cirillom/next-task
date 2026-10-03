@@ -9,7 +9,6 @@ export interface GeminiSettings {
 export interface TextToTaskDraft {
   title: string;
   description: string | null;
-  status_id: number;
   priority: number;
   due_date: string | null;
   assignee_ids: number[];

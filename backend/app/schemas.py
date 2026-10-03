@@ -103,37 +103,11 @@ class MemberRead(ApiModel):
     role: WorkspaceRole
 
 
-class StatusCreate(ApiModel):
-    name: str = Field(min_length=1, max_length=80)
-    score_value: float = Field(default=0, allow_inf_nan=False)
-
-    @field_validator("name")
-    @classmethod
-    def clean_name(cls, value: str) -> str:
-        return clean_required(value)
-
-
-class StatusUpdate(ApiModel):
-    name: str | None = Field(default=None, min_length=1, max_length=80)
-    score_value: float | None = Field(default=None, allow_inf_nan=False)
-
-    @field_validator("name")
-    @classmethod
-    def clean_name(cls, value: str | None) -> str | None:
-        return clean_required(value) if value is not None else None
-
-
-class StatusRead(ApiModel):
-    id: int
-    workspace_id: int
-    name: str
-    score_value: float
-
-
 class TagSummary(ApiModel):
     id: int
     name: str
     color: str | None
+    score_value: float
 
 
 class TaskSummary(ApiModel):
@@ -156,7 +130,6 @@ class TaskCreate(ApiModel):
     workspace_id: int
     title: str = Field(min_length=1, max_length=500)
     description: str | None = None
-    status_id: int
     priority: int = Field(default=1, ge=1)
     due_date: date | None = None
     last_worked_at: UtcDateTime | None = None
@@ -174,7 +147,6 @@ class TaskUpdate(ApiModel):
     workspace_id: int | None = None
     title: str | None = Field(default=None, min_length=1, max_length=500)
     description: str | None = None
-    status_id: int | None = None
     priority: int | None = Field(default=None, ge=1)
     due_date: date | None = None
     last_worked_at: UtcDateTime | None = None
@@ -195,7 +167,6 @@ class TaskRead(ApiModel):
     workspace_id: int
     title: str
     description: str | None
-    status: StatusRead
     priority: int
     due_date: date | None
     last_worked_at: UtcDateTime | None
@@ -246,6 +217,7 @@ class TagCreate(ApiModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = None
     color: str | None = Field(default=None, max_length=32)
+    score_value: float = Field(default=0, allow_inf_nan=False)
     parent_tag_id: int | None = None
 
     @field_validator("name")
@@ -258,11 +230,18 @@ class TagUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
     color: str | None = Field(default=None, max_length=32)
+    score_value: float | None = Field(default=None, allow_inf_nan=False)
 
     @field_validator("name")
     @classmethod
     def clean_name(cls, value: str | None) -> str | None:
         return clean_required(value, tag=True) if value is not None else None
+
+    @model_validator(mode="after")
+    def require_score_value_when_supplied(self) -> "TagUpdate":
+        if "score_value" in self.model_fields_set and self.score_value is None:
+            raise ValueError("Tag value cannot be null")
+        return self
 
 
 class TagRead(TagSummary):

@@ -92,13 +92,11 @@ def test_pomodoro_session_is_one_synced_row_per_user(
         json={"email": "synced-pomodoro@example.com", "password": "correct horse"},
     ).status_code == 200
     workspace = first.post("/api/workspaces", json={"name": "Focus"}).json()
-    statuses = first.get(f"/api/workspaces/{workspace['id']}/statuses").json()
     task = first.post(
         "/api/tasks",
         json={
             "workspace_id": workspace["id"],
             "title": "Shared task",
-            "status_id": statuses[0]["id"],
         },
     ).json()
 
@@ -139,12 +137,10 @@ def test_pomodoro_session_keeps_combined_workspace_scope(
     tag = client.post(
         f"/api/workspaces/{second['id']}/tags", json={"name": "Today"}
     ).json()
-    status = client.get(f"/api/workspaces/{second['id']}/statuses").json()[0]
     task = client.post(
         "/api/tasks",
         json={
             "workspace_id": second["id"],
-            "status_id": status["id"],
             "title": "Second workspace task",
         },
     ).json()
@@ -166,12 +162,10 @@ def test_pomodoro_session_keeps_combined_workspace_scope(
     assert client.get("/api/pomodoro/session").json()["scope"] == scope
 
     outside = client.post("/api/workspaces", json={"name": "Outside focus"}).json()
-    outside_status = client.get(f"/api/workspaces/{outside['id']}/statuses").json()[0]
     moved = client.patch(
         f"/api/tasks/{task['id']}",
         json={
             "workspace_id": outside["id"],
-            "status_id": outside_status["id"],
             "assignee_ids": [],
             "tag_ids": [],
         },

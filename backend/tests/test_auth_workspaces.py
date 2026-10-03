@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Tag, Task, TaskStatus, User, Workspace, WorkspaceMember
+from app.models import Tag, Task, User, Workspace, WorkspaceMember
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -123,9 +123,9 @@ def test_workspace_access_is_isolated_and_viewer_is_read_only(
 
     viewer_client = TestClient(app)
     viewer_client.post("/api/auth/login", json={"email": viewer.email, "password": "correct horse"})
-    assert viewer_client.get(f"/api/workspaces/{workspace['id']}/statuses").status_code == 200
+    assert viewer_client.get(f"/api/workspaces/{workspace['id']}/tags").status_code == 200
     denied = viewer_client.post(
-        f"/api/workspaces/{workspace['id']}/statuses",
+        f"/api/workspaces/{workspace['id']}/tags",
         json={"name": "review", "score_value": 2},
     )
     assert denied.status_code == 403
@@ -162,7 +162,6 @@ def test_only_owner_can_delete_workspace_and_related_data_is_removed(
         ).status_code
         == 201
     )
-    statuses = owner_client.get(f"/api/workspaces/{workspace_id}/statuses").json()
     tag = owner_client.post(
         f"/api/workspaces/{workspace_id}/tags", json={"name": "temporary"}
     ).json()
@@ -171,7 +170,6 @@ def test_only_owner_can_delete_workspace_and_related_data_is_removed(
         json={
             "workspace_id": workspace_id,
             "title": "Temporary task",
-            "status_id": statuses[0]["id"],
             "assignee_ids": [editor.id],
             "tag_ids": [tag["id"]],
         },
@@ -202,11 +200,7 @@ def test_only_owner_can_delete_workspace_and_related_data_is_removed(
                 WorkspaceMember.workspace_id == workspace_id
             )
         )
-        status_item = db.scalar(
-            select(TaskStatus.id).where(TaskStatus.workspace_id == workspace_id)
-        )
         assert membership is None
-        assert status_item is None
         assert db.scalar(select(Task.id).where(Task.workspace_id == workspace_id)) is None
         assert db.scalar(select(Tag.id).where(Tag.workspace_id == workspace_id)) is None
         assert db.get(User, editor.id) is not None

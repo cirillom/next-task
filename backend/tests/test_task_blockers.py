@@ -12,14 +12,12 @@ def test_task_blockers_share_history_and_resolve_when_blocker_finishes(
 ) -> None:
     client = logged_in_client("owner@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Task blockers"}).json()
-    status_id = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()[0]["id"]
 
     def task(title: str) -> dict:
         response = client.post(
             "/api/tasks",
             json={
                 "workspace_id": workspace["id"],
-                "status_id": status_id,
                 "title": title,
             },
         )
@@ -89,14 +87,12 @@ def test_task_block_validation_and_database_constraints(
 ) -> None:
     client = logged_in_client("owner@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Block graph"}).json()
-    status_id = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()[0]["id"]
 
-    def task(title: str, workspace_id: int = workspace["id"], status: int = status_id) -> int:
+    def task(title: str, workspace_id: int = workspace["id"]) -> int:
         response = client.post(
             "/api/tasks",
             json={
                 "workspace_id": workspace_id,
-                "status_id": status,
                 "title": title,
             },
         )
@@ -105,8 +101,7 @@ def test_task_block_validation_and_database_constraints(
 
     a, b, c = task("A"), task("B"), task("C")
     other = client.post("/api/workspaces", json={"name": "Other"}).json()
-    other_status = client.get(f"/api/workspaces/{other['id']}/statuses").json()[0]["id"]
-    foreign = task("Foreign", other["id"], other_status)
+    foreign = task("Foreign", other["id"])
 
     def block(blocked: int, blocker: int):
         return client.post(f"/api/tasks/{blocked}/block", json={"blocking_task_id": blocker})

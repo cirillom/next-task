@@ -22,17 +22,11 @@ export interface Member {
   role: Role;
 }
 
-export interface Status {
-  id: number;
-  workspace_id: number;
-  name: string;
-  score_value: number;
-}
-
 export interface TagSummary {
   id: number;
   name: string;
   color: string | null;
+  score_value: number;
 }
 
 export interface Tag extends TagSummary {
@@ -75,7 +69,6 @@ export interface Task {
   workspace_id: number;
   title: string;
   description: string | null;
-  status: Status;
   priority: number;
   due_date: string | null;
   last_worked_at: string | null;
@@ -103,7 +96,6 @@ export interface TaskInput {
   workspace_id?: number;
   title: string;
   description: string | null;
-  status_id: number;
   priority: number;
   due_date: string | null;
   last_worked_at: string | null;

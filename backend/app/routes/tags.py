@@ -144,6 +144,7 @@ def tag_read(db: Session, tag: Tag) -> TagRead:
         name=tag.name,
         description=tag.description,
         color=tag.color,
+        score_value=tag.score_value,
         direct_task_count=len(tag.tasks),
         parents=[TagSummary.model_validate(item) for item in tags_by_ids(db, parent_ids)],
         children=[TagSummary.model_validate(item) for item in tags_by_ids(db, child_ids)],

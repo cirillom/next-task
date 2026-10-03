@@ -8,7 +8,6 @@ def test_draft_stays_out_of_normal_workflow_until_finalized(
 ) -> None:
     client = logged_in_client("owner@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Drafts"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
 
     created = client.post(
         "/api/drafts",
@@ -21,7 +20,6 @@ def test_draft_stays_out_of_normal_workflow_until_finalized(
     assert created.status_code == 201, created.text
     draft = created.json()
     assert draft["priority"] == 0
-    assert draft["status"]["id"] == statuses[0]["id"]
     assert draft["due_date"] is None
     assert draft["parent_task_id"] is None
     assert draft["assignees"] == []
@@ -72,14 +70,12 @@ def test_regular_task_api_cannot_create_priority_zero(
 ) -> None:
     client = logged_in_client("owner@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Draft boundary"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
 
     response = client.post(
         "/api/tasks",
         json={
             "workspace_id": workspace["id"],
             "title": "Not a draft",
-            "status_id": statuses[0]["id"],
             "priority": 0,
         },
     )
@@ -93,7 +89,6 @@ def test_draft_can_store_and_update_full_task_metadata(
     client = logged_in_client("owner@example.com")
     teammate = create_user("teammate@example.com")
     workspace = client.post("/api/workspaces", json={"name": "Full drafts"}).json()
-    statuses = client.get(f"/api/workspaces/{workspace['id']}/statuses").json()
     client.post(
         f"/api/workspaces/{workspace['id']}/members",
         json={"email": teammate.email, "role": "editor"},
@@ -111,7 +106,6 @@ def test_draft_can_store_and_update_full_task_metadata(
         json={
             "workspace_id": workspace["id"],
             "title": "Parent task",
-            "status_id": statuses[0]["id"],
             "priority": 2,
         },
     ).json()
@@ -122,7 +116,6 @@ def test_draft_can_store_and_update_full_task_metadata(
             "workspace_id": workspace["id"],
             "title": "Prepared draft",
             "description": "All details can be filled before activation.",
-            "status_id": statuses[-1]["id"],
             "due_date": "2026-10-15",
             "last_worked_at": "2026-09-29T12:30:00Z",
             "parent_task_id": parent["id"],
@@ -133,7 +126,6 @@ def test_draft_can_store_and_update_full_task_metadata(
     assert created.status_code == 201, created.text
     draft = created.json()
     assert draft["priority"] == 0
-    assert draft["status"]["id"] == statuses[-1]["id"]
     assert draft["due_date"] == "2026-10-15"
     assert draft["last_worked_at"] is not None
     assert draft["parent_task_id"] == parent["id"]
@@ -145,7 +137,6 @@ def test_draft_can_store_and_update_full_task_metadata(
         json={
             "title": "Prepared draft updated",
             "description": "Still a draft.",
-            "status_id": statuses[0]["id"],
             "due_date": "2026-10-20",
             "parent_task_id": None,
             "assignee_ids": [],
@@ -157,7 +148,6 @@ def test_draft_can_store_and_update_full_task_metadata(
     assert body["priority"] == 0
     assert body["title"] == "Prepared draft updated"
     assert body["description"] == "Still a draft."
-    assert body["status"]["id"] == statuses[0]["id"]
     assert body["due_date"] == "2026-10-20"
     assert body["parent_task_id"] is None
     assert body["assignees"] == []
@@ -195,8 +185,8 @@ def test_full_draft_creation_validates_task_relationships(
         "/api/drafts",
         json={
             "workspace_id": workspace["id"],
-            "title": "Invalid status",
-            "status_id": 999999,
+            "title": "Invalid tag",
+            "tag_ids": [999999],
         },
     )
     assert response.status_code == 422
