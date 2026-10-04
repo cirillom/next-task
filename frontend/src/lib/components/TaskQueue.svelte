@@ -38,7 +38,7 @@
           {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
           {#if task.current_block}<span class="blocked-chip">Blocked{task.active_blocks.length > 1 ? ` (${task.active_blocks.length})` : ''}</span>{/if}
           <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-          <span>{idleLabel(task)}</span>
+          {#if !task.finished_at}<span>{idleLabel(task)}</span>{/if}
           <span>Priority {task.priority}</span>
           <span>Score {task.score.toFixed(1)}</span>
         </div>
