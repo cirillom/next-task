@@ -61,6 +61,7 @@
   let busy = false;
 
   $: selectedTag = tags.find((tag) => tag.id === selectedId) || null;
+  $: parentTagValue = selectedTag?.ancestors.reduce((sum, ancestor) => sum + ancestor.score_value, 0) ?? 0;
   $: hierarchyRows = tagHierarchyRows(tags, search);
   $: visibleRows = search.trim()
     ? hierarchyRows
@@ -444,6 +445,7 @@
         <label>Name<TextField bind:value={editName} maxlength="120" required disabled={workspace.role === 'viewer'} /></label>
         <label class="color-field">Color<input type="color" bind:value={editColor} disabled={workspace.role === 'viewer'} /></label>
         <label>Tag value<NumberField step="any" bind:value={editScoreValue} required disabled={workspace.role === 'viewer'} /></label>
+        <p class="wide muted">Parent tag values (all levels): {parentTagValue}. Current total: {selectedTag.score_value + parentTagValue}.</p>
         <label class="wide">Description<TextArea bind:value={editDescription} rows="4" disabled={workspace.role === 'viewer'} /></label>
         {#if workspace.role !== 'viewer'}
           <div class="detail-actions wide">
