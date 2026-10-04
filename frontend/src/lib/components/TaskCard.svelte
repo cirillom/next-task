@@ -170,7 +170,7 @@
     {#if readOnly}<span class="priority" title="Priority">{task.priority}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
-    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
+    {#if !task.finished_at}<span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>{/if}
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 

@@ -153,7 +153,7 @@
       class="date-meta"
       class:overdue={!!task.due_date && task.due_date < localDate()}
     >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
+    {#if !task.finished_at}<span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>{/if}
     {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
   </div>
 
