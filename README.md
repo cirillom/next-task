@@ -186,7 +186,10 @@ NEXT_TASK_CREDENTIAL_SECRET=<random value kept outside Git>
 
 Set it before the first API key is saved and keep it unchanged across deployments. If
 it is lost or replaced, users must save their Gemini keys again.
-`NEXT_TASK_GEMINI_MODEL` optionally overrides the default Flash model.
+Each user can choose a text model in Settings from the models Google lists for their
+key. The selected model is saved per user and used for future drafts. Replacing or
+removing the key resets the selection. `NEXT_TASK_GEMINI_MODEL` sets the server default
+until a user chooses a model.
 
 ## Scoring formulas
 
@@ -194,6 +197,9 @@ Scores are calculated when tasks are read and are not persisted. Available
 variables are `priority`, `ageDays`, `idleDays`, `dueOffsetDays`, `hasDueDate`, and
 `tagValue`. `tagValue` sums the score values of a task's direct tags and all their
 parent tags, counting each tag once. Tag values can be edited on the **Tags** page.
+`ageDays` counts time since creation. `idleDays` counts time since the task was last
+worked, or since creation if it has never been worked. The default formula adds both,
+so working on a task resets its idle contribution while its age keeps growing.
 `hasDueDate` is `1` when a due date exists and `0` otherwise. The
 `dueOffsetDays` value is negative before the due date, zero on the due date, and
 positive after it. Formulas accept numbers, arithmetic, comparisons, boolean

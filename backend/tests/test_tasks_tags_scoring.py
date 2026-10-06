@@ -4,7 +4,13 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from app.database import SessionLocal
 from app.models import Task
-from app.services.scoring import DEFAULT_SCORING_FORMULA, FormulaError, evaluate_formula, score_task
+from app.services.scoring import (
+    DEFAULT_SCORING_FORMULA,
+    FormulaError,
+    evaluate_formula,
+    score_task,
+    score_variables,
+)
 from fastapi.testclient import TestClient
 
 
@@ -663,6 +669,10 @@ def test_score_calculation_and_safe_formula(
         task.due_date = date.today() - timedelta(days=2)
         db.commit()
         assert score_task(task, datetime.now(UTC)) == pytest.approx(171.5, abs=0.1)
+        values = score_variables(task, datetime.now(UTC))
+        assert values["ageDays"] == pytest.approx(10, abs=0.1)
+        assert values["idleDays"] == pytest.approx(4, abs=0.1)
+        assert evaluate_formula("ageDays + idleDays", values) == pytest.approx(14, abs=0.2)
 
     invalid = client.patch(
         f"/api/workspaces/{workspace['id']}",

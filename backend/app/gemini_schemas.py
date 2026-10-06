@@ -22,6 +22,15 @@ class GeminiKeyUpdate(StrictModel):
         return value.strip() if isinstance(value, str) else value
 
 
+class GeminiModelRead(StrictModel):
+    id: str
+    name: str
+
+
+class GeminiModelUpdate(StrictModel):
+    model: str = Field(min_length=1, max_length=100, pattern=r"^gemini-[a-z0-9.-]+$")
+
+
 class TextToTaskRequest(StrictModel):
     text: str = Field(min_length=1, max_length=12_000)
 

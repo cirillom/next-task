@@ -4,10 +4,10 @@ from collections.abc import Callable
 import httpx
 import pytest
 from app.database import SessionLocal
-from app.gemini_schemas import GeneratedTask
+from app.gemini_schemas import GeminiModelRead, GeneratedTask
 from app.models import User
 from app.routes import gemini as gemini_routes
-from app.services.gemini import GeminiServiceError, generate_task_draft
+from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -52,6 +52,111 @@ def test_gemini_key_is_encrypted_and_never_returned(
     assert removed.json()["configured"] is False
 
 
+def test_google_models_are_filtered_across_pages() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-goog-api-key"] == "secret-key"
+        if request.url.params.get("pageToken") == "second":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "name": "models/gemini-2.5-pro",
+                            "displayName": "Gemini 2.5 Pro",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/gemini-tts",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                    ]
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "models": [
+                    {
+                        "name": "models/gemini-3.8-flash",
+                        "displayName": "Gemini 3.8 Flash",
+                        "supportedGenerationMethods": ["generateContent"],
+                    },
+                    {
+                        "name": "models/text-embedding-004",
+                        "supportedGenerationMethods": ["embedContent"],
+                    },
+                    {
+                        "name": "models/gemini-3-pro-image",
+                        "supportedGenerationMethods": ["generateContent"],
+                    },
+                ],
+                "nextPageToken": "second",
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        models = list_gemini_models("secret-key", http_client)
+    assert [(model.id, model.name) for model in models] == [
+        ("gemini-2.5-pro", "Gemini 2.5 Pro"),
+        ("gemini-3.8-flash", "Gemini 3.8 Flash"),
+    ]
+
+
+def test_selected_model_is_private_and_used_for_drafts(
+    logged_in_client: Callable[[str], TestClient], monkeypatch
+) -> None:
+    owner = logged_in_client("owner@example.com")
+    other = logged_in_client("other@example.com")
+    workspace = make_workspace(owner)
+    assert owner.get("/api/integrations/gemini/models").status_code == 409
+    assert (
+        owner.put("/api/integrations/gemini/model", json={"model": "gemini-2.5-pro"}).status_code
+        == 409
+    )
+    save_key(owner)
+    save_key(other)
+    monkeypatch.setattr(
+        gemini_routes,
+        "list_gemini_models",
+        lambda _key: [
+            GeminiModelRead(id="gemini-2.5-pro", name="Gemini 2.5 Pro"),
+            GeminiModelRead(id="gemini-3.8-flash", name="Gemini 3.8 Flash"),
+        ],
+    )
+    assert len(owner.get("/api/integrations/gemini/models").json()) == 2
+    assert (
+        owner.put("/api/integrations/gemini/model", json={"model": "gemini-unknown"}).status_code
+        == 422
+    )
+    selected = owner.put("/api/integrations/gemini/model", json={"model": "gemini-2.5-pro"})
+    assert selected.status_code == 200
+    assert selected.json()["model"] == "gemini-2.5-pro"
+    assert owner.get("/api/integrations/gemini").json()["model"] == "gemini-2.5-pro"
+    assert other.get("/api/integrations/gemini").json()["model"] == "gemini-3.8-flash"
+
+    captured: dict = {}
+
+    def fake_generate(_key: str, _context: dict, _text: str, *, model: str) -> GeneratedTask:
+        captured["model"] = model
+        return GeneratedTask(
+            title="Draft",
+            description=None,
+            priority=1,
+            due_date=None,
+            assignee_emails=[],
+            tag_names=[],
+        )
+
+    monkeypatch.setattr(gemini_routes, "generate_task_draft", fake_generate)
+    draft = owner.post(
+        f"/api/workspaces/{workspace['id']}/task-drafts/from-text", json={"text": "Draft something"}
+    )
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["model"] == captured["model"] == "gemini-2.5-pro"
+
+    assert owner.delete("/api/integrations/gemini").json()["model"] == "gemini-3.8-flash"
+
+
 def test_text_to_task_maps_only_valid_workspace_values(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],
@@ -70,8 +175,8 @@ def test_text_to_task_maps_only_valid_workspace_values(
     save_key(client)
     captured: dict = {}
 
-    def fake_generate(api_key: str, context: dict, text: str) -> GeneratedTask:
-        captured.update(api_key=api_key, context=context, text=text)
+    def fake_generate(api_key: str, context: dict, text: str, *, model: str) -> GeneratedTask:
+        captured.update(api_key=api_key, context=context, text=text, model=model)
         return GeneratedTask(
             title="Ship task drafting",
             description="Add a reviewed **AI draft**.",
@@ -151,7 +256,7 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-goog-api-key"] == "secret-key"
         body = json.loads(request.content)
-        assert body["model"] == "gemini-3.8-flash"
+        assert body["model"] == "gemini-2.5-pro"
         assert "max_output_tokens" not in body
         assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
@@ -178,7 +283,9 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        draft = generate_task_draft("secret-key", gemini_context(), "Buy groceries", client)
+        draft = generate_task_draft(
+            "secret-key", gemini_context(), "Buy groceries", client, model="gemini-2.5-pro"
+        )
     assert draft.title == "Buy groceries"
     assert draft.tag_names == ["errands"]
 

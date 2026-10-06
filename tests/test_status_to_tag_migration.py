@@ -58,7 +58,7 @@ def test_status_migration_preserves_tasks_and_related_data(tmp_path: Path) -> No
             "VALUES (1,1,2,'focus','ready',0)"
         )
 
-    upgrade(database, "head")
+    upgrade(database, "c4a1f593d078")
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
             "c4a1f593d078",
