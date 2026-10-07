@@ -3,6 +3,7 @@
   import type { Task } from '../api/types';
   import { daysSince, formatDate } from '../format';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import RankingBoost from './RankingBoost.svelte';
 
   export let tasks: Task[] = [];
   export let workspaceNames: Record<number, string> = {};
@@ -41,6 +42,7 @@
           {#if !task.finished_at}<span>{idleLabel(task)}</span>{/if}
           <span>Priority {task.priority}</span>
           <span>Score {task.score.toFixed(1)}</span>
+          <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
         </div>
       </div>
       <div class="queue-actions">

@@ -159,7 +159,9 @@ export const api = {
         tag_match: scope.tag_match
       });
     }));
-    return tasks.flat().sort((left, right) => right.score - left.score || left.id - right.id);
+    return tasks.flat().sort((left, right) =>
+      right.ranking_score - left.ranking_score || right.score - left.score || left.id - right.id
+    );
   },
   drafts: (workspaceId: number) =>
     request<Task[]>(`/api/drafts?workspace_id=${encodeURIComponent(String(workspaceId))}`),

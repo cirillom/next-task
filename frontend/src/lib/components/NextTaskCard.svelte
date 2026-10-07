@@ -8,6 +8,7 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import RankingBoost from './RankingBoost.svelte';
   import TagBadge from './TagBadge.svelte';
 
   export let task: Task;
@@ -111,6 +112,7 @@
       <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
     </div>
     <div class="recommended-card__header-actions">
+      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
       {#if !readOnly}
         <button
           type="button"

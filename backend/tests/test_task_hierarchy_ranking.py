@@ -113,7 +113,7 @@ def test_hierarchy_ranking_does_not_force_low_score_family_above_unrelated_work(
     ]
 
 
-def test_actionable_ranking_keeps_real_scores_without_parent_boost(
+def test_actionable_ranking_uses_parent_boost_without_changing_own_score(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
@@ -139,6 +139,11 @@ def test_actionable_ranking_keeps_real_scores_without_parent_boost(
         },
     ).json()
 
-    assert [task["id"] for task in tasks] == [unrelated["id"], child["id"]]
-    assert all(task["ranking_source_task_id"] is None for task in tasks)
-    assert all(task["ranking_score"] == task["score"] for task in tasks)
+    assert [task["id"] for task in tasks] == [child["id"], unrelated["id"]]
+    child_read, unrelated_read = tasks
+    parent_read = client.get(f"/api/tasks/{parent['id']}").json()
+    assert child_read["score"] < unrelated_read["score"]
+    assert child_read["ranking_score"] == parent_read["score"]
+    assert child_read["ranking_source_task_id"] == parent["id"]
+    assert child_read["ranking_source_score"] == parent_read["score"]
+    assert unrelated_read["ranking_score"] == unrelated_read["score"]
