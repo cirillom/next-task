@@ -10,6 +10,7 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import RankingBoost from './RankingBoost.svelte';
 
   export let task: Task;
   export let readOnly = false;
@@ -133,14 +134,7 @@
       <span class="task-id">#{task.id}</span>
     </button>
     <div class="task-card__header-actions">
-      {#if task.ranking_source_task_id !== null && task.ranking_source_score !== null}
-        <button
-          type="button"
-          class="ranking-boost"
-          title={`Open ancestor #${task.ranking_source_task_id}. This task is ranked with that ancestor's score ${task.ranking_source_score.toFixed(1)} because unfinished descendants must appear before their ancestors.`}
-          on:click={() => dispatch('open', task.ranking_source_task_id!)}
-        >↑ from #{task.ranking_source_task_id} · {task.ranking_source_score.toFixed(1)}</button>
-      {/if}
+      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
       {#if !readOnly}
         <button
           type="button"
@@ -233,9 +227,6 @@
   .meta-row > span + span::before { content: '·'; margin-right: .65rem; color: #b8b3a8; font-weight: 700; }
   .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
-  .ranking-boost { border: 0; border-radius: .4rem; background: transparent; color: var(--forest-2); padding: .25rem .32rem; font-size: .72rem; font-weight: 750; white-space: nowrap; }
-  .ranking-boost:hover, .ranking-boost:focus-visible { background: rgba(36, 88, 68, .08); text-decoration: underline; text-underline-offset: .12rem; }
-
   .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
   .edit-button svg, .finish-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .edit-button svg { width: 100%; height: 100%; }
@@ -269,7 +260,6 @@
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
-    .ranking-boost { font-size: .67rem; }
     .finish-action span, .quick-action span { display: none; }
     .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
   }

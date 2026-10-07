@@ -293,8 +293,6 @@ def list_tasks(
     tasks = list(db.scalars(query.order_by(Task.created_at.desc())).unique().all())
     if actionable:
         tasks = [task for task in tasks if unfinished_descendant_count(task) == 0]
-        result = [task_read(db, task) for task in tasks]
-        return sorted(result, key=lambda item: (-item.score, item.id))
     return hierarchy_ranked_task_reads(db, tasks)
 
 
