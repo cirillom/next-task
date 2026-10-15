@@ -28,7 +28,8 @@ def create_user(args: argparse.Namespace) -> None:
     if not email or not display_name:
         raise SystemExit("Email and display name are required.")
     with SessionLocal() as db:
-        db.add(User(email=email, display_name=display_name, password_hash=hash_password(password)))
+        user = User(email=email, display_name=display_name, password_hash=hash_password(password))
+        db.add(user)
         try:
             db.commit()
         except IntegrityError as error:

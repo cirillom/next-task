@@ -1,0 +1,4 @@
+services:
+  next-task:
+    volumes:
+      - "${NEXT_TASK_TRIAL_DATA_DIR:?Set NEXT_TASK_TRIAL_DATA_DIR to the snapshot trial_dir}:/data"

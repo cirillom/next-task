@@ -1,9 +1,8 @@
 # Next Task
 
-Next Task is a small, self-hosted task manager that ranks unfinished work with a
-workspace-configurable score. It supports multiple workspaces, owner/editor/viewer
-roles, Markdown task descriptions, subtasks, assignees, blocking history, and a
-Tag Studio-style inheritance DAG.
+Next Task is a small, self-hosted task manager that ranks each user's unfinished
+work with a personal scoring formula. It supports Markdown task descriptions,
+subtasks, blocking history, and a Tag Studio-style inheritance DAG.
 
 There is no offline synchronization; the service worker caches only the application shell.
 
@@ -99,9 +98,8 @@ docker compose --env-file ../.env exec next-task uv run python -m app.cli reset-
 
 Existing sessions for that user are revoked. Both CLI commands accept
 `--password-stdin` for controlled automation without putting a password in process
-arguments. After signing in, create the first workspace in the UI; its creator
-becomes owner and a default scoring formula is created with it. Create tags for
-any workflow labels you want, such as `todo` or `doing`.
+arguments. After signing in, create tasks and tags directly. Each account has one
+task queue and one scoring formula.
 
 ## Local development
 
@@ -128,6 +126,58 @@ Open `http://localhost:5173`. To create a local user from the repository root:
 ```bash
 uv run python -m app.cli create-user
 ```
+
+### Try workspace removal with your current SQLite data
+
+This migration is one-way. Run the trial on a separate SQLite snapshot; switching
+back to the original database restores the previous behavior and every record that
+was present when the snapshot was made. Changes made during the trial stay only in
+the trial database.
+
+Stop the local app first. If using the development Compose service, run
+`docker compose stop next-task`. In PowerShell, from the repository root, create
+an independent backup and a trial copy:
+
+```powershell
+# Use .\data-dev\next-task.sqlite3 instead if your data comes from Docker Compose.
+$paths = .venv\Scripts\python.exe scripts\prepare_sqlite_trial.py --source .\data\next-task.sqlite3 | ConvertFrom-Json
+$paths.backup
+$paths.trial
+```
+
+For a local Python server, while checked out on this PR:
+
+```powershell
+$previousDatabaseUrl = $env:NEXT_TASK_DATABASE_URL
+$env:NEXT_TASK_DATABASE_URL = "sqlite:///$($paths.trial.Replace('\', '/'))"
+.venv\Scripts\alembic.exe upgrade head
+.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --port 8000
+```
+
+Keep the same `NEXT_TASK_CREDENTIAL_SECRET` used for the source database if you
+want its saved Gemini keys to work. To stop the trial, stop Uvicorn, switch the
+checkout back to `main`, restore `$env:NEXT_TASK_DATABASE_URL =
+$previousDatabaseUrl`, and start the app again. The source file has never been
+modified by the trial.
+
+For Docker Compose, set the trial volume and start this PR's image. The override
+mounts the trial copy at `/data`:
+
+```powershell
+$env:NEXT_TASK_TRIAL_DATA_DIR = $paths.trial_dir.Replace('\', '/')
+docker compose -f docker-compose.yml -f docker-compose.trial.yml up --build -d
+```
+
+To return to the original Compose database, stop the trial, switch back to
+`main`, and recreate the service with the original Compose file:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.trial.yml down
+docker compose -f docker-compose.yml up --build --force-recreate -d
+```
+
+The `before.sqlite3` file printed by the snapshot helper is an extra recovery
+copy. No Alembic downgrade is available for the workspace removal.
 
 ### Checks and builds
 
@@ -157,25 +207,25 @@ uv run alembic check
 ```
 
 Most revisions can be rolled back during development with `uv run alembic downgrade -1`.
-The status-to-tag migration cannot be reversed without losing tag assignments;
-back up the database before upgrading production.
+The status-to-tag and workspace-removal migrations are one-way; restore a SQLite
+backup if either needs to be undone.
 Never replace migrations with `Base.metadata.create_all()` in production.
 
 ## Gemini text to task
 
 Each user can add a personal Gemini API key in **Settings -> Gemini text to task**.
-After selecting a workspace, editors and owners can use **+ New task**, enter natural
+Users can select **+ New task**, enter natural
 language in Quick Capture, choose **Text to task**, and review an editable task before
 anything is created. The review includes title, Markdown description, priority,
-due date, assignees, existing tags, and suggested new tags.
+due date, existing tags, and suggested new tags.
 
 Quick Capture can also save text as a draft. Drafts are full task records that can keep
-due date, hierarchy, assignees, tags, and other task metadata while remaining on
+due date, hierarchy, tags, and other task metadata while remaining on
 the dedicated **Drafts** page. **Save draft** keeps priority 0; **Save as task** assigns a
 normal priority. Drafts are excluded from normal task lists, Next, and Pomodoro
 until activated.
 
-Drafting sends the entered text plus the selected workspace members and tag
+Drafting sends the entered text plus the user's tag
 names to Gemini. The personal API key is encrypted in SQLite and is never returned to
 the browser after it is saved. Server-side encryption requires a stable value of at least
 32 characters:

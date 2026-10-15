@@ -6,8 +6,6 @@
   import RankingBoost from './RankingBoost.svelte';
 
   export let tasks: Task[] = [];
-  export let workspaceNames: Record<number, string> = {};
-  export let readOnlyWorkspaceIds: number[] = [];
   export let currentTaskId: number | null = null;
   export let allowFocus = false;
   export let allowUnblock = false;
@@ -35,7 +33,6 @@
         </button>
         <TaskHierarchy {task} compact={true} on:open={(event) => dispatch('open', event.detail)} />
         <div class="queue-meta">
-          {#if workspaceNames[task.workspace_id]}<span>{workspaceNames[task.workspace_id]}</span>{/if}
           {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
           {#if task.current_block}<span class="blocked-chip">Blocked{task.active_blocks.length > 1 ? ` (${task.active_blocks.length})` : ''}</span>{/if}
           <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
@@ -70,7 +67,7 @@
             <span>Focus</span>
           </button>
         {/if}
-        {#if allowUnblock && task.current_block && !readOnlyWorkspaceIds.includes(task.workspace_id)}
+        {#if allowUnblock && task.current_block}
           <button
             type="button"
             class="queue-action"

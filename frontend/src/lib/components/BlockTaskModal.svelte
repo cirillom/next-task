@@ -13,7 +13,6 @@
 
   export let taskTitle = '';
   export let taskId = 0;
-  export let workspaceId = 0;
   export let history: Block[] = [];
   export let busy = false;
 
@@ -49,7 +48,7 @@
   let minimumAutoUnblock = localDateTime();
 
   onMount(async () => {
-    if (workspaceId) tasks = await api.tasks(workspaceId, { finished: false });
+    tasks = await api.tasks({ finished: false });
   });
 
   function isActive(block: Block): boolean {

@@ -7,11 +7,9 @@ from fastapi.testclient import TestClient
 
 
 def make_task(client: TestClient) -> dict:
-    workspace = client.post("/api/workspaces", json={"name": "Blocking"}).json()
     response = client.post(
         "/api/tasks",
         json={
-            "workspace_id": workspace["id"],
             "title": "Blocked task",
         },
     )
@@ -148,10 +146,9 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     original_block_id = body["current_block"]["id"]
     assert_utc_timestamp(body["current_block"]["unblocked_at"])
 
-    workspace_id = task["workspace_id"]
-    blocked_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true")
+    blocked_response = client.get("/api/tasks?blocked=true")
     blocked_ids = {item["id"] for item in blocked_response.json()}
-    actionable_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false")
+    actionable_response = client.get("/api/tasks?blocked=false")
     actionable_ids = {item["id"] for item in actionable_response.json()}
     assert task["id"] in blocked_ids
     assert task["id"] not in actionable_ids
@@ -168,9 +165,9 @@ def test_scheduled_block_becomes_actionable_after_unblock_time(
     assert refreshed_body["current_block"] is None
     assert refreshed_body["blocking_history"][0]["unblocked_at"] is not None
 
-    blocked_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=true")
+    blocked_response = client.get("/api/tasks?blocked=true")
     blocked_ids = {item["id"] for item in blocked_response.json()}
-    actionable_response = client.get(f"/api/tasks?workspace_id={workspace_id}&blocked=false")
+    actionable_response = client.get("/api/tasks?blocked=false")
     actionable_ids = {item["id"] for item in actionable_response.json()}
     assert task["id"] not in blocked_ids
     assert task["id"] in actionable_ids
@@ -225,19 +222,16 @@ def test_finishing_tasks_ends_active_blocks_and_preserves_history(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = client.post("/api/workspaces", json={"name": "Completion blocking"}).json()
 
     parent = client.post(
         "/api/tasks",
         json={
-            "workspace_id": workspace["id"],
             "title": "Blocked parent",
         },
     ).json()
     child = client.post(
         "/api/tasks",
         json={
-            "workspace_id": workspace["id"],
             "title": "Blocked child",
             "parent_task_id": parent["id"],
         },

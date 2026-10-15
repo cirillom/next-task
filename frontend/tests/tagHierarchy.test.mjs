@@ -16,7 +16,6 @@ const tag = (id, name, parents = [], ancestors = []) => ({
   id,
   name,
   color: null,
-  workspace_id: 1,
   description: null,
   parents,
   children: [],

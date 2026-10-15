@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
+  import RankingBoost from './RankingBoost.svelte';
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import BlockSummary from './BlockSummary.svelte';
@@ -10,7 +11,6 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
-  import RankingBoost from './RankingBoost.svelte';
 
   export let task: Task;
   export let readOnly = false;
@@ -134,7 +134,14 @@
       <span class="task-id">#{task.id}</span>
     </button>
     <div class="task-card__header-actions">
-      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
+      {#if task.ranking_source_task_id !== null && task.ranking_source_score !== null}
+        <button
+          type="button"
+          class="ranking-boost"
+          title={`Open ancestor #${task.ranking_source_task_id}. This task is ranked with that ancestor's score ${task.ranking_source_score.toFixed(1)} because unfinished descendants must appear before their ancestors.`}
+          on:click={() => dispatch('open', task.ranking_source_task_id!)}
+        >↑ from #{task.ranking_source_task_id} · {task.ranking_source_score.toFixed(1)}</button>
+      {/if}
       {#if !readOnly}
         <button
           type="button"
@@ -148,6 +155,7 @@
         </button>
       {/if}
       <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   </div>
 
@@ -164,8 +172,7 @@
     {#if readOnly}<span class="priority" title="Priority">{task.priority}</span>{/if}
     <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
     {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
-    {#if !task.finished_at}<span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>{/if}
-    {#each task.assignees as assignee}<span>{assignee.display_name}</span>{/each}
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
   </div>
 
   {#if task.direct_tags.length}
@@ -213,11 +220,11 @@
 </article>
 
 {#if blockModalOpen}
-  <BlockTaskModal taskTitle={task.title} taskId={task.id} workspaceId={task.workspace_id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
+  <BlockTaskModal taskTitle={task.title} taskId={task.id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
 {/if}
 
 {#if completionOpen}
-  <TaskCompletionDialog workspaceId={task.workspace_id} taskId={task.id} taskTitle={task.title} {busy} on:close={() => (completionOpen = false)} on:confirm={() => void confirmFinish()} />
+  <TaskCompletionDialog taskId={task.id} taskTitle={task.title} {busy} on:close={() => (completionOpen = false)} on:confirm={() => void confirmFinish()} />
 {/if}
 
 <style>
@@ -226,6 +233,9 @@
   .date-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
   .meta-row > span + span::before { content: '·'; margin-right: .65rem; color: #b8b3a8; font-weight: 700; }
   .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
+
+  .ranking-boost { border: 0; border-radius: .4rem; background: transparent; color: var(--forest-2); padding: .25rem .32rem; font-size: .72rem; font-weight: 750; white-space: nowrap; }
+  .ranking-boost:hover, .ranking-boost:focus-visible { background: rgba(36, 88, 68, .08); text-decoration: underline; text-underline-offset: .12rem; }
 
   .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
   .edit-button svg, .finish-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -248,7 +258,6 @@
   .block-action { color: #8a4d36; }
   .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
-
   .priority-stepper { display: inline-grid; height: 2rem; grid-template-columns: 1.65rem auto 1.65rem; align-items: stretch; overflow: hidden; border: 1px solid #cfcbc0; border-radius: .5rem; background: #fbfaf6; }
   .priority-stepper button { min-width: 0; border: 0; border-radius: 0; background: transparent; padding: 0; font-size: .95rem; line-height: 1; }
   .priority-stepper button:hover:not(:disabled) { background: rgba(0, 0, 0, .045); }
@@ -260,6 +269,7 @@
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
+    .ranking-boost { font-size: .67rem; }
     .finish-action span, .quick-action span { display: none; }
     .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
   }

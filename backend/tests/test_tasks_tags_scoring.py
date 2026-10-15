@@ -14,19 +14,12 @@ from app.services.scoring import (
 from fastapi.testclient import TestClient
 
 
-def make_workspace(client: TestClient, name: str = "Tasks") -> dict:
-    workspace = client.post("/api/workspaces", json={"name": name}).json()
-    return workspace
-
-
 def make_task(
     client: TestClient,
-    workspace: dict,
     title: str = "A task",
     **values: object,
 ) -> dict:
     payload = {
-        "workspace_id": workspace["id"],
         "title": title,
         **values,
     }
@@ -35,161 +28,17 @@ def make_task(
     return response.json()
 
 
-def test_next_ownership_shows_assigned_and_own_unassigned_tasks_only(
-    logged_in_client: Callable[[str], TestClient],
-) -> None:
-    owner = logged_in_client("next-owner@example.com")
-    member = logged_in_client("next-member@example.com")
-    member_id = member.get("/api/auth/me").json()["id"]
-    first = make_workspace(owner, "Work")
-    second = make_workspace(owner, "Personal")
-    for workspace in (first, second):
-        response = owner.post(
-            f"/api/workspaces/{workspace['id']}/members",
-            json={"email": "next-member@example.com", "role": "editor"},
-        )
-        assert response.status_code == 201, response.text
-
-    owner_unassigned = make_task(owner, first, "Owner unassigned")
-    assigned = make_task(
-        owner, first, "Assigned to member", assignee_ids=[member_id]
-    )
-    own_unassigned = make_task(member, second, "Member unassigned")
-    own_assigned_away = make_task(
-        member,
-        second,
-        "Member assigned away",
-        assignee_ids=[owner.get("/api/auth/me").json()["id"]],
-    )
-
-    first_results = member.get(
-        "/api/tasks", params={"workspace_id": first["id"], "actionable": True, "mine": True}
-    )
-    second_results = member.get(
-        "/api/tasks", params={"workspace_id": second["id"], "actionable": True, "mine": True}
-    )
-    assert first_results.status_code == second_results.status_code == 200
-    assert {task["id"] for task in first_results.json()} == {assigned["id"]}
-    assert {task["id"] for task in second_results.json()} == {own_unassigned["id"]}
-    assert owner_unassigned["id"] not in {task["id"] for task in first_results.json()}
-    assert own_assigned_away["id"] not in {task["id"] for task in second_results.json()}
-
-
-def test_moving_task_replaces_workspace_scoped_fields_without_losing_task_data(
-    logged_in_client: Callable[[str], TestClient],
-) -> None:
-    owner = logged_in_client("move-owner@example.com")
-    member = logged_in_client("move-member@example.com")
-    member_id = member.get("/api/auth/me").json()["id"]
-    source = make_workspace(owner, "Source")
-    target = make_workspace(owner, "Target")
-    for workspace in (source, target):
-        assert owner.post(
-            f"/api/workspaces/{workspace['id']}/members",
-            json={"email": "move-member@example.com", "role": "editor"},
-        ).status_code == 201
-    source_tag = owner.post(
-        f"/api/workspaces/{source['id']}/tags", json={"name": "Source tag"}
-    ).json()
-    target_tag = owner.post(
-        f"/api/workspaces/{target['id']}/tags", json={"name": "Target tag"}
-    ).json()
-    original = make_task(
-        owner,
-        source,
-        "Keep this task",
-        description="Do not lose these notes",
-        assignee_ids=[member_id],
-        tag_ids=[source_tag["id"]],
-    )
-
-    missing_fields = owner.patch(
-        f"/api/tasks/{original['id']}",
-        json={"workspace_id": target["id"]},
-    )
-    assert missing_fields.status_code == 422
-    invalid_tag = owner.patch(
-        f"/api/tasks/{original['id']}",
-        json={
-            "workspace_id": target["id"],
-            "assignee_ids": [],
-            "tag_ids": [source_tag["id"]],
-        },
-    )
-    assert invalid_tag.status_code == 422
-    outsider = logged_in_client("move-outsider@example.com")
-    outsider_id = outsider.get("/api/auth/me").json()["id"]
-    invalid_assignee = owner.patch(
-        f"/api/tasks/{original['id']}",
-        json={
-            "workspace_id": target["id"],
-            "assignee_ids": [outsider_id],
-            "tag_ids": [],
-        },
-    )
-    assert invalid_assignee.status_code == 422
-    assert owner.get(f"/api/tasks/{original['id']}").json()["workspace_id"] == source["id"]
-
-    moved = owner.patch(
-        f"/api/tasks/{original['id']}",
-        json={
-            "workspace_id": target["id"],
-            "assignee_ids": [member_id],
-            "tag_ids": [target_tag["id"]],
-        },
-    )
-    assert moved.status_code == 200, moved.text
-    result = moved.json()
-    assert result["id"] == original["id"]
-    assert result["workspace_id"] == target["id"]
-    assert result["description"] == "Do not lose these notes"
-    assert [tag["id"] for tag in result["direct_tags"]] == [target_tag["id"]]
-    assert [assignee["id"] for assignee in result["assignees"]] == [member_id]
-    assert original["id"] not in {
-        task["id"] for task in owner.get("/api/tasks", params={"workspace_id": source["id"]}).json()
-    }
-    assert original["id"] in {
-        task["id"] for task in owner.get("/api/tasks", params={"workspace_id": target["id"]}).json()
-    }
-
-
-def test_moving_linked_task_requires_removing_relations_first(
-    logged_in_client: Callable[[str], TestClient],
-) -> None:
-    client = logged_in_client("move-linked@example.com")
-    source = make_workspace(client, "Source")
-    target = make_workspace(client, "Target")
-    parent = make_task(client, source, "Parent")
-    child = make_task(client, source, "Child", parent_task_id=parent["id"])
-    payload = {
-        "workspace_id": target["id"],
-        "assignee_ids": [],
-        "tag_ids": [],
-    }
-    assert client.patch(f"/api/tasks/{parent['id']}", json=payload).status_code == 409
-    assert client.patch(f"/api/tasks/{child['id']}", json=payload).status_code == 409
-
-    blocker = make_task(client, source, "Blocker")
-    blocked = make_task(client, source, "Blocked")
-    assert client.post(
-        f"/api/tasks/{blocked['id']}/block", json={"blocking_task_id": blocker["id"]}
-    ).status_code == 201
-    assert client.patch(f"/api/tasks/{blocker['id']}", json=payload).status_code == 409
-    assert client.patch(f"/api/tasks/{blocked['id']}", json=payload).status_code == 409
-    assert client.get(f"/api/tasks/{blocked['id']}").json()["workspace_id"] == source["id"]
-
-
 @pytest.mark.parametrize(
     "timestamp",
     ["2026-09-09T14:30:00-03:00", "2026-09-09T23:00:00+05:30", "2026-09-09T17:30:00"],
 )
 def test_timestamps_round_trip_as_utc_without_shifting_due_dates(
-    logged_in_client: Callable[[str], TestClient], timestamp: str,
+    logged_in_client: Callable[[str], TestClient],
+    timestamp: str,
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
     task = make_task(
-        client, workspace, last_worked_at=timestamp, due_date="2026-09-09"
+        client, last_worked_at=timestamp, due_date="2026-09-09"
     )
     expected = datetime(2026, 9, 9, 17, 30, tzinfo=UTC)
 
@@ -203,7 +52,6 @@ def test_timestamps_round_trip_as_utc_without_shifting_due_dates(
             for item in value:
                 assert_utc_timestamps(item)
 
-    assert_utc_timestamps(workspace)
     assert_utc_timestamps(client.get("/api/auth/me").json())
     assert_utc_timestamps(task)
     assert datetime.fromisoformat(task["last_worked_at"]) == expected
@@ -219,43 +67,14 @@ def test_timestamps_round_trip_as_utc_without_shifting_due_dates(
     assert cleared.json()["last_worked_at"] is None
 
 
-def test_assignee_must_belong_to_task_workspace(
-    logged_in_client: Callable[[str], TestClient],
-    create_user: Callable,
-) -> None:
-    client = logged_in_client("owner@example.com")
-    outsider = create_user("outsider@example.com")
-    workspace = make_workspace(client)
-
-    response = client.post(
-        "/api/tasks",
-        json={
-            "workspace_id": workspace["id"],
-            "title": "Invalid assignment",
-            "assignee_ids": [outsider.id],
-        },
-    )
-    assert response.status_code == 422
-
-    client.post(
-        f"/api/workspaces/{workspace['id']}/members",
-        json={"email": outsider.email, "role": "editor"},
-    )
-    valid = make_task(client, workspace, "Valid assignment", assignee_ids=[outsider.id])
-    assert [user["id"] for user in valid["assignees"]] == [outsider.id]
-    removal = client.delete(f"/api/workspaces/{workspace['id']}/members/{outsider.id}")
-    assert removal.status_code == 409
-
-
-def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
+def test_task_hierarchy_rejects_self_cycles_and_cross_user_parents(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
-    other_workspace = make_workspace(client, "Other")
-    first = make_task(client, workspace, "First")
-    second = make_task(client, workspace, "Second", parent_task_id=first["id"])
-    other = make_task(client, other_workspace, "Other")
+    other_client = logged_in_client("other@example.com")
+    first = make_task(client, "First")
+    second = make_task(client, "Second", parent_task_id=first["id"])
+    other = make_task(other_client, "Other")
 
     assert second["parent_task"] == {
         "id": first["id"],
@@ -268,10 +87,8 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_workspace_parents(
     assert self_parent.status_code == 422
     cycle = client.patch(f"/api/tasks/{first['id']}", json={"parent_task_id": second["id"]})
     assert cycle.status_code == 422
-    cross_workspace = client.patch(
-        f"/api/tasks/{first['id']}", json={"parent_task_id": other["id"]}
-    )
-    assert cross_workspace.status_code == 422
+    cross_user = client.patch(f"/api/tasks/{first['id']}", json={"parent_task_id": other["id"]})
+    assert cross_user.status_code == 422
 
     detached = client.patch(f"/api/tasks/{second['id']}", json={"parent_task_id": None})
     assert detached.status_code == 200
@@ -284,12 +101,10 @@ def test_finishing_parent_cascades_and_reopening_child_reopens_ancestors(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
-    parent = make_task(client, workspace, "Parent")
-    child = make_task(client, workspace, "Child", parent_task_id=parent["id"])
+    parent = make_task(client, "Parent")
+    child = make_task(client, "Child", parent_task_id=parent["id"])
     grandchild = make_task(
         client,
-        workspace,
         "Grandchild",
         parent_task_id=child["id"],
     )
@@ -315,105 +130,50 @@ def test_finishing_parent_cascades_and_reopening_child_reopens_ancestors(
     assert reopened_parent["unfinished_descendant_count"] == 2
 
 
-def test_actionable_tasks_are_leaf_tasks_for_current_user_or_unassigned(
+def test_actionable_tasks_are_leaf_tasks_for_current_user(
     logged_in_client: Callable[[str], TestClient],
-    create_user: Callable,
 ) -> None:
     client = logged_in_client("owner@example.com")
-    owner_id = client.get("/api/auth/me").json()["id"]
-    teammate = create_user("teammate@example.com")
-    workspace = make_workspace(client)
-    client.post(
-        f"/api/workspaces/{workspace['id']}/members",
-        json={"email": teammate.email, "role": "editor"},
-    )
-
-    parent = make_task(client, workspace, "Project container")
-    child = make_task(
-        client,
-        workspace,
-        "Concrete next action",
-        parent_task_id=parent["id"],
-    )
-    mine = make_task(client, workspace, "Mine", assignee_ids=[owner_id])
-    shared = make_task(
-        client,
-        workspace,
-        "Shared",
-        assignee_ids=[owner_id, teammate.id],
-    )
-    theirs = make_task(client, workspace, "Theirs", assignee_ids=[teammate.id])
-    unassigned = make_task(client, workspace, "Unassigned")
-
-    normal_ids = {
-        item["id"]
-        for item in client.get(
-            "/api/tasks", params={"workspace_id": workspace["id"], "finished": False}
-        ).json()
-    }
-    assert parent["id"] in normal_ids
-    assert theirs["id"] in normal_ids
-
-    actionable = client.get(
-        "/api/tasks",
-        params={
-            "workspace_id": workspace["id"],
-            "finished": False,
-            "blocked": False,
-            "actionable": True,
-        },
-    ).json()
-    actionable_ids = {item["id"] for item in actionable}
-    assert child["id"] in actionable_ids
-    assert mine["id"] in actionable_ids
-    assert shared["id"] in actionable_ids
-    assert unassigned["id"] in actionable_ids
-    assert parent["id"] not in actionable_ids
-    assert theirs["id"] not in actionable_ids
-
+    other = logged_in_client("other@example.com")
+    parent = make_task(client, "Project container")
+    child = make_task(client, "Concrete next action", parent_task_id=parent["id"])
+    independent = make_task(client, "Independent")
+    foreign = make_task(other, "Foreign")
+    actionable = client.get("/api/tasks", params={"actionable": True, "blocked": False})
+    assert actionable.status_code == 200
+    assert {task["id"] for task in actionable.json()} == {child["id"], independent["id"]}
+    assert foreign["id"] not in {task["id"] for task in actionable.json()}
     assert client.post(f"/api/tasks/{child['id']}/finish").status_code == 200
-    actionable_after_finish = client.get(
-        "/api/tasks",
-        params={
-            "workspace_id": workspace["id"],
-            "finished": False,
-            "blocked": False,
-            "actionable": True,
-        },
-    ).json()
-    actionable_after_finish_ids = {item["id"] for item in actionable_after_finish}
-    assert parent["id"] in actionable_after_finish_ids
-    assert child["id"] not in actionable_after_finish_ids
+    after_finish = client.get("/api/tasks", params={"actionable": True}).json()
+    assert {task["id"] for task in after_finish} == {parent["id"], independent["id"]}
 
 
 def test_tag_dag_and_inherited_filtering(logged_in_client: Callable[[str], TestClient]) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
     tags = {}
     for name in ("next-task", "projects", "programming"):
-        response = client.post(f"/api/workspaces/{workspace['id']}/tags", json={"name": name})
+        response = client.post("/api/tags", json={"name": name})
         assert response.status_code == 201
         tags[name] = response.json()
 
     first_edge = client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['next-task']['id']}/parents",
+        f"/api/tags/{tags['next-task']['id']}/parents",
         json={"parent_tag_id": tags["projects"]["id"]},
     )
     assert first_edge.status_code == 201
     second_edge = client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['projects']['id']}/parents",
+        f"/api/tags/{tags['projects']['id']}/parents",
         json={"parent_tag_id": tags["programming"]["id"]},
     )
     assert second_edge.status_code == 201
     cycle = client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['programming']['id']}/parents",
+        f"/api/tags/{tags['programming']['id']}/parents",
         json={"parent_tag_id": tags["next-task"]["id"]},
     )
     assert cycle.status_code == 422
 
     task = make_task(
         client,
-        workspace,
         tag_ids=[tags["next-task"]["id"]],
     )
     assert [tag["name"] for tag in task["direct_tags"]] == ["next-task"]
@@ -423,46 +183,31 @@ def test_tag_dag_and_inherited_filtering(logged_in_client: Callable[[str], TestC
     }
     matches = client.get(
         "/api/tasks",
-        params={"workspace_id": workspace["id"], "tag_id": tags["programming"]["id"]},
+        params={"tag_id": tags["programming"]["id"]},
     ).json()
     assert [item["id"] for item in matches] == [task["id"]]
 
-    usage = {
-        tag["name"]: tag["direct_task_count"]
-        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
-    }
+    usage = {tag["name"]: tag["direct_task_count"] for tag in client.get("/api/tags").json()}
     assert usage == {"next-task": 1, "programming": 0, "projects": 0}
 
     make_task(
         client,
-        workspace,
         "Direct project task",
         tag_ids=[tags["projects"]["id"]],
     )
-    usage = {
-        tag["name"]: tag["direct_task_count"]
-        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
-    }
+    usage = {tag["name"]: tag["direct_task_count"] for tag in client.get("/api/tags").json()}
     assert usage == {"next-task": 1, "programming": 0, "projects": 1}
-
 
 
 def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
     logged_in_client: Callable[[str], TestClient],
-    create_user: Callable,
 ) -> None:
     client = logged_in_client("owner@example.com")
-    teammate = create_user("teammate@example.com")
-    workspace = make_workspace(client, "Tag filters")
-    client.post(
-        f"/api/workspaces/{workspace['id']}/members",
-        json={"email": teammate.email, "role": "editor"},
-    )
 
     tags: dict[str, dict] = {}
     for name in ("project", "homelab", "server", "research", "shopping", "personal"):
         response = client.post(
-            f"/api/workspaces/{workspace['id']}/tags",
+            "/api/tags",
             json={"name": name},
         )
         assert response.status_code == 201, response.text
@@ -474,51 +219,47 @@ def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
         ("shopping", "homelab"),
     ):
         response = client.post(
-            f"/api/workspaces/{workspace['id']}/tags/{tags[child]['id']}/parents",
+            f"/api/tags/{tags[child]['id']}/parents",
             json={"parent_tag_id": tags[parent]["id"]},
         )
         assert response.status_code == 201, response.text
 
     server = make_task(
         client,
-        workspace,
         "Server research",
         tag_ids=[tags["server"]["id"], tags["research"]["id"]],
-        assignee_ids=[teammate.id],
     )
     homelab = make_task(
         client,
-        workspace,
         "Homelab notes",
         tag_ids=[tags["homelab"]["id"]],
     )
     shopping = make_task(
         client,
-        workspace,
         "Buy rack parts",
         tag_ids=[tags["shopping"]["id"]],
     )
     personal = make_task(
         client,
-        workspace,
         "Personal task",
         tag_ids=[tags["personal"]["id"]],
     )
     research = make_task(
         client,
-        workspace,
         "Research only",
         tag_ids=[tags["research"]["id"]],
     )
-    assert client.post(
-        f"/api/tasks/{server['id']}/block",
-        json={"reason": "Waiting for hardware"},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"/api/tasks/{server['id']}/block",
+            json={"reason": "Waiting for hardware"},
+        ).status_code
+        == 201
+    )
 
     include_all = client.get(
         "/api/tasks",
         params=[
-            ("workspace_id", workspace["id"]),
             ("include_tag_id", tags["homelab"]["id"]),
             ("include_tag_id", tags["research"]["id"]),
             ("tag_match", "all"),
@@ -529,7 +270,6 @@ def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
     include_any = client.get(
         "/api/tasks",
         params=[
-            ("workspace_id", workspace["id"]),
             ("include_tag_id", tags["homelab"]["id"]),
             ("include_tag_id", tags["personal"]["id"]),
             ("tag_match", "any"),
@@ -545,7 +285,6 @@ def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
     excluded = client.get(
         "/api/tasks",
         params=[
-            ("workspace_id", workspace["id"]),
             ("include_tag_id", tags["project"]["id"]),
             ("exclude_tag_id", tags["shopping"]["id"]),
         ],
@@ -555,9 +294,7 @@ def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
     combined = client.get(
         "/api/tasks",
         params=[
-            ("workspace_id", workspace["id"]),
             ("finished", "false"),
-            ("assignee_id", teammate.id),
             ("blocked", "true"),
             ("search", "server"),
             ("include_tag_id", tags["project"]["id"]),
@@ -570,7 +307,7 @@ def test_multi_tag_filters_support_all_any_exclude_and_other_filters(
 
     legacy = client.get(
         "/api/tasks",
-        params={"workspace_id": workspace["id"], "tag_id": tags["project"]["id"]},
+        params={"tag_id": tags["project"]["id"]},
     ).json()
     assert {task["id"] for task in legacy} == {server["id"], homelab["id"], shopping["id"]}
 
@@ -581,14 +318,13 @@ def test_finish_and_reopen_preserve_tags(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
-    tag = client.post(f"/api/workspaces/{workspace['id']}/tags", json={"name": "workflow"}).json()
-    task = make_task(client, workspace, tag_ids=[tag["id"]])
+    tag = client.post("/api/tags", json={"name": "workflow"}).json()
+    task = make_task(client, tag_ids=[tag["id"]])
 
     finished = client.post(f"/api/tasks/{task['id']}/finish").json()
     assert finished["finished_at"] is not None
     assert finished["direct_tags"] == task["direct_tags"]
-    queue = client.get("/api/tasks", params={"workspace_id": workspace["id"]}).json()
+    queue = client.get("/api/tasks").json()
     assert queue == []
 
     reopened = client.post(f"/api/tasks/{task['id']}/reopen").json()
@@ -600,8 +336,7 @@ def test_multiple_active_blocks_and_repeated_history(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
-    task = make_task(client, workspace)
+    task = make_task(client)
 
     blocked = client.post(f"/api/tasks/{task['id']}/block", json={"reason": "Waiting on hardware"})
     assert blocked.status_code == 201
@@ -659,8 +394,7 @@ def test_score_calculation_and_safe_formula(
     )
 
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client)
-    task_data = make_task(client, workspace, priority=3)
+    task_data = make_task(client, priority=3)
     with SessionLocal() as db:
         task = db.get(Task, task_data["id"])
         assert task is not None
@@ -674,8 +408,8 @@ def test_score_calculation_and_safe_formula(
         assert values["idleDays"] == pytest.approx(4, abs=0.1)
         assert evaluate_formula("ageDays + idleDays", values) == pytest.approx(14, abs=0.2)
 
-    invalid = client.patch(
-        f"/api/workspaces/{workspace['id']}",
+    invalid = client.put(
+        "/api/settings/scoring",
         json={"scoring_formula": "open('/etc/passwd').read()"},
     )
     assert invalid.status_code == 422
@@ -685,12 +419,10 @@ def test_tag_value_sums_direct_tags_and_all_distinct_parents(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client, "Tag scores")
-    workspace_id = workspace["id"]
-    assert client.patch(
-        f"/api/workspaces/{workspace_id}", json={"scoring_formula": "tagValue"}
+    assert client.put(
+        "/api/settings/scoring", json={"scoring_formula": "tagValue"}
     ).status_code == 200
-    tags_url = f"/api/workspaces/{workspace_id}/tags"
+    tags_url = "/api/tags"
     first_parent = client.post(tags_url, json={"name": "work", "score_value": 2}).json()
     second_parent = client.post(tags_url, json={"name": "urgent", "score_value": 3}).json()
     child = client.post(
@@ -703,7 +435,7 @@ def test_tag_value_sums_direct_tags_and_all_distinct_parents(
     ).status_code == 201
 
     task = make_task(
-        client, workspace, "Priority from tags", tag_ids=[child["id"], first_parent["id"]]
+        client, "Priority from tags", tag_ids=[child["id"], first_parent["id"]]
     )
     assert task["score"] == 9
     assert {tag["score_value"] for tag in task["direct_tags"]} == {2, 4}
@@ -721,14 +453,13 @@ def test_tag_creation_can_atomically_assign_parent(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client, "Parent-aware tag creation")
 
     parent = client.post(
-        f"/api/workspaces/{workspace['id']}/tags",
+        "/api/tags",
         json={"name": "homelab"},
     ).json()
     created = client.post(
-        f"/api/workspaces/{workspace['id']}/tags",
+        "/api/tags",
         json={
             "name": "server maintenance",
             "color": "#587b6a",
@@ -739,14 +470,11 @@ def test_tag_creation_can_atomically_assign_parent(
     assert [item["id"] for item in created.json()["parents"]] == [parent["id"]]
 
     invalid = client.post(
-        f"/api/workspaces/{workspace['id']}/tags",
+        "/api/tags",
         json={"name": "orphan", "parent_tag_id": 999999},
     )
     assert invalid.status_code == 404
-    names = {
-        tag["name"]
-        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
-    }
+    names = {tag["name"] for tag in client.get("/api/tags").json()}
     assert "orphan" not in names
 
 
@@ -754,8 +482,7 @@ def test_tag_names_keep_casing_and_reject_case_insensitive_duplicates(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client, "Tag casing")
-    url = f"/api/workspaces/{workspace['id']}/tags"
+    url = "/api/tags"
 
     created = client.post(url, json={"name": "  homeLab  "})
     assert created.status_code == 201, created.text
@@ -775,12 +502,11 @@ def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client, "Merge tags")
 
     tags: dict[str, dict] = {}
     for name in ("parent-a", "parent-b", "source", "destination", "child-a", "child-b"):
         response = client.post(
-            f"/api/workspaces/{workspace['id']}/tags",
+            "/api/tags",
             json={"name": name},
         )
         assert response.status_code == 201, response.text
@@ -788,7 +514,7 @@ def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
 
     def add_parent(child: str, parent: str) -> None:
         response = client.post(
-            f"/api/workspaces/{workspace['id']}/tags/{tags[child]['id']}/parents",
+            f"/api/tags/{tags[child]['id']}/parents",
             json={"parent_tag_id": tags[parent]["id"]},
         )
         assert response.status_code == 201, response.text
@@ -802,25 +528,22 @@ def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
 
     source_only = make_task(
         client,
-        workspace,
         "Source only",
         tag_ids=[tags["source"]["id"]],
     )
     both = make_task(
         client,
-        workspace,
         "Already both",
         tag_ids=[tags["source"]["id"], tags["destination"]["id"]],
     )
     destination_only = make_task(
         client,
-        workspace,
         "Destination only",
         tag_ids=[tags["destination"]["id"]],
     )
 
     preview = client.get(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge-preview",
+        f"/api/tags/{tags['source']['id']}/merge-preview",
         params={"destination_tag_id": tags["destination"]["id"]},
     )
     assert preview.status_code == 200, preview.text
@@ -833,7 +556,7 @@ def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
     }
 
     merged = client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge",
+        f"/api/tags/{tags['source']['id']}/merge",
         json={"destination_tag_id": tags["destination"]["id"]},
     )
     assert merged.status_code == 200, merged.text
@@ -842,16 +565,12 @@ def test_tag_merge_moves_assignments_and_relationships_without_duplicates(
     assert {item["name"] for item in destination["children"]} == {"child-a", "child-b"}
     assert destination["direct_task_count"] == 3
 
-    remaining_names = {
-        tag["name"]
-        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
-    }
+    remaining_names = {tag["name"] for tag in client.get("/api/tags").json()}
     assert "source" not in remaining_names
 
     for task_id in (source_only["id"], both["id"], destination_only["id"]):
         direct_names = [
-            tag["name"]
-            for tag in client.get(f"/api/tasks/{task_id}").json()["direct_tags"]
+            tag["name"] for tag in client.get(f"/api/tasks/{task_id}").json()["direct_tags"]
         ]
         assert direct_names.count("destination") == 1
         assert "source" not in direct_names
@@ -861,54 +580,54 @@ def test_tag_merge_cycle_failure_is_atomic(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
     client = logged_in_client("owner@example.com")
-    workspace = make_workspace(client, "Atomic merge")
 
     tags: dict[str, dict] = {}
     for name in ("destination", "middle", "source"):
         tags[name] = client.post(
-            f"/api/workspaces/{workspace['id']}/tags",
+            "/api/tags",
             json={"name": name},
         ).json()
 
-    assert client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/parents",
-        json={"parent_tag_id": tags["middle"]["id"]},
-    ).status_code == 201
-    assert client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['middle']['id']}/parents",
-        json={"parent_tag_id": tags["destination"]["id"]},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"/api/tags/{tags['source']['id']}/parents",
+            json={"parent_tag_id": tags["middle"]["id"]},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/tags/{tags['middle']['id']}/parents",
+            json={"parent_tag_id": tags["destination"]["id"]},
+        ).status_code
+        == 201
+    )
 
     task = make_task(
         client,
-        workspace,
         "Keep source",
         tag_ids=[tags["source"]["id"]],
     )
 
     preview = client.get(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge-preview",
+        f"/api/tags/{tags['source']['id']}/merge-preview",
         params={"destination_tag_id": tags["destination"]["id"]},
     )
     assert preview.status_code == 422
     assert preview.json()["detail"] == "Merge would create a tag hierarchy cycle"
 
     merged = client.post(
-        f"/api/workspaces/{workspace['id']}/tags/{tags['source']['id']}/merge",
+        f"/api/tags/{tags['source']['id']}/merge",
         json={"destination_tag_id": tags["destination"]["id"]},
     )
     assert merged.status_code == 422
 
-    tag_by_name = {
-        tag["name"]: tag
-        for tag in client.get(f"/api/workspaces/{workspace['id']}/tags").json()
-    }
+    tag_by_name = {tag["name"]: tag for tag in client.get("/api/tags").json()}
     assert "source" in tag_by_name
     assert [item["name"] for item in tag_by_name["source"]["parents"]] == ["middle"]
     assert [item["name"] for item in tag_by_name["middle"]["parents"]] == ["destination"]
 
     direct_names = [
-        tag["name"]
-        for tag in client.get(f"/api/tasks/{task['id']}").json()["direct_tags"]
+        tag["name"] for tag in client.get(f"/api/tasks/{task['id']}").json()["direct_tags"]
     ]
     assert direct_names == ["source"]

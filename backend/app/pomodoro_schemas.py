@@ -27,14 +27,12 @@ class PomodoroSettingsUpdate(BaseModel):
 
 
 class NextScope(BaseModel):
-    workspace_ids: list[int] = Field(min_length=1)
     include_tag_ids: list[int] = Field(default_factory=list)
     exclude_tag_ids: list[int] = Field(default_factory=list)
     tag_match: Literal["all", "any"] = "all"
 
 
 class PomodoroSessionCreate(BaseModel):
-    workspace_id: int
     tag_id: int | None = None
     task_id: int | None = None
     scope: NextScope | None = None
@@ -45,7 +43,6 @@ class PomodoroSessionTaskUpdate(BaseModel):
 
 
 class PomodoroSessionRead(BaseModel):
-    workspace_id: int
     tag_id: int | None
     task_id: int | None
     scope: NextScope

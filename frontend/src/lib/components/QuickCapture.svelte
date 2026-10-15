@@ -2,13 +2,11 @@
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
-  import type { Task, TaskInput, Workspace } from '../api/types';
+  import type { Task, TaskInput } from '../api/types';
   import TaskForm from './TaskForm.svelte';
   import AppButton from './AppButton.svelte';
   import TextArea from './TextArea.svelte';
 
-  export let workspace: Workspace;
-  export let destinationChoices: Workspace[] = [workspace];
   const dispatch = createEventDispatcher<{ close: void; saved: Task }>();
 
   type Stage = 'capture' | 'review';
@@ -19,31 +17,7 @@
   let captureText = '';
   let proposal: TextToTaskDraft | null = null;
   let busy = false;
-  let switchingWorkspace = false;
   let error = '';
-  let form: TaskForm;
-  let destinationId = destinationChoices.some((item) => item.id === workspace.id) ? workspace.id : destinationChoices[0]?.id ?? workspace.id;
-  $: destination = destinationChoices.find((item) => item.id === destinationId) || destinationChoices[0] || workspace;
-
-  async function changeWorkspace(event: Event) {
-    const select = event.currentTarget as HTMLSelectElement;
-    const target = destinationChoices.find((item) => item.id === Number(select.value));
-    if (!target) return;
-    if (stage === 'review') {
-      if (!form) {
-        select.value = String(destinationId);
-        return;
-      }
-      switchingWorkspace = true;
-      const changed = await form.switchWorkspace(target);
-      switchingWorkspace = false;
-      if (!changed) {
-        select.value = String(destinationId);
-        return;
-      }
-    }
-    destinationId = target.id;
-  }
 
   function parsedCapture(): { title: string; description: string | null } | null {
     const lines = captureText.split('\n');
@@ -62,7 +36,6 @@
       description: parsed.description,
       priority: 1,
       due_date: null,
-      assignee_ids: [],
       existing_tag_ids: [],
       new_tag_names: [],
       model: ''
@@ -76,7 +49,6 @@
     error = '';
     try {
       const saved = await api.createDraft({
-        workspace_id: destination.id,
         title: parsed.title,
         description: parsed.description
       });
@@ -93,7 +65,7 @@
     busy = true;
     error = '';
     try {
-      proposal = await geminiApi.taskDraft(destination.id, captureText);
+      proposal = await geminiApi.taskDraft(captureText);
       reviewSource = 'gemini';
       stage = 'review';
     } catch (reason) {
@@ -115,7 +87,7 @@
     busy = true;
     error = '';
     try {
-      const saved = await api.createTask({ ...input, workspace_id: destination.id });
+      const saved = await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create task';
@@ -129,7 +101,7 @@
     error = '';
     try {
       const { priority: _priority, ...draftInput } = input;
-      const saved = await api.createDraft({ ...draftInput, workspace_id: destination.id });
+      const saved = await api.createDraft(draftInput);
       dispatch('saved', saved);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not create draft';
@@ -150,17 +122,6 @@
       <div>
         <p class="eyebrow">{stage === 'capture' ? 'Quick capture' : reviewSource === 'gemini' ? 'Review Gemini suggestion' : 'Task details'}</p>
         <h1 id="quick-capture-title">New task</h1>
-      </div>
-      <div class="header-workspace">
-        {#if destinationChoices.length > 1}
-          <label>Workspace
-            <select value={destinationId} disabled={busy || switchingWorkspace} on:change={changeWorkspace}>
-              {#each destinationChoices as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
-            </select>
-          </label>
-        {:else}
-          <span>Workspace</span><strong>{destination.name}</strong>
-        {/if}
       </div>
       <button class="icon-button" aria-label="Close" title="Close" on:click={() => dispatch('close')}>×</button>
     </header>
@@ -196,13 +157,10 @@
         <p class="notice">Gemini filled the task using <code>{proposal.model}</code>. Review anything you want before creating it.</p>
       {/if}
       <TaskForm
-        bind:this={form}
-        workspace={destination}
         initialTitle={proposal.title}
         initialDescription={proposal.description || ''}
         initialPriority={proposal.priority}
         initialDueDate={proposal.due_date || ''}
-        initialAssigneeIds={proposal.assignee_ids}
         initialTagIds={proposal.existing_tag_ids}
         initialNewTags={proposal.new_tag_names.join(', ')}
         {busy}
@@ -229,15 +187,9 @@
 
   .editor-header {
     top: -1.1rem;
-    align-items: center;
     margin: -1.1rem -1.1rem .9rem;
     padding: .9rem 1.1rem .75rem;
   }
-
-  .header-workspace { display: flex; align-items: center; gap: .5rem; margin-left: auto; font-size: .8rem; }
-  .header-workspace label { display: flex; align-items: center; gap: .5rem; font-weight: 700; }
-  .header-workspace strong { color: var(--forest-2); }
-  .header-workspace select { max-width: 13rem; }
 
   .capture-body { display: grid; gap: .75rem; }
   .capture-field { display: grid; gap: .4rem; font-weight: 750; }
@@ -260,8 +212,6 @@
   @media (max-width: 640px) {
     .quick-capture-modal { padding: .8rem; }
     .editor-header { top: -.8rem; margin: -.8rem -.8rem .75rem; padding: .75rem .8rem; }
-    .header-workspace { min-width: 0; }
-    .header-workspace select { max-width: 8rem; }
     .capture-actions { margin: .2rem -.8rem -.8rem; padding: .75rem .8rem max(.75rem, env(safe-area-inset-bottom)); }
     .capture-actions :global(.app-button) { flex: 1 1 auto; }
   }
