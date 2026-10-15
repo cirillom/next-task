@@ -159,7 +159,7 @@
             </AppButton>
           {/if}
           <AppButton variant="primary" disabled={busy || !captureText.trim()} on:click={expand}>
-            <span aria-hidden="true">↗</span> Expand
+            <span aria-hidden="true">↗</span> Add task details
           </AppButton>
         </footer>
       </div>
