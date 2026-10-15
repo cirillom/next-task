@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models import Task, User
 from app.routes.tasks import apply_task_relations, task_read
 from app.schemas import TaskRead, TaskUpdate
+from app.services.tags import tag_display_names
 from app.services.tasks import validate_parent
 
 router = APIRouter(prefix="/api/drafts", tags=["drafts"])
@@ -43,7 +44,8 @@ def list_drafts(
         .unique()
         .all()
     )
-    return [task_read(db, task) for task in drafts]
+    names = tag_display_names(db, user.id)
+    return [task_read(db, task, display_names=names) for task in drafts]
 
 
 @router.post("", response_model=TaskRead, status_code=201)

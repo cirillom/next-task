@@ -80,6 +80,21 @@ test('searching a child keeps its subtree and direct depth relative to that matc
   );
 });
 
+test('search finds the displayed disambiguated tag name', () => {
+  const review = {
+    ...tag(7, 'Review', [summary(1, 'Project')], [summary(1, 'Project')]),
+    display_name: 'Review (Project)'
+  };
+  assert.deepEqual(
+    hierarchicalTagResults([...tags, review], 'review (project)').map(({ tag }) => tag.id),
+    [review.id]
+  );
+  assert.deepEqual(
+    tagHierarchyRows([...tags, review], 'review (project)').map(({ tag }) => tag.id),
+    [review.id]
+  );
+});
+
 
 test('hierarchy rows repeat multiple-parent tags under each parent path', () => {
   assert.deepEqual(

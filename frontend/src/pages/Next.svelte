@@ -108,7 +108,7 @@
         </select>
       </label>
       {#each tags as tag (tag.id)}
-        <div class="tag-filter-row"><span>{tag.name}</span><label><input type="checkbox" checked={scope.include_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'include')} /> Include</label><label><input type="checkbox" checked={scope.exclude_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'exclude')} /> Exclude</label></div>
+        <div class="tag-filter-row"><span>{tag.display_name}</span><label><input type="checkbox" checked={scope.include_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'include')} /> Include</label><label><input type="checkbox" checked={scope.exclude_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'exclude')} /> Exclude</label></div>
       {/each}
     </div>
   {/if}

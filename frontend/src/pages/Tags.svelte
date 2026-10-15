@@ -132,11 +132,10 @@
   function startCreate() {
     parentDraft = null;
     const searchedName = search.trim();
-    const existingTag = tags.some((tag) => tag.name.toLowerCase() === searchedName.toLowerCase());
 
     creating = true;
     selectedId = 0;
-    createName = searchedName && !existingTag ? searchedName : '';
+    createName = searchedName;
     search = '';
     createDescription = '';
     createColor = randomTagColor();
@@ -377,7 +376,7 @@
               <button
                 type="button"
                 class="expand-button"
-                aria-label={expandedIds.has(row.tag.id) ? `Collapse ${row.tag.name}` : `Expand ${row.tag.name}`}
+                aria-label={expandedIds.has(row.tag.id) ? `Collapse ${row.tag.display_name}` : `Expand ${row.tag.display_name}`}
                 on:click={() => toggleExpanded(row.tag.id)}
               >{expandedIds.has(row.tag.id) || search.trim() ? '▾' : '▸'}</button>
             {:else}
@@ -410,7 +409,7 @@
         <label>Value<input type="number" step="any" bind:value={createScoreValue} /></label>
         <label class="wide">Description<TextArea bind:value={createDescription} rows="4" /></label>
         <label class="wide">Parent tags
-          <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
+          <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
         </label>
         <div class="detail-actions">
           <AppButton on:click={() => { creating = false; restoreParentDraft(); }}>Cancel</AppButton>
@@ -457,7 +456,7 @@
               <span>
                 <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}><TagBadge tag={parent} /></button>
 
-                  <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
+                  <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.display_name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
               </span>
             {/each}
           </div>
@@ -466,7 +465,7 @@
         {/if}
 
 
-          <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.map((tag) => tag.name)} searchable emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
+          <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
       </div>
 
       <div class="relationship-section">
@@ -508,11 +507,11 @@
               <p class="error merge-error" role="alert">{mergeError}</p>
             {:else if mergePreview && mergeDestination}
               <div class="merge-summary">
-                <strong>Merge “{selectedTag.name}” into “{mergeDestination.name}”</strong>
+                <strong>Merge “{selectedTag.display_name}” into “{mergeDestination.display_name}”</strong>
                 <span>{mergePreview.task_assignments} task {mergePreview.task_assignments === 1 ? 'assignment' : 'assignments'} will move</span>
                 <span>{mergePreview.parent_relationships} parent {mergePreview.parent_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
                 <span>{mergePreview.child_relationships} child {mergePreview.child_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
-                <span>“{selectedTag.name}” will be deleted</span>
+                <span>“{selectedTag.display_name}” will be deleted</span>
               </div>
               <div class="merge-actions">
                 <AppButton disabled={busy} on:click={cancelMerge}>Cancel</AppButton>

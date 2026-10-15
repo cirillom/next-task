@@ -8,6 +8,7 @@ export interface User {
 export interface TagSummary {
   id: number;
   name: string;
+  display_name: string;
   color: string | null;
   score_value: number;
 }

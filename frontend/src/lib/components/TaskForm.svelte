@@ -119,15 +119,14 @@
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
         tags = await api.tags();
-        const concurrent = tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        const concurrent = tags.find((tag) =>
+          tag.name.toLowerCase() === name.toLowerCase() &&
+          (input.parent_tag_id
+            ? tag.parents.some((parent) => parent.id === input.parent_tag_id)
+            : !tag.parents.length)
+        );
         if (!concurrent) throw reason;
         created = concurrent;
-        if (
-          input.parent_tag_id &&
-          !created.parents.some((parent) => parent.id === input.parent_tag_id)
-        ) {
-          created = await api.addTagParent(created.id, input.parent_tag_id);
-        }
       }
 
       tags = await api.tags();

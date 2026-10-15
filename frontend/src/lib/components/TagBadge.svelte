@@ -15,7 +15,7 @@
   class:inherited
   style:--tag-background={appearance.background}
   style:--tag-foreground={appearance.foreground}
-><slot>{tag.name}</slot></span>
+><slot>{tag.display_name}</slot></span>
 
 <style>
   .tag-badge {
