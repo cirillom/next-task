@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
   import type { Task, TaskInput } from '../api/types';
@@ -18,6 +18,15 @@
   let proposal: TextToTaskDraft | null = null;
   let busy = false;
   let error = '';
+  let geminiConfigured = false;
+
+  onMount(async () => {
+    try {
+      geminiConfigured = (await geminiApi.settings()).configured;
+    } catch {
+      geminiConfigured = false;
+    }
+  });
 
   function parsedCapture(): { title: string; description: string | null } | null {
     const lines = captureText.split('\n');
@@ -144,9 +153,11 @@
           <AppButton disabled={busy || !captureText.trim()} on:click={createDraft}>
             <span aria-hidden="true">✎</span> {busy ? 'Saving…' : 'Draft task'}
           </AppButton>
-          <AppButton disabled={busy || !captureText.trim()} on:click={generate}>
-            <span aria-hidden="true">✨</span> {busy ? 'Drafting…' : 'Text to task'}
-          </AppButton>
+          {#if geminiConfigured}
+            <AppButton disabled={busy || !captureText.trim()} on:click={generate}>
+              <span aria-hidden="true">✨</span> {busy ? 'Drafting…' : 'Text to task'}
+            </AppButton>
+          {/if}
           <AppButton variant="primary" disabled={busy || !captureText.trim()} on:click={expand}>
             <span aria-hidden="true">↗</span> Expand
           </AppButton>
