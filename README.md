@@ -127,58 +127,6 @@ Open `http://localhost:5173`. To create a local user from the repository root:
 uv run python -m app.cli create-user
 ```
 
-### Try workspace removal with your current SQLite data
-
-This migration is one-way. Run the trial on a separate SQLite snapshot; switching
-back to the original database restores the previous behavior and every record that
-was present when the snapshot was made. Changes made during the trial stay only in
-the trial database.
-
-Stop the local app first. If using the development Compose service, run
-`docker compose stop next-task`. In PowerShell, from the repository root, create
-an independent backup and a trial copy:
-
-```powershell
-# Use .\data-dev\next-task.sqlite3 instead if your data comes from Docker Compose.
-$paths = .venv\Scripts\python.exe scripts\prepare_sqlite_trial.py --source .\data\next-task.sqlite3 | ConvertFrom-Json
-$paths.backup
-$paths.trial
-```
-
-For a local Python server, while checked out on this PR:
-
-```powershell
-$previousDatabaseUrl = $env:NEXT_TASK_DATABASE_URL
-$env:NEXT_TASK_DATABASE_URL = "sqlite:///$($paths.trial.Replace('\', '/'))"
-.venv\Scripts\alembic.exe upgrade head
-.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --port 8000
-```
-
-Keep the same `NEXT_TASK_CREDENTIAL_SECRET` used for the source database if you
-want its saved Gemini keys to work. To stop the trial, stop Uvicorn, switch the
-checkout back to `main`, restore `$env:NEXT_TASK_DATABASE_URL =
-$previousDatabaseUrl`, and start the app again. The source file has never been
-modified by the trial.
-
-For Docker Compose, set the trial volume and start this PR's image. The override
-mounts the trial copy at `/data`:
-
-```powershell
-$env:NEXT_TASK_TRIAL_DATA_DIR = $paths.trial_dir.Replace('\', '/')
-docker compose -f docker-compose.yml -f docker-compose.trial.yml up --build -d
-```
-
-To return to the original Compose database, stop the trial, switch back to
-`main`, and recreate the service with the original Compose file:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.trial.yml down
-docker compose -f docker-compose.yml up --build --force-recreate -d
-```
-
-The `before.sqlite3` file printed by the snapshot helper is an extra recovery
-copy. No Alembic downgrade is available for the workspace removal.
-
 ### Checks and builds
 
 ```bash
