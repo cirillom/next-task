@@ -12,7 +12,7 @@
   export let label = 'Tag';
   export let searchable = false;
   export let allowCreate = true;
-  export let existingNames: string[] = [];
+  export let existingNames: string[] | null = null;
 
   const dispatch = createEventDispatcher<{ change: number | ''; create: string }>();
   let open = false;
@@ -22,9 +22,9 @@
   $: selectedOption = options.find(({ tag }) => tag.id === Number(value));
   $: query = search.trim().toLowerCase();
   $: filteredOptions = searchable && dirty && query
-    ? options.filter(({ tag }) => tag.name.toLowerCase().includes(query))
+    ? options.filter(({ tag }) => tag.name.toLowerCase().includes(query) || tag.display_name.toLowerCase().includes(query))
     : options;
-  $: canCreate = searchable && allowCreate && dirty && query && ![...existingNames, ...options.map(({ tag }) => tag.name)]
+  $: canCreate = searchable && allowCreate && dirty && query && !(existingNames || options.map(({ tag }) => tag.name))
     .some((name) => name.toLowerCase() === query);
 
   function choose(next: number | '') {
@@ -84,7 +84,7 @@
 <div class="tag-select-control" bind:this={root} on:focusout={closeOnBlur}>
   {#if searchable}
     <TextField
-      value={dirty ? search : (selectedOption?.tag.name || '')}
+      value={dirty ? search : (selectedOption?.tag.display_name || '')}
       placeholder={emptyLabel}
       autocomplete="off"
       role="combobox"

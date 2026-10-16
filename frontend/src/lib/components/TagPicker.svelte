@@ -13,7 +13,7 @@
   export let disabled = false;
   export let creating = false;
   export let allowCreate = true;
-  export let displayName: (tag: Tag) => string = (tag) => tag.name;
+  export let displayName: (tag: Tag) => string = (tag) => tag.display_name;
   export let createdParentId = 0;
 
   const dispatch = createEventDispatcher<{
@@ -40,7 +40,10 @@
   $: selectedTags = tags.filter((tag) => selectedIds.includes(tag.id));
   $: filteredTags = hierarchicalTagResults(tags, search);
   $: normalizedSearch = search.trim().toLowerCase();
-  $: exactMatch = tags.some((tag) => tag.name.toLowerCase() === normalizedSearch);
+  $: sameScope = tags.some((tag) =>
+    tag.name.toLowerCase() === createName.trim().toLowerCase() &&
+    (createParentId ? tag.parents.some((parent) => parent.id === createParentId) : !tag.parents.length)
+  );
 
   function toggle(tagId: number) {
     const next = selectedIds.includes(tagId)
@@ -59,7 +62,7 @@
   }
 
   function requestCreate() {
-    if (!allowCreate || !normalizedSearch || exactMatch || creating) return;
+    if (!allowCreate || !normalizedSearch || creating) return;
     createName = search.trim();
     createParentId = 0;
     createColor = '#587b6a';
@@ -160,7 +163,7 @@
           </button>
         {/each}
 
-        {#if allowCreate && normalizedSearch && !exactMatch}
+        {#if allowCreate && normalizedSearch}
           <button
             type="button"
             class="create-tag"
@@ -188,6 +191,7 @@
         <TagSelect
           bind:value={createParentId}
           options={[...tags].sort((left, right) => left.name.localeCompare(right.name)).map((tag) => ({ tag, context: tagHierarchyPaths(tag, tags)[0] }))}
+          existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)}
           emptyLabel="Choose a parent tag..."
           label="Parent tag"
           searchable
@@ -202,7 +206,7 @@
       </label>
       <div class="inline-create-actions">
         <AppButton disabled={creating} on:click={cancelCreate}>Cancel</AppButton>
-        <AppButton variant="primary" disabled={creating || !createName.trim()} on:click={submitCreate}>
+        <AppButton variant="primary" disabled={creating || !createName.trim() || sameScope} on:click={submitCreate}>
           {creating ? 'Creating…' : 'Create and select'}
         </AppButton>
       </div>

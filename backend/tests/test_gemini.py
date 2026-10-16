@@ -193,6 +193,39 @@ def test_text_to_task_maps_only_user_tags(
     assert "members" not in captured["context"]
 
 
+def test_text_to_task_does_not_guess_between_duplicate_tag_names(
+    logged_in_client: Callable[[str], TestClient],
+    monkeypatch,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    work = client.post("/api/tags", json={"name": "Work"}).json()
+    personal = client.post("/api/tags", json={"name": "Personal"}).json()
+    work_review = client.post(
+        "/api/tags", json={"name": "Review", "parent_tag_id": work["id"]}
+    ).json()
+    client.post("/api/tags", json={"name": "Review", "parent_tag_id": personal["id"]})
+    save_key(client)
+    captured: dict = {}
+
+    def fake_generate(api_key: str, context: dict, text: str, *, model: str) -> GeneratedTask:
+        captured.update(context=context)
+        return GeneratedTask(
+            title="Review report",
+            description=None,
+            priority=1,
+            due_date=None,
+            tag_names=["Review", "Review (Work)"],
+        )
+
+    monkeypatch.setattr(gemini_routes, "generate_task_draft", fake_generate)
+    response = client.post("/api/task-drafts/from-text", json={"text": "Review report"})
+    assert response.status_code == 200, response.text
+    assert response.json()["existing_tag_ids"] == [work_review["id"]]
+    assert response.json()["new_tag_names"] == []
+    assert "Review (Work)" in captured["context"]["existing_tags"]
+    assert "Review (Personal)" in captured["context"]["existing_tags"]
+
+
 def test_text_to_task_requires_own_key(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],

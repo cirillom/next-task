@@ -16,7 +16,9 @@ def validate_tags(db: Session, user_id: int, tag_ids: list[int]) -> list[Tag]:
     unique_ids = set(tag_ids)
     if not unique_ids:
         return []
-    tags = list(db.scalars(select(Tag).where(Tag.id.in_(unique_ids)).order_by(Tag.name)).all())
+    tags = list(
+        db.scalars(select(Tag).where(Tag.id.in_(unique_ids)).order_by(Tag.name, Tag.id)).all()
+    )
     if len(tags) != len(unique_ids) or any(tag.user_id != user_id for tag in tags):
         raise HTTPException(status_code=422, detail="Every tag must belong to the user")
     return tags

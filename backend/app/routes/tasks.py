@@ -13,14 +13,19 @@ from app.schemas import (
     BlockCreate,
     BlockRead,
     BlockReblock,
-    TagSummary,
     TaskCreate,
     TaskRead,
     TaskSummary,
     TaskUpdate,
 )
 from app.services.scoring import score_task
-from app.services.tags import ancestor_ids, descendant_ids, tags_by_ids
+from app.services.tags import (
+    ancestor_ids,
+    descendant_ids,
+    tag_display_names,
+    tag_summary,
+    tags_by_ids,
+)
 from app.services.tasks import (
     get_task_for_user,
     validate_parent,
@@ -96,7 +101,9 @@ def task_read(
     ranking_score: float | None = None,
     ranking_source_task_id: int | None = None,
     ranking_source_score: float | None = None,
+    display_names: dict[int, str] | None = None,
 ) -> TaskRead:
+    names = display_names if display_names is not None else tag_display_names(db, task.user_id)
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
     now = datetime.now(UTC)
@@ -130,8 +137,8 @@ def task_read(
         ranking_source_score=(
             None if ranking_source_score is None else round(ranking_source_score, 2)
         ),
-        direct_tags=[TagSummary.model_validate(tag) for tag in task.tags],
-        inherited_tags=[TagSummary.model_validate(tag) for tag in inherited],
+        direct_tags=[tag_summary(tag, names) for tag in task.tags],
+        inherited_tags=[tag_summary(tag, names) for tag in inherited],
         current_block=BlockRead.model_validate(active_blocks[0]) if active_blocks else None,
         active_blocks=[BlockRead.model_validate(block) for block in active_blocks],
         blocking_history=[BlockRead.model_validate(block) for block in task.blocks],
@@ -183,6 +190,7 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
         ordered.append(chosen)
         del remaining[chosen.id]
 
+    names = tag_display_names(db, tasks[0].user_id)
     return [
         task_read(
             db,
@@ -190,6 +198,7 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
             ranking_score=rank_metadata[task.id][0],
             ranking_source_task_id=rank_metadata[task.id][1],
             ranking_source_score=rank_metadata[task.id][2],
+            display_names=names,
         )
         for task in ordered
     ]

@@ -10,7 +10,9 @@ function normalized(value: string): string {
 }
 
 function sortByName(tags: Tag[]): Tag[] {
-  return [...tags].sort((left, right) => left.name.localeCompare(right.name));
+  return [...tags].sort((left, right) =>
+    left.name.localeCompare(right.name) || left.display_name?.localeCompare(right.display_name) || left.id - right.id
+  );
 }
 
 export function tagHierarchyPaths(tag: Tag, tags: Tag[]): string[] {
@@ -47,7 +49,9 @@ export function hierarchicalTagResults(tags: Tag[], search: string): Hierarchica
   let roots: Tag[];
 
   if (needle) {
-    const matches = tags.filter((tag) => normalized(tag.name).includes(needle));
+    const matches = tags.filter((tag) =>
+      normalized(tag.name).includes(needle) || normalized(tag.display_name || '').includes(needle)
+    );
     const matchedIds = new Set(matches.map((tag) => tag.id));
     roots = matches.filter((tag) => !tag.ancestors.some((ancestor) => matchedIds.has(ancestor.id)));
     roots.sort((left, right) => {
@@ -135,6 +139,7 @@ export function tagHierarchyRows(tags: Tag[], search = ''): TagHierarchyRow[] {
   return rows.filter(
     (row) =>
       normalized(row.tag.name).includes(needle) ||
+      normalized(row.tag.display_name || '').includes(needle) ||
       normalized(row.path).includes(needle)
   );
 }

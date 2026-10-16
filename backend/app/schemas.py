@@ -65,6 +65,7 @@ class ScoringSettings(ApiModel):
 class TagSummary(ApiModel):
     id: int
     name: str
+    display_name: str
     color: str | None
     score_value: float
 

@@ -189,6 +189,13 @@ key. The selected model is saved per user and used for future drafts. Replacing 
 removing the key resets the selection. `NEXT_TASK_GEMINI_MODEL` sets the server default
 until a user chooses a model.
 
+## Tags
+
+Tags with different parents can share a name, such as `Work > Review` and
+`Personal > Review`. Names must still be unique among tags with the same direct
+parent, including top-level tags. When names repeat, the app adds parent context
+to the displayed name, such as `Review (Work)`; the stored name stays `Review`.
+
 ## Scoring formulas
 
 Scores are calculated when tasks are read and are not persisted. Available

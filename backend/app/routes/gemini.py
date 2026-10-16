@@ -18,6 +18,7 @@ from app.gemini_schemas import (
 from app.models import Tag, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
+from app.services.tags import tag_display_names
 
 router = APIRouter(tags=["gemini"])
 
@@ -91,7 +92,7 @@ def delete_gemini_key(
 
 
 def _normalize_tag(value: str) -> str:
-    return value.strip().removeprefix("#").strip().lower()[:120]
+    return value.strip().removeprefix("#").strip().lower()
 
 
 @router.post(
@@ -108,10 +109,13 @@ def text_to_task(
             status_code=409,
             detail="Add a Gemini API key in Settings before using text to task",
         )
-    tags = list(db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name)).all())
+    tags = list(
+        db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name, Tag.id)).all()
+    )
+    display_names = tag_display_names(db, user.id)
     context = {
         "today": date.today().isoformat(),
-        "existing_tags": [item.name for item in tags],
+        "existing_tags": [display_names[item.id] for item in tags],
     }
     try:
         api_key = decrypt_credential(user.gemini_api_key_encrypted)
@@ -122,7 +126,10 @@ def text_to_task(
     except GeminiServiceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
-    tag_by_name = {item.name.casefold(): item for item in tags}
+    tags_by_name: dict[str, list[Tag]] = {}
+    for tag in tags:
+        tags_by_name.setdefault(tag.name.casefold(), []).append(tag)
+    tags_by_display = {display_names[item.id].casefold(): item for item in tags}
     existing_tag_ids: list[int] = []
     new_tag_names: list[str] = []
     seen_names: set[str] = set()
@@ -131,11 +138,13 @@ def text_to_task(
         if not name or name.casefold() in seen_names:
             continue
         seen_names.add(name.casefold())
-        existing = tag_by_name.get(name.casefold())
+        existing = tags_by_display.get(name.casefold())
+        if existing is None and len(tags_by_name.get(name.casefold(), [])) == 1:
+            existing = tags_by_name[name.casefold()][0]
         if existing:
             existing_tag_ids.append(existing.id)
-        else:
-            new_tag_names.append(name)
+        elif name.casefold() not in tags_by_name:
+            new_tag_names.append(name[:120])
 
     return TextToTaskDraft(
         title=generated.title.strip(),
