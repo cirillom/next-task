@@ -1,9 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
-  import type { Tag, Task } from '../lib/api/types';
+  import type { NextScope, Tag, Task } from '../lib/api/types';
   import TaskCard from '../lib/components/TaskCard.svelte';
-  import TagPicker from '../lib/components/TagPicker.svelte';
+  import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
+  import { emptyTagScope } from '../lib/tagScope';
   import AppButton from '../lib/components/AppButton.svelte';
   import TextField from '../lib/components/TextField.svelte';
 
@@ -11,7 +12,6 @@
   type BlockedFilter = 'all' | 'blocked' | 'unblocked';
   type SortField = 'score' | 'finished_at' | 'last_worked_at' | 'due_date' | 'created_at';
   type SortDirection = 'asc' | 'desc';
-  type TagMatch = 'all' | 'any';
 
   const dispatch = createEventDispatcher<{ openTask: number; createBlocker: { taskId: number; title: string } }>();
 
@@ -20,9 +20,7 @@
   let search = '';
   let finishedFilter: FinishedFilter = 'unfinished';
   let blockedFilter: BlockedFilter = 'all';
-  let includeTagIds: number[] = [];
-  let excludeTagIds: number[] = [];
-  let tagMatch: TagMatch = 'all';
+  let tagScope: NextScope = emptyTagScope();
   let sortField: SortField = 'score';
   let sortDirection: SortDirection = 'desc';
   let filtersOpen = false;
@@ -30,21 +28,22 @@
   let error = '';
   let loading = true;
   let searchTimer: number;
+  let taskRequest = 0;
 
   $: activeFilterCount = [
     finishedFilter !== 'unfinished',
     blockedFilter !== 'all',
-    includeTagIds.length > 0,
-    excludeTagIds.length > 0
+    tagScope.include_tag_ids.length > 0,
+    tagScope.exclude_tag_ids.length > 0
   ].filter(Boolean).length;
 
   function taskParams(finished: boolean) {
     return {
       finished,
       search,
-      include_tag_id: includeTagIds,
-      exclude_tag_id: excludeTagIds,
-      tag_match: tagMatch,
+      include_tag_id: tagScope.include_tag_ids,
+      exclude_tag_id: tagScope.exclude_tag_ids,
+      tag_match: tagScope.tag_match,
       blocked:
         blockedFilter === 'all'
           ? null
@@ -156,26 +155,33 @@
   $: orderedTasks = orderedTaskList(tasks, sortField, sortDirection);
 
   async function load() {
+    const request = ++taskRequest;
     loading = true;
     error = '';
     try {
-      [tags, tasks] = await Promise.all([
+      const [loadedTags, loadedTasks] = await Promise.all([
         api.tags(),
-                loadTasks()
+        loadTasks()
       ]);
+      tags = loadedTags;
+      if (request === taskRequest) tasks = loadedTasks;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load tasks';
+      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not load tasks';
     } finally {
-      loading = false;
+      if (request === taskRequest) loading = false;
     }
   }
 
   async function refreshTasks() {
+    const request = ++taskRequest;
     error = '';
     try {
-      tasks = await loadTasks();
+      const refreshed = await loadTasks();
+      if (request === taskRequest) tasks = refreshed;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not refresh tasks';
+      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not refresh tasks';
+    } finally {
+      if (request === taskRequest) loading = false;
     }
   }
 
@@ -202,25 +208,13 @@
   function clearFilters() {
     finishedFilter = 'unfinished';
     blockedFilter = 'all';
-    includeTagIds = [];
-    excludeTagIds = [];
-    tagMatch = 'all';
+    tagScope = emptyTagScope();
     void refreshTasks();
   }
 
-  function setIncludeTags(ids: number[]) {
-    includeTagIds = ids;
+  function setTagScope(next: NextScope) {
+    tagScope = next;
     void refreshTasks();
-  }
-
-  function setExcludeTags(ids: number[]) {
-    excludeTagIds = ids;
-    void refreshTasks();
-  }
-
-  function setTagMatch(match: TagMatch) {
-    tagMatch = match;
-    if (includeTagIds.length) void refreshTasks();
   }
 
   function setSortDirection(direction: SortDirection) {
@@ -283,45 +277,7 @@
 
 
           <div class="tag-filter">
-            <span class="field-label">Include tags</span>
-            <TagPicker
-              {tags}
-              selectedIds={includeTagIds}
-              allowCreate={false}
-              on:change={(event) => setIncludeTags(event.detail)}
-            />
-
-            <fieldset class="tag-match">
-              <legend>Match included tags</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="tag-match"
-                  value="all"
-                  checked={tagMatch === 'all'}
-                  on:change={() => setTagMatch('all')}
-                />
-                All
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="tag-match"
-                  value="any"
-                  checked={tagMatch === 'any'}
-                  on:change={() => setTagMatch('any')}
-                />
-                Any
-              </label>
-            </fieldset>
-
-            <span class="field-label">Exclude tags</span>
-            <TagPicker
-              {tags}
-              selectedIds={excludeTagIds}
-              allowCreate={false}
-              on:change={(event) => setExcludeTags(event.detail)}
-            />
+            <TagScopeFilters {tags} scope={tagScope} matchName="tasks-tag-match" on:change={(event) => setTagScope(event.detail)} />
           </div>
         </div>
       </div>
@@ -526,37 +482,6 @@
     gap: .4rem;
     border-top: 1px solid var(--line);
     padding-top: .65rem;
-  }
-
-  .tag-match {
-    display: flex;
-    align-items: center;
-    gap: .8rem;
-    border: 0;
-    margin: .15rem 0 .25rem;
-    padding: 0;
-  }
-
-  .tag-match legend {
-    float: left;
-    margin-right: .25rem;
-    color: var(--muted);
-    font-size: .72rem;
-    font-weight: 700;
-  }
-
-  .tag-match label {
-    display: inline-flex;
-    align-items: center;
-    gap: .3rem;
-    color: var(--ink);
-    font-size: .75rem;
-    font-weight: 650;
-  }
-
-  .tag-match input {
-    width: auto;
-    margin: 0;
   }
 
   .direction-options {

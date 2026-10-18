@@ -66,6 +66,8 @@ export const api = {
   }) => request<PomodoroSession>('/api/pomodoro/session', json('POST', body)),
   updatePomodoroSessionTask: (task_id: number | null) =>
     request<PomodoroSession>('/api/pomodoro/session/task', json('PUT', { task_id })),
+  updatePomodoroSessionScope: (scope: NextScope, expected_scope: NextScope) =>
+    request<PomodoroSession>('/api/pomodoro/session/scope', json('PUT', { scope, expected_scope })),
   startPomodoroPeriod: () =>
     request<PomodoroSession>('/api/pomodoro/session/start', json('POST')),
   skipPomodoroPeriod: () =>

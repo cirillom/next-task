@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from app.database import SessionLocal
 from app.models import User
 from app.pomodoro_models import PomodoroSession
@@ -152,6 +153,92 @@ def test_pomodoro_session_keeps_combined_tag_scope(
     assert updated.status_code == 200, updated.text
     assert updated.json()["task_id"] == task["id"]
     assert client.get("/api/pomodoro/session").json()["scope"] == scope
+
+
+@pytest.mark.parametrize("state", ["ready", "running", "ringing"])
+def test_session_scope_update_preserves_timer_and_pinned_task(
+    logged_in_client: Callable[[str], TestClient], state: str
+) -> None:
+    client = logged_in_client(f"scope-{state}@example.com")
+    second = TestClient(client.app)
+    assert second.post(
+        "/api/auth/login",
+        json={"email": f"scope-{state}@example.com", "password": "correct horse"},
+    ).status_code == 200
+    old_tag = client.post("/api/tags", json={"name": "Old"}).json()
+    new_tag = client.post("/api/tags", json={"name": "New"}).json()
+    pinned = client.post(
+        "/api/tasks", json={"title": "Keep pinned", "tag_ids": [old_tag["id"]]}
+    ).json()
+    old_scope = {
+        "include_tag_ids": [old_tag["id"]],
+        "exclude_tag_ids": [],
+        "tag_match": "all",
+    }
+    created = client.post(
+        "/api/pomodoro/session", json={"task_id": pinned["id"], "scope": old_scope}
+    )
+    assert created.status_code == 201
+    if state == "running":
+        assert client.post("/api/pomodoro/session/start").status_code == 200
+    elif state == "ringing":
+        with SessionLocal() as db:
+            session = db.scalar(select(PomodoroSession))
+            assert session is not None
+            session.state = "ringing"
+            db.commit()
+    before = client.get("/api/pomodoro/session").json()
+    new_scope = {
+        "include_tag_ids": [new_tag["id"]],
+        "exclude_tag_ids": [old_tag["id"]],
+        "tag_match": "any",
+    }
+    changed = client.put(
+        "/api/pomodoro/session/scope",
+        json={"scope": new_scope, "expected_scope": old_scope},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["scope"] == new_scope
+    for field in ("task_id", "tag_id", "phase", "state", "ends_at", "short_breaks_taken"):
+        assert changed.json()[field] == before[field]
+    assert second.get("/api/pomodoro/session").json()["scope"] == new_scope
+    matching = second.get(
+        "/api/tasks", params=[("include_tag_id", new_tag["id"])]
+    ).json()
+    assert pinned["id"] not in [task["id"] for task in matching]
+
+
+def test_session_scope_update_rejects_invalid_tags_and_stale_edit(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("scope-owner@example.com")
+    other = logged_in_client("scope-other@example.com")
+    owned = client.post("/api/tags", json={"name": "Owned"}).json()
+    foreign = other.post("/api/tags", json={"name": "Foreign"}).json()
+    initial = {"include_tag_ids": [], "exclude_tag_ids": [], "tag_match": "all"}
+    assert client.post("/api/pomodoro/session", json={"scope": initial}).status_code == 201
+
+    for scope in (
+        {"include_tag_ids": [foreign["id"]], "exclude_tag_ids": [], "tag_match": "all"},
+        {"include_tag_ids": [999999], "exclude_tag_ids": [], "tag_match": "all"},
+        {"include_tag_ids": [owned["id"]], "exclude_tag_ids": [owned["id"]], "tag_match": "all"},
+        {"include_tag_ids": [], "exclude_tag_ids": [], "tag_match": "neither"},
+    ):
+        denied = client.put(
+            "/api/pomodoro/session/scope", json={"scope": scope, "expected_scope": initial}
+        )
+        assert denied.status_code == 422
+        assert client.get("/api/pomodoro/session").json()["scope"] == initial
+
+    updated = {"include_tag_ids": [owned["id"]], "exclude_tag_ids": [], "tag_match": "all"}
+    assert client.put(
+        "/api/pomodoro/session/scope", json={"scope": updated, "expected_scope": initial}
+    ).status_code == 200
+    stale = client.put(
+        "/api/pomodoro/session/scope", json={"scope": initial, "expected_scope": initial}
+    )
+    assert stale.status_code == 409
+    assert client.get("/api/pomodoro/session").json()["scope"] == updated
 
 
 def test_notification_advances_but_alarm_waits_for_dismissal(

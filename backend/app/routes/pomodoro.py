@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.pomodoro_schemas import (
     NextScope,
     PomodoroSessionCreate,
     PomodoroSessionRead,
+    PomodoroSessionScopeUpdate,
     PomodoroSessionTaskUpdate,
     PomodoroSettingsRead,
     PomodoroSettingsUpdate,
@@ -96,6 +97,14 @@ def _session_read(session: PomodoroSession, now: datetime) -> PomodoroSessionRea
         else NextScope(include_tag_ids=[session.tag_id] if session.tag_id is not None else [])
     )
     return PomodoroSessionRead.model_validate({**values, "scope": scope, "server_now": now})
+
+
+def _same_scope(left: NextScope, right: NextScope) -> bool:
+    return (
+        set(left.include_tag_ids) == set(right.include_tag_ids)
+        and set(left.exclude_tag_ids) == set(right.exclude_tag_ids)
+        and left.tag_match == right.tag_match
+    )
 
 
 def _get_session(db: Session, user_id: int) -> PomodoroSession | None:
@@ -219,6 +228,35 @@ def update_pomodoro_session_task(
         _session_read(session, datetime.now(UTC)).scope,
     )
     session.task_id = payload.task_id
+    db.commit()
+    db.refresh(session)
+    return _session_read(session, datetime.now(UTC))
+
+
+@router.put("/session/scope", response_model=PomodoroSessionRead)
+def update_pomodoro_session_scope(
+    payload: PomodoroSessionScopeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PomodoroSessionRead:
+    session = _require_session(db, user.id)
+    if not _same_scope(_session_read(session, datetime.now(UTC)).scope, payload.expected_scope):
+        raise HTTPException(status_code=409, detail="Session scope changed on another device")
+    _validate_scope(db, user.id, None, None, payload.scope)
+    previous_scope_json = session.scope_json
+    scope_condition = (
+        PomodoroSession.scope_json.is_(None)
+        if previous_scope_json is None
+        else PomodoroSession.scope_json == previous_scope_json
+    )
+    result = db.execute(
+        update(PomodoroSession)
+        .where(PomodoroSession.user_id == user.id, scope_condition)
+        .values(scope_json=payload.scope.model_dump_json())
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Session scope changed on another device")
     db.commit()
     db.refresh(session)
     return _session_read(session, datetime.now(UTC))

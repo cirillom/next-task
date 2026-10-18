@@ -13,6 +13,8 @@
   export let disabled = false;
   export let creating = false;
   export let allowCreate = true;
+  export let selectedLabel = 'Selected direct tags';
+  export let searchLabel = 'Search tags';
   export let displayName: (tag: Tag) => string = (tag) => tag.display_name;
   export let createdParentId = 0;
 
@@ -120,7 +122,7 @@
   {/if}
 
   {#if selectedTags.length}
-    <div class="selected-tags" aria-label="Selected direct tags">
+    <div class="selected-tags" aria-label={selectedLabel}>
       {#each selectedTags as tag (tag.id)}
         <TagBadge {tag} selected>
           {displayName(tag)}
@@ -135,7 +137,7 @@
   <div class="picker-control">
     <TextField
       bind:value={search}
-      aria-label="Search tags"
+      aria-label={searchLabel}
       placeholder="Search tags or hierarchy"
       autocomplete="off"
       disabled={disabled}

@@ -1,17 +1,21 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
-  import { api } from '../lib/api/client';
+  import { api, ApiError } from '../lib/api/client';
   import AppButton from '../lib/components/AppButton.svelte';
   import type {
     NextScope,
     PomodoroPhase,
     PomodoroSession,
     PomodoroSettings,
+    Tag,
     Task
   } from '../lib/api/types';
   import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
+  import TagBadge from '../lib/components/TagBadge.svelte';
+  import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
+  import { cleanTagScope, emptyTagScope, sameTagScope } from '../lib/tagScope';
 
   type BlockedFilter = '' | 'false' | 'true';
   type TaskResolution = 'finished' | 'blocked';
@@ -25,6 +29,7 @@
 
   let settings: PomodoroSettings | null = null;
   let session: PomodoroSession | null = null;
+  let tags: Tag[] = [];
   let currentTask: Task | null = null;
   let sessionTasks: Task[] = [];
   let taskListBlocked: BlockedFilter = '';
@@ -38,6 +43,7 @@
   let shortBreaksTaken = 0;
   let loading = true;
   let selecting = false;
+  let findingScopedTask = false;
   let listLoading = false;
   let unblockingTaskId: number | null = null;
   let breakPrompt: TaskResolution | null = null;
@@ -49,6 +55,17 @@
   let initializedSession = false;
   let lastAlarmAt = 0;
   let seenTaskVersion = taskVersion;
+  let editingScope = false;
+  let scopeSaving = false;
+  let scopeConflict = false;
+  let scopeDraft: NextScope = emptyTagScope();
+  let scopeBase: NextScope = emptyTagScope();
+  let pinnedOutsideScope = false;
+  let scopeCheckRequest = 0;
+  let listRequest = 0;
+
+  $: activeScope = session?.scope ?? sessionScope;
+  $: tagById = new Map(tags.map((tag) => [tag.id, tag]));
 
   let descriptionDraft = '';
   let descriptionSaveState: DescriptionSaveState = 'idle';
@@ -146,6 +163,8 @@
 
   async function applySession(next: PomodoroSession, announceCompletion = true) {
     const previousSession = session;
+    const scopeChanged = !!previousSession && !sameTagScope(previousSession.scope, next.scope);
+    const taskChanged = next.task_id !== currentTask?.id;
     session = next;
     phase = next.phase;
     running = next.state === 'running';
@@ -170,6 +189,13 @@
           resetDescriptionEditor(null);
         }
       }
+    }
+
+    if (scopeChanged) {
+      if (editingScope && !sameTagScope(scopeBase, next.scope)) scopeConflict = true;
+      await refreshScopeView();
+    } else if (taskChanged) {
+      await refreshPinnedScope();
     }
 
     if (
@@ -203,6 +229,82 @@
     }
   }
 
+  function scopeParams(scope: NextScope) {
+    return {
+      include_tag_id: scope.include_tag_ids,
+      exclude_tag_id: scope.exclude_tag_ids,
+      tag_match: scope.tag_match
+    };
+  }
+
+  async function refreshPinnedScope() {
+    const pinnedId = currentTask?.id;
+    const request = ++scopeCheckRequest;
+    if (!pinnedId) {
+      pinnedOutsideScope = false;
+      return;
+    }
+    try {
+      const matching = await api.tasks({ finished: false, ...scopeParams(session?.scope ?? sessionScope) });
+      if (request === scopeCheckRequest && currentTask?.id === pinnedId) {
+        pinnedOutsideScope = !matching.some((task) => task.id === pinnedId);
+      }
+    } catch (reason) {
+      if (request === scopeCheckRequest) error = reason instanceof Error ? reason.message : 'Could not check the pinned task scope';
+    }
+  }
+
+  async function refreshScopeView() {
+    try {
+      tags = await api.tags();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not load session tags';
+    }
+    await Promise.all([loadSessionTasks(), refreshPinnedScope()]);
+  }
+
+  function openScopeEditor() {
+    if (!session) return;
+    scopeBase = cleanTagScope(session.scope);
+    scopeDraft = cleanTagScope(session.scope);
+    scopeConflict = false;
+    editingScope = true;
+  }
+
+  function closeScopeEditor() {
+    editingScope = false;
+    scopeConflict = false;
+  }
+
+  async function saveScope() {
+    if (!session || scopeSaving || scopeConflict) return;
+    if (sameTagScope(scopeDraft, scopeBase)) {
+      closeScopeEditor();
+      return;
+    }
+    scopeSaving = true;
+    error = '';
+    try {
+      const updated = await api.updatePomodoroSessionScope(scopeDraft, scopeBase);
+      editingScope = false;
+      await applySession(updated, false);
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 409) {
+        scopeConflict = true;
+        try {
+          const latest = await api.pomodoroSession();
+          if (latest) await applySession(latest, false);
+        } catch (syncReason) {
+          error = syncReason instanceof Error ? syncReason.message : 'Could not load the latest session scope';
+        }
+      } else {
+        error = reason instanceof Error ? reason.message : 'Could not save session scope';
+      }
+    } finally {
+      scopeSaving = false;
+    }
+  }
+
   function resetDescriptionEditor(task: Task | null) {
     window.clearTimeout(descriptionSaveTimer);
     pendingDescriptionSave = null;
@@ -210,19 +312,23 @@
     descriptionSaveState = 'idle';
   }
 
+  function rankedTasksForScope(scope: NextScope) {
+    return api.tasks({
+      finished: false,
+      blocked: false,
+      actionable: true,
+      ...scopeParams(scope)
+    });
+  }
+
   async function selectNextTask() {
     selecting = true;
     error = '';
     try {
-      const ranked = await api.tasks({
-        finished: false,
-        blocked: false,
-        actionable: true,
-        include_tag_id: (session?.scope ?? sessionScope).include_tag_ids,
-        exclude_tag_id: (session?.scope ?? sessionScope).exclude_tag_ids,
-        tag_match: (session?.scope ?? sessionScope).tag_match
-      });
+      const ranked = await rankedTasksForScope(session?.scope ?? sessionScope);
       currentTask = ranked[0] ?? null;
+      scopeCheckRequest++;
+      pinnedOutsideScope = false;
       resetDescriptionEditor(currentTask);
       if (session) session = await api.updatePomodoroSessionTask(currentTask?.id ?? null);
     } catch (reason) {
@@ -232,34 +338,59 @@
     }
   }
 
-  async function focusTask(task: Task) {
-    if (task.finished_at || task.current_block) return;
+  async function findCorrectlyScopedTask() {
+    if (!session || findingScopedTask) return;
+    findingScopedTask = true;
+    error = '';
+    const scope = cleanTagScope(session.scope);
+    try {
+      const ranked = await rankedTasksForScope(scope);
+      if (!sameTagScope(scope, session?.scope ?? sessionScope)) {
+        error = 'The session scope changed. Find a correctly scoped task again.';
+      } else if (!ranked.length) {
+        error = 'No actionable task matches this session scope. Edit the scope or add a matching task.';
+      } else {
+        if (await focusTask(ranked[0])) void loadSessionTasks();
+      }
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : 'Could not find a correctly scoped task';
+    } finally {
+      findingScopedTask = false;
+    }
+  }
+
+  async function focusTask(task: Task): Promise<boolean> {
+    if (task.finished_at || task.current_block) return false;
     try {
       const updatedSession = await api.updatePomodoroSessionTask(task.id);
       session = updatedSession;
       currentTask = task;
+      scopeCheckRequest++;
+      pinnedOutsideScope = false;
       resetDescriptionEditor(task);
       error = '';
+      return true;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not change the Pomodoro task';
+      return false;
     }
   }
 
   async function loadSessionTasks() {
+    const request = ++listRequest;
     listLoading = true;
     try {
-      sessionTasks = await api.tasks({
+      const ranked = await api.tasks({
         finished: false,
         blocked: taskListBlocked,
         actionable: true,
-        include_tag_id: (session?.scope ?? sessionScope).include_tag_ids,
-        exclude_tag_id: (session?.scope ?? sessionScope).exclude_tag_ids,
-        tag_match: (session?.scope ?? sessionScope).tag_match
+        ...scopeParams(session?.scope ?? sessionScope)
       });
+      if (request === listRequest) sessionTasks = ranked;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load session tasks';
+      if (request === listRequest) error = reason instanceof Error ? reason.message : 'Could not load session tasks';
     } finally {
-      listLoading = false;
+      if (request === listRequest) listLoading = false;
     }
   }
 
@@ -419,6 +550,7 @@
   async function handlePinnedTaskChanged(updated: Task) {
     await handleTaskChanged(updated);
     await loadSessionTasks();
+    await refreshPinnedScope();
   }
 
   async function reconcileExternalTaskChange() {
@@ -444,6 +576,7 @@
       await selectNextTask();
     }
     await loadSessionTasks();
+    await refreshPinnedScope();
   }
 
   $: if (taskVersion !== seenTaskVersion) {
@@ -460,11 +593,13 @@
     pollTimer = window.setInterval(() => void syncSession(), 1500);
     void (async () => {
       try {
-        const [loadedSettings, existingSession] = await Promise.all([
+        const [loadedSettings, existingSession, loadedTags] = await Promise.all([
           api.pomodoroSettings(),
-          api.pomodoroSession()
+          api.pomodoroSession(),
+          api.tags()
         ]);
         settings = loadedSettings;
+        tags = loadedTags;
         const activeSession = existingSession ?? await api.createPomodoroSession({
           tag_id: null,
           scope: sessionScope
@@ -472,6 +607,7 @@
         await applySession(activeSession, false);
         if (phase === 'focus' && !currentTask) await selectNextTask();
         await loadSessionTasks();
+        await refreshPinnedScope();
       } catch (reason) {
         error = reason instanceof Error ? reason.message : 'Could not start focus mode';
       } finally {
@@ -536,11 +672,51 @@
       </div>
     {/if}
 
-    <div class="session-scope">
-      <span>Session scope</span>
-      <strong>{(session?.scope ?? sessionScope).include_tag_ids.length ? `${(session?.scope ?? sessionScope).include_tag_ids.length} included tags` : 'All tags'}</strong>
-      {#if (session?.scope ?? sessionScope).exclude_tag_ids.length}<small>{(session?.scope ?? sessionScope).exclude_tag_ids.length} excluded</small>{/if}
-    </div>
+    <section class="session-scope" aria-label="Session scope">
+      <div class="session-scope-heading">
+        <strong>Session scope</strong>
+        <button type="button" disabled={!session || scopeSaving} on:click={openScopeEditor}>Edit scope</button>
+      </div>
+      <div class="scope-selection">
+        <span>Include</span>
+        {#if activeScope.include_tag_ids.length}
+          {#each activeScope.include_tag_ids as tagId (tagId)}
+            {@const tag = tagById.get(tagId)}
+            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">Deleted tag #{tagId}</small>{/if}
+          {/each}
+        {:else}<span class="scope-empty">All tags</span>{/if}
+      </div>
+      <div class="scope-selection">
+        <span>Exclude</span>
+        {#if activeScope.exclude_tag_ids.length}
+          {#each activeScope.exclude_tag_ids as tagId (tagId)}
+            {@const tag = tagById.get(tagId)}
+            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">Deleted tag #{tagId}</small>{/if}
+          {/each}
+        {:else}<span class="scope-empty">None excluded</span>{/if}
+      </div>
+      <p class="scope-match">Match included tags: <strong>{activeScope.tag_match === 'all' ? 'All' : 'Any'}</strong></p>
+
+      {#if editingScope}
+        <div class="scope-editor">
+          <TagScopeFilters {tags} scope={scopeDraft} matchName="session-tag-match" disabled={scopeSaving || scopeConflict} on:change={(event) => (scopeDraft = event.detail)} />
+          {#if scopeConflict}<p class="error" role="alert">This scope changed on another device. Close and reopen the editor to use the latest scope.</p>{/if}
+          <div class="scope-editor-actions">
+            <AppButton disabled={scopeSaving} on:click={closeScopeEditor}>Cancel</AppButton>
+            <AppButton variant="primary" disabled={scopeSaving || scopeConflict} on:click={saveScope}>{scopeSaving ? 'Saving…' : 'Save scope'}</AppButton>
+          </div>
+        </div>
+      {/if}
+    </section>
+
+    {#if pinnedOutsideScope && currentTask}
+      <p class="scope-warning" role="status">
+        <strong>{currentTask.title}</strong> is outside this session scope and remains pinned.
+        <button type="button" disabled={findingScopedTask} on:click={findCorrectlyScopedTask}>
+          {findingScopedTask ? 'Finding correctly scoped task…' : 'Find correctly scoped task'}
+        </button>
+      </p>
+    {/if}
 
     {#if error}<p class="error" role="alert">{error}</p>{/if}
 
@@ -595,46 +771,6 @@
           </div>
         {/if}
 
-        <div class="choose-task-row">
-          <button type="button" class="choose-task-toggle" aria-expanded={queueOpen} on:click={() => (queueOpen = !queueOpen)}>
-            <span>{queueOpen ? 'Hide task queue' : 'Choose another task'}</span>
-            <span class="queue-count">{sessionTasks.length}</span>
-            <span aria-hidden="true">{queueOpen ? '▴' : '▾'}</span>
-          </button>
-        </div>
-
-        {#if queueOpen}
-          <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
-            <div class="session-tasks__heading">
-              <h2>Queue</h2>
-              <label class="blocked-filter">
-                <span>Blocked</span>
-                <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
-                  <option value="">Either</option>
-                  <option value="false">Not blocked</option>
-                  <option value="true">Blocked</option>
-                </select>
-              </label>
-            </div>
-
-            {#if listLoading}
-              <p class="task-list-empty">Loading tasks…</p>
-            {:else if sessionTasks.length === 0}
-              <p class="task-list-empty">No matching unfinished tasks.</p>
-            {:else}
-              <TaskQueue
-                tasks={sessionTasks}
-                currentTaskId={currentTask?.id ?? null}
-                allowFocus={true}
-                allowUnblock={true}
-                busyTaskId={unblockingTaskId}
-                on:open={(event) => dispatch('openTask', event.detail)}
-                on:focus={(event) => focusTask(event.detail)}
-                on:unblock={(event) => unblockListedTask(event.detail)}
-              />
-            {/if}
-          </section>
-        {/if}
       </section>
     {:else}
       <section class="break-card">
@@ -653,6 +789,49 @@
           <p class="pinned-note">Your next task will be ranked within this session scope.</p>
         {/if}
       </section>
+    {/if}
+
+    {#if !loading}
+      <div class="choose-task-row">
+        <button type="button" class="choose-task-toggle" aria-expanded={queueOpen} on:click={() => (queueOpen = !queueOpen)}>
+          <span>{queueOpen ? 'Hide task queue' : 'Choose another task'}</span>
+          <span class="queue-count">{sessionTasks.length}</span>
+          <span aria-hidden="true">{queueOpen ? '▴' : '▾'}</span>
+        </button>
+      </div>
+
+      {#if queueOpen}
+        <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
+          <div class="session-tasks__heading">
+            <h2>Queue</h2>
+            <label class="blocked-filter">
+              <span>Blocked</span>
+              <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
+                <option value="">Either</option>
+                <option value="false">Not blocked</option>
+                <option value="true">Blocked</option>
+              </select>
+            </label>
+          </div>
+
+          {#if listLoading}
+            <p class="task-list-empty">Loading tasks…</p>
+          {:else if sessionTasks.length === 0}
+            <p class="task-list-empty">No matching unfinished tasks.</p>
+          {:else}
+            <TaskQueue
+              tasks={sessionTasks}
+              currentTaskId={currentTask?.id ?? null}
+              allowFocus={true}
+              allowUnblock={true}
+              busyTaskId={unblockingTaskId}
+              on:open={(event) => dispatch('openTask', event.detail)}
+              on:focus={(event) => focusTask(event.detail)}
+              on:unblock={(event) => unblockListedTask(event.detail)}
+            />
+          {/if}
+        </section>
+      {/if}
     {/if}
   </main>
 
@@ -754,19 +933,28 @@
   .cycle-dots .long-dot { width: .7rem; border-radius: .2rem; background: #9daf9f; }
 
   .session-scope {
-    display: inline-flex;
-    align-items: center;
-    gap: .35rem;
-    margin-bottom: 2rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, .55);
-    color: var(--muted);
-    padding: .35rem .65rem;
-    font-size: .72rem;
+    display: grid;
+    width: min(100%, 38rem);
+    gap: .6rem;
+    margin: 0 auto 2rem;
+    border: 1px solid rgba(100, 95, 80, .14);
+    border-radius: .8rem;
+    background: rgba(255, 255, 255, .7);
+    padding: .8rem;
+    text-align: left;
   }
-
-  .session-scope strong { color: var(--forest-2); }
-  .session-scope small { opacity: .8; }
+  .session-scope-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .session-scope-heading strong { color: var(--forest-2); font-size: .82rem; }
+  .session-scope-heading button, .scope-warning button { border: 0; background: transparent; color: var(--forest-2); padding: .2rem; font-size: .78rem; font-weight: 750; text-decoration: underline; }
+  .session-scope-heading button:disabled, .scope-warning button:disabled { opacity: .5; cursor: wait; }
+  .scope-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .scope-selection > span:first-child { min-width: 3.8rem; color: var(--muted); font-size: .72rem; font-weight: 750; }
+  .scope-empty, .missing-tag { color: var(--muted); font-size: .76rem; }
+  .scope-match { margin: 0; color: var(--muted); font-size: .74rem; }
+  .scope-match strong { color: var(--ink); }
+  .scope-editor { display: grid; gap: .8rem; border-top: 1px solid var(--line); padding-top: .75rem; }
+  .scope-editor-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+  .scope-warning { width: min(100%, 38rem); margin: -1rem auto 1.5rem; border: 1px solid #deb98a; border-radius: .65rem; background: #fff4e7; padding: .65rem .8rem; font-size: .78rem; line-height: 1.5; text-align: left; }
   .focus-task-area { text-align: left; }
 
   .focus-task-heading {
