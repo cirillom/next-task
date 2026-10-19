@@ -90,6 +90,72 @@ The image runs as UID/GID `10001`, so prepare the persistent directory first as
 documented in the deployment README. Secure cookies are enabled in the homeserver
 Compose file.
 
+### Password login limits behind a proxy
+
+Login attempts are counted in the SQLite database, so the limits survive app
+restarts and are shared by app processes using the same database:
+
+- Five failed passwords for one account within a rolling 15-minute window lock that account's
+  password login for 15 minutes. The response stays the same generic 401 for a
+  wrong password, an unknown account, and a temporarily locked account. A
+  successful login clears that account's failure count.
+- Each client IP gets 30 failed logins in a rolling 15-minute window, across all
+  identifiers (including unknown ones). Successful logins do not consume this
+  allowance. Further requests receive a generic 429 until enough failures age
+  out of the window. Unknown accounts still run a dummy password check before
+  the limit is reached.
+- Each client IP can make 10 login requests in a rolling 10-second window,
+  successful or failed. Further requests receive the same generic 429 before
+  password verification. This is an app-level fallback for direct access and
+  for deployments without an edge limit.
+- Five failed current-password checks within 15 minutes temporarily prevent
+  password changes for that account for 15 minutes. An admin CLI password reset
+  clears both account limits. Limit records older than a day are removed on login.
+
+The IP limit uses the client address that Uvicorn supplies after processing
+`X-Forwarded-For` from a trusted proxy. In the homeserver Compose environment,
+set `NEXT_TASK_TRUSTED_PROXY_IPS` to the **proxy container's source IP or CIDR**;
+Compose passes it to Uvicorn as `FORWARDED_ALLOW_IPS`. Do not use the public
+visitor IP or `*`. Keep port 8000 private to the proxy network, and configure
+the proxy to append the actual connecting address to `X-Forwarded-For`. Direct
+requests and headers from peers outside the trusted range are ignored for this
+purpose. Without a trusted proxy setting, every visitor behind that proxy shares
+the same IP limits. Uvicorn's trusted-proxy behavior is covered by the auth tests.
+
+For Nginx, also limit bursts before they reach the app. Place the zone in the
+Nginx `http` block:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=next_task_login:10m rate=1r/s;
+```
+
+In the HTTPS `server` block, add an exact login location using the same upstream
+and proxy headers as the existing app location:
+
+```nginx
+location = /api/auth/login {
+    limit_req zone=next_task_login burst=9 nodelay;
+    limit_req_status 429;
+    proxy_pass http://next-task:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+The Nginx bucket allows a short burst then refills at one request per second.
+Set up Nginx's real-client-IP handling if another trusted proxy sits in front
+of it. Validate the configuration with `nginx -t` before reloading Nginx.
+
+After deployment, test through the public HTTPS address with a nonexistent
+identifier: 10 rapid login requests from one client IP return generic 401;
+request 11 returns 429. Wait at least 10 seconds, then submit 30 wrong passwords
+spaced apart to reach the longer IP failure limit; the next request returns 429.
+A request from another client network should still get 401. Use nonexistent
+identifiers so this check does not lock a real account. The test suite also
+verifies that changing `X-Forwarded-For` on an untrusted connection cannot evade
+the limit.
+
 Reset a password with direct server access:
 
 ```bash
