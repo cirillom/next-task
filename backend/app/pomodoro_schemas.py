@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas import UtcDateTime
 
@@ -30,6 +30,17 @@ class NextScope(BaseModel):
     include_tag_ids: list[int] = Field(default_factory=list)
     exclude_tag_ids: list[int] = Field(default_factory=list)
     tag_match: Literal["all", "any"] = "all"
+
+    @model_validator(mode="after")
+    def disjoint_tags(self) -> "NextScope":
+        if set(self.include_tag_ids).intersection(self.exclude_tag_ids):
+            raise ValueError("A tag cannot be both included and excluded")
+        return self
+
+
+class PomodoroSessionScopeUpdate(BaseModel):
+    scope: NextScope
+    expected_scope: NextScope
 
 
 class PomodoroSessionCreate(BaseModel):

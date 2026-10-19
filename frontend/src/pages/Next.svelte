@@ -5,24 +5,29 @@
   import NextTaskCard from '../lib/components/NextTaskCard.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
   import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
+  import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
+  import { cleanTagScope, emptyTagScope } from '../lib/tagScope';
 
   export let userId: number;
   const dispatch = createEventDispatcher<{ openTask: number; startFocus: NextScope; createBlocker: { taskId: number; title: string } }>();
 
   let tasks: Task[] = [];
   let tags: Tag[] = [];
-  let scope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
+  let tagsLoaded = false;
+  let scope: NextScope = emptyTagScope();
   let filtersOpen = false;
   let error = '';
   let loading = true;
   let refreshTimer: number;
+  let taskRequest = 0;
 
   async function loadTasks(showLoading = true) {
+    const request = ++taskRequest;
     if (showLoading) loading = true;
     error = '';
     try {
-      tasks = await api.tasks({
+      const ranked = await api.tasks({
         finished: false,
         blocked: false,
         actionable: true,
@@ -30,27 +35,18 @@
         exclude_tag_id: scope.exclude_tag_ids,
         tag_match: scope.tag_match
       });
+      if (request === taskRequest) tasks = ranked;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load tasks';
+      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not load tasks';
     } finally {
-      if (showLoading) loading = false;
+      if (request === taskRequest) loading = false;
     }
   }
 
   function updateScope(next: NextScope) {
-    scope = next;
+    scope = cleanTagScope(next, new Set(tags.map((tag) => tag.id)));
     localStorage.setItem(`next-task-scope:${userId}`, JSON.stringify(scope));
     void loadTasks();
-  }
-
-  function toggleTag(tagId: number, kind: 'include' | 'exclude') {
-    const include = new Set(scope.include_tag_ids);
-    const exclude = new Set(scope.exclude_tag_ids);
-    const target = kind === 'include' ? include : exclude;
-    const other = kind === 'include' ? exclude : include;
-    if (target.has(tagId)) target.delete(tagId);
-    else { target.add(tagId); other.delete(tagId); }
-    updateScope({ ...scope, include_tag_ids: [...include], exclude_tag_ids: [...exclude] });
   }
 
   async function replaceTask(_updated: Task) {
@@ -61,6 +57,7 @@
     void (async () => {
       try {
         tags = await api.tags();
+        tagsLoaded = true;
         let saved: Partial<NextScope> | null = null;
         try {
           saved = JSON.parse(localStorage.getItem(`next-task-scope:${userId}`) || 'null') as Partial<NextScope> | null;
@@ -68,11 +65,7 @@
           localStorage.removeItem(`next-task-scope:${userId}`);
         }
         const valid = new Set(tags.map((tag) => tag.id));
-        scope = {
-          include_tag_ids: saved?.include_tag_ids?.filter((id) => valid.has(id)) ?? [],
-          exclude_tag_ids: saved?.exclude_tag_ids?.filter((id) => valid.has(id)) ?? [],
-          tag_match: saved?.tag_match === 'any' ? 'any' : 'all'
-        };
+        scope = cleanTagScope(saved, valid);
         await loadTasks();
       } catch (reason) {
         error = reason instanceof Error ? reason.message : 'Could not load tasks';
@@ -99,17 +92,10 @@
 </div>
 
 <div class="next-filters">
-  <button type="button" aria-expanded={filtersOpen} on:click={() => (filtersOpen = !filtersOpen)}>Tag filters {scope.include_tag_ids.length + scope.exclude_tag_ids.length ? `(${scope.include_tag_ids.length + scope.exclude_tag_ids.length})` : ''}</button>
+  <button type="button" disabled={!tagsLoaded} aria-expanded={filtersOpen} on:click={() => (filtersOpen = !filtersOpen)}>Tag filters {scope.include_tag_ids.length + scope.exclude_tag_ids.length ? `(${scope.include_tag_ids.length + scope.exclude_tag_ids.length} active)` : ''}</button>
   {#if filtersOpen}
     <div class="filter-panel" aria-label="Tag filters">
-      <label>Match included tags
-        <select value={scope.tag_match} on:change={(event) => updateScope({ ...scope, tag_match: event.currentTarget.value as 'all' | 'any' })}>
-          <option value="all">All</option><option value="any">Any</option>
-        </select>
-      </label>
-      {#each tags as tag (tag.id)}
-        <div class="tag-filter-row"><span>{tag.display_name}</span><label><input type="checkbox" checked={scope.include_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'include')} /> Include</label><label><input type="checkbox" checked={scope.exclude_tag_ids.includes(tag.id)} on:change={() => toggleTag(tag.id, 'exclude')} /> Exclude</label></div>
-      {/each}
+      <TagScopeFilters {tags} {scope} matchName="next-tag-match" on:change={(event) => updateScope(event.detail)} />
     </div>
   {/if}
 </div>
@@ -157,11 +143,7 @@
 <style>
   .next-filters { margin-bottom: .8rem; }
   .next-filters > button { border: 1px solid var(--line); border-radius: .5rem; background: #fff; color: var(--forest-2); padding: .45rem .65rem; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
-  .filter-panel { display: grid; gap: .5rem; max-height: 22rem; overflow-y: auto; margin-top: .5rem; border: 1px solid var(--line); border-radius: .65rem; background: #fff; padding: .75rem; }
-  .filter-panel > label { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
-  .tag-filter-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .75rem; align-items: center; font-size: .82rem; }
-  .tag-filter-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tag-filter-row label { display: flex; align-items: center; gap: .25rem; cursor: pointer; }
+  .filter-panel { width: min(34rem, 100%); max-height: 22rem; overflow-y: auto; margin-top: .5rem; border: 1px solid var(--line); border-radius: .65rem; background: #fff; padding: .75rem; }
   .next-focus-block {
     margin-bottom: 1.5rem;
   }
