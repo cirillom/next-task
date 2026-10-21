@@ -5,6 +5,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.rate_limit import account_key, clear_attempts, password_change_key
 from app.auth.security import hash_password, normalize_email
 from app.database import SessionLocal
 from app.models import User
@@ -47,6 +48,8 @@ def reset_password(args: argparse.Namespace) -> None:
             raise SystemExit(f"No user found for {email}.")
         user.password_hash = hash_password(password)
         user.sessions.clear()
+        clear_attempts(db, account_key(user.id))
+        clear_attempts(db, password_change_key(user.id))
         db.commit()
     print(f"Reset password for {email}; existing sessions were revoked.")
 

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { api } from '../lib/api/client';
+  import { ApiError, api } from '../lib/api/client';
   import type { User } from '../lib/api/types';
   import AppButton from '../lib/components/AppButton.svelte';
+  import PasswordField from '../lib/components/PasswordField.svelte';
   import TextField from '../lib/components/TextField.svelte';
 
   const dispatch = createEventDispatcher<{ authenticated: User }>();
@@ -10,18 +11,23 @@
   let identifier = '';
   let password = '';
   let error = '';
+  let showLockoutHint = false;
   let busy = false;
 
   async function submit() {
     busy = true;
     error = '';
+    showLockoutHint = false;
     try {
       const user = mode === 'signup'
         ? await api.signup(identifier, password)
         : await api.login(identifier, password);
       dispatch('authenticated', user);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : mode === 'signup' ? 'Could not create account' : 'Could not sign in';
+      error = reason instanceof ApiError && reason.status === 429
+        ? 'Too many sign-in attempts. Please wait and try again.'
+        : reason instanceof Error ? reason.message : mode === 'signup' ? 'Could not create account' : 'Could not sign in';
+      showLockoutHint = mode === 'login' && reason instanceof ApiError && reason.status === 401;
     } finally {
       busy = false;
     }
@@ -31,6 +37,7 @@
     mode = mode === 'login' ? 'signup' : 'login';
     password = '';
     error = '';
+    showLockoutHint = false;
   }
 </script>
 
@@ -49,17 +56,20 @@
         Username or email
         <TextField bind:value={identifier} autocomplete="username" required />
       </label>
-      <label>
-        Password
-        <TextField
-          type="password"
+      {#key mode}
+        <PasswordField
+          id="account-password"
+          label="Password"
           bind:value={password}
           autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
           minlength={mode === 'signup' ? 10 : undefined}
           required
         />
-      </label>
+      {/key}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
+      {#if showLockoutHint}
+        <p class="muted">After five unsuccessful attempts, sign-in may pause for 15 minutes. If your password is correct, wait before trying again.</p>
+      {/if}
       <AppButton type="submit" variant="primary" disabled={busy}>
         {#if mode === 'signup'}
           {busy ? 'Creating account…' : 'Create account'}
