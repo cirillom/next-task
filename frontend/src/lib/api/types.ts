@@ -60,6 +60,7 @@ export interface Task {
   created_at: string;
   updated_at: string;
   score: number;
+  scoring_warning: string | null;
   ranking_score: number;
   ranking_source_task_id: number | null;
   ranking_source_score: number | null;

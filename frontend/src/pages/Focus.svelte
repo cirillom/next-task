@@ -15,6 +15,7 @@
   import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
+  import ScoringWarning from '../lib/components/ScoringWarning.svelte';
   import { cleanTagScope, emptyTagScope, sameTagScope } from '../lib/tagScope';
 
   type BlockedFilter = '' | 'false' | 'true';
@@ -719,6 +720,7 @@
     {/if}
 
     {#if error}<p class="error" role="alert">{error}</p>{/if}
+    <ScoringWarning message={sessionTasks[0]?.scoring_warning ?? currentTask?.scoring_warning ?? null} />
 
     {#if loading}
       <section class="focus-placeholder">Preparing your Pomodoro session…</section>

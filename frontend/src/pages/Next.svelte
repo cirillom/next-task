@@ -7,6 +7,7 @@
   import PomodoroLauncher from '../lib/components/PomodoroLauncher.svelte';
   import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
+  import ScoringWarning from '../lib/components/ScoringWarning.svelte';
   import { cleanTagScope, emptyTagScope } from '../lib/tagScope';
 
   export let userId: number;
@@ -101,6 +102,7 @@
 </div>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
+<ScoringWarning message={tasks[0]?.scoring_warning ?? null} />
 
 {#if loading}
   <p class="empty">Ranking your tasks…</p>
