@@ -1,6 +1,8 @@
 import ast
 import math
 import operator
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -45,6 +47,13 @@ FUNCTIONS = {"exp": math.exp}
 
 class FormulaError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class ScoringPlan:
+    formula: str
+    now: datetime
+    warning: str | None = None
 
 
 def _evaluate(node: ast.AST, values: dict[str, float]) -> float | bool:
@@ -106,7 +115,34 @@ def evaluate_formula(formula: str, values: dict[str, float]) -> float:
 
 
 def validate_formula(formula: str) -> None:
-    evaluate_formula(formula, {variable: 1.0 for variable in VARIABLES})
+    examples = (
+        {
+            "priority": 1.0,
+            "ageDays": 0.0,
+            "idleDays": 0.0,
+            "dueOffsetDays": 0.0,
+            "hasDueDate": 0.0,
+            "tagValue": 0.0,
+        },
+        {
+            "priority": 3.0,
+            "ageDays": 30.0,
+            "idleDays": 7.0,
+            "dueOffsetDays": 7.0,
+            "hasDueDate": 1.0,
+            "tagValue": -2.0,
+        },
+        {
+            "priority": 2.0,
+            "ageDays": 1.0,
+            "idleDays": 0.0,
+            "dueOffsetDays": -7.0,
+            "hasDueDate": 1.0,
+            "tagValue": 4.0,
+        },
+    )
+    for values in examples:
+        evaluate_formula(formula, values)
 
 
 def _utc(value: datetime) -> datetime:
@@ -135,12 +171,31 @@ def score_variables(task: Task, now: datetime | None = None) -> dict[str, float]
     }
 
 
-def score_task(task: Task, now: datetime | None = None) -> float:
+def score_task(task: Task, now: datetime | None = None, formula: str | None = None) -> float:
     if task.finished_at is not None:
         return 0.0
-    formula = task.user.scoring_formula or DEFAULT_SCORING_FORMULA
+    if formula is None:
+        formula = task.user.scoring_formula or DEFAULT_SCORING_FORMULA
     values = score_variables(task, now)
+    return evaluate_formula(formula, values)
+
+
+def plan_scoring(tasks: Iterable[Task], now: datetime | None = None) -> ScoringPlan:
+    tasks = list(tasks)
+    current_time = now or datetime.now(UTC)
+    if not tasks:
+        return ScoringPlan(DEFAULT_SCORING_FORMULA, current_time)
+    custom_formula = tasks[0].user.scoring_formula
+    if not custom_formula:
+        return ScoringPlan(DEFAULT_SCORING_FORMULA, current_time)
     try:
-        return evaluate_formula(formula, values)
-    except FormulaError:
-        return evaluate_formula(DEFAULT_SCORING_FORMULA, values)
+        for task in tasks:
+            score_task(task, current_time, custom_formula)
+    except FormulaError as error:
+        return ScoringPlan(
+            DEFAULT_SCORING_FORMULA,
+            current_time,
+            f"Your scoring formula failed ({error}). "
+            "All scores shown here use the default formula.",
+        )
+    return ScoringPlan(custom_formula, current_time)

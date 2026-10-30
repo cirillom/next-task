@@ -131,6 +131,7 @@ class TaskRead(ApiModel):
     created_at: UtcDateTime
     updated_at: UtcDateTime
     score: float
+    scoring_warning: str | None
     ranking_score: float
     ranking_source_task_id: int | None
     ranking_source_score: float | None

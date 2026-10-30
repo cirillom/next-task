@@ -7,6 +7,7 @@
   import { emptyTagScope } from '../lib/tagScope';
   import AppButton from '../lib/components/AppButton.svelte';
   import TextField from '../lib/components/TextField.svelte';
+  import ScoringWarning from '../lib/components/ScoringWarning.svelte';
 
   type FinishedFilter = 'unfinished' | 'finished' | 'all';
   type BlockedFilter = 'all' | 'blocked' | 'unblocked';
@@ -333,6 +334,7 @@
 {/if}
 
 {#if error}<p class="error">{error}</p>{/if}
+<ScoringWarning message={tasks.find((task) => task.scoring_warning)?.scoring_warning ?? null} />
 {#if loading}<p class="empty">Loading tasks…</p>{:else if !orderedTasks.length}<p class="empty">No matching tasks.</p>{/if}
 <div class="task-list">
   {#each orderedTasks as task (task.id)}

@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from app.database import SessionLocal
-from app.models import Task
+from app.models import Task, User
 from app.services.scoring import (
     DEFAULT_SCORING_FORMULA,
     FormulaError,
@@ -413,6 +413,75 @@ def test_score_calculation_and_safe_formula(
         json={"scoring_formula": "open('/etc/passwd').read()"},
     )
     assert invalid.status_code == 422
+
+
+def test_scoring_formula_rejects_common_and_existing_task_failures(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    no_due_date = client.put(
+        "/api/settings/scoring",
+        json={"scoring_formula": "priority + 1 / dueOffsetDays"},
+    )
+    assert no_due_date.status_code == 422
+
+    task = make_task(
+        client,
+        "Due yesterday",
+        due_date=(date.today() - timedelta(days=1)).isoformat(),
+    )
+    existing_task = client.put(
+        "/api/settings/scoring",
+        json={"scoring_formula": "priority + 1 / (dueOffsetDays - 1)"},
+    )
+    assert existing_task.status_code == 422
+    assert f"task #{task['id']}" in existing_task.json()["detail"]
+    assert client.get("/api/settings/scoring").json()["scoring_formula"] == (
+        DEFAULT_SCORING_FORMULA
+    )
+
+
+def test_runtime_formula_failure_falls_back_for_entire_ranked_response(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("owner@example.com")
+    parent = make_task(client, "High priority parent", priority=10)
+    due_yesterday = (date.today() - timedelta(days=1)).isoformat()
+    child = make_task(
+        client,
+        "Actionable child",
+        priority=1,
+        due_date=due_yesterday,
+        parent_task_id=parent["id"],
+    )
+    other = make_task(client, "Other task", priority=2, due_date=due_yesterday)
+    formula = "priority * 100 + 1 / dueOffsetDays"
+    with SessionLocal() as db:
+        user = db.get(User, parent["user_id"])
+        assert user is not None
+        user.scoring_formula = formula
+        db.commit()
+
+    response = client.get("/api/tasks?finished=false&actionable=true")
+    assert response.status_code == 200
+    tasks = {task["id"]: task for task in response.json()}
+    assert set(tasks) == {child["id"], other["id"]}
+    warnings = {task["scoring_warning"] for task in tasks.values()}
+    assert len(warnings) == 1
+    assert "default formula" in next(iter(warnings))
+
+    with SessionLocal() as db:
+        expected = {
+            task_id: round(score_task(db.get(Task, task_id), formula=DEFAULT_SCORING_FORMULA), 2)
+            for task_id in (parent["id"], child["id"], other["id"])
+        }
+    assert tasks[child["id"]]["score"] == pytest.approx(expected[child["id"]], abs=0.02)
+    assert tasks[other["id"]]["score"] == pytest.approx(expected[other["id"]], abs=0.02)
+    assert tasks[child["id"]]["ranking_score"] == pytest.approx(expected[parent["id"]], abs=0.02)
+    assert tasks[child["id"]]["ranking_source_task_id"] == parent["id"]
+    assert client.get("/api/tasks").json()[0]["scoring_warning"]
+    assert client.get(f"/api/tasks/{parent['id']}").json()["scoring_warning"]
+    assert client.get("/api/settings/scoring").json()["scoring_formula"] == formula
 
 
 def test_tag_value_sums_direct_tags_and_all_distinct_parents(

@@ -18,7 +18,7 @@ from app.schemas import (
     TaskSummary,
     TaskUpdate,
 )
-from app.services.scoring import score_task
+from app.services.scoring import ScoringPlan, plan_scoring, score_task
 from app.services.tags import (
     ancestor_ids,
     descendant_ids,
@@ -75,8 +75,10 @@ def task_summary(task: Task) -> TaskSummary:
     )
 
 
-def hierarchy_rank_metadata(task: Task) -> tuple[float, int | None, float | None]:
-    own_score = round(score_task(task), 2)
+def hierarchy_rank_metadata(
+    task: Task, scoring: ScoringPlan
+) -> tuple[float, int | None, float | None]:
+    own_score = round(score_task(task, scoring.now, scoring.formula), 2)
     if task.finished_at is not None:
         return own_score, None, None
 
@@ -86,7 +88,7 @@ def hierarchy_rank_metadata(task: Task) -> tuple[float, int | None, float | None
     ancestor = task.parent
     while ancestor is not None:
         if ancestor.finished_at is None:
-            ancestor_score = round(score_task(ancestor), 2)
+            ancestor_score = round(score_task(ancestor, scoring.now, scoring.formula), 2)
             if ancestor_score > ranking_score:
                 ranking_score = ancestor_score
                 source_task_id = ancestor.id
@@ -102,7 +104,9 @@ def task_read(
     ranking_source_task_id: int | None = None,
     ranking_source_score: float | None = None,
     display_names: dict[int, str] | None = None,
+    scoring: ScoringPlan | None = None,
 ) -> TaskRead:
+    scoring = scoring or plan_scoring([task])
     names = display_names if display_names is not None else tag_display_names(db, task.user_id)
     direct_ids = {tag.id for tag in task.tags}
     inherited = tags_by_ids(db, ancestor_ids(db, direct_ids) - direct_ids)
@@ -116,7 +120,7 @@ def task_read(
             TaskBlock.unblocked_at.is_(None),
         )
     ).all()
-    own_score = round(score_task(task), 2)
+    own_score = round(score_task(task, scoring.now, scoring.formula), 2)
     return TaskRead(
         id=task.id,
         user_id=task.user_id,
@@ -132,6 +136,7 @@ def task_read(
         created_at=task.created_at,
         updated_at=task.updated_at,
         score=own_score,
+        scoring_warning=scoring.warning,
         ranking_score=own_score if ranking_score is None else round(ranking_score, 2),
         ranking_source_task_id=ranking_source_task_id,
         ranking_source_score=(
@@ -152,8 +157,20 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
         return []
 
     task_ids = {task.id for task in tasks}
-    own_scores = {task.id: round(score_task(task), 2) for task in tasks}
-    rank_metadata = {task.id: hierarchy_rank_metadata(task) for task in tasks}
+    scoring_tasks = list(tasks)
+    scoring_ids = set(task_ids)
+    for task in tasks:
+        ancestor = task.parent
+        while ancestor is not None:
+            if ancestor.id not in scoring_ids and ancestor.finished_at is None:
+                scoring_tasks.append(ancestor)
+                scoring_ids.add(ancestor.id)
+            ancestor = ancestor.parent
+    scoring = plan_scoring(scoring_tasks)
+    own_scores = {
+        task.id: round(score_task(task, scoring.now, scoring.formula), 2) for task in tasks
+    }
+    rank_metadata = {task.id: hierarchy_rank_metadata(task, scoring) for task in tasks}
     dependencies = {
         task.id: (
             {
@@ -199,6 +216,7 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
             ranking_source_task_id=rank_metadata[task.id][1],
             ranking_source_score=rank_metadata[task.id][2],
             display_names=names,
+            scoring=scoring,
         )
         for task in ordered
     ]
