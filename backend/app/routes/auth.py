@@ -1,4 +1,6 @@
-from datetime import UTC, datetime
+import logging
+import secrets
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete, select
@@ -31,18 +33,59 @@ from app.auth.security import (
     current_session,
     get_current_user,
     hash_password,
+    hash_token,
     normalize_email,
-    session_token_hash,
     verify_password,
 )
 from app.config import get_settings
 from app.database import get_db
-from app.models import User, UserSession
-from app.schemas import LoginRequest, Message, PasswordChange, SignUpRequest, UserRead
+from app.models import EmailVerification, User, UserSession
+from app.schemas import (
+    EmailRequest,
+    EmailStatus,
+    LoginRequest,
+    Message,
+    PasswordChange,
+    SignUpRequest,
+    UserRead,
+    VerifyEmailRequest,
+    ensure_utc,
+)
+from app.services.mail import (
+    MailConfigurationError,
+    MailDeliveryError,
+    public_app_url,
+    send_email,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+logger = logging.getLogger(__name__)
 DUMMY_PASSWORD_HASH = hash_password("this is a dummy password used for unknown accounts")
-INVALID_LOGIN = "Invalid username/email or password"
+INVALID_LOGIN = "Invalid email or password"
+VERIFICATION_LIFETIME = timedelta(hours=24)
+VERIFICATION_RESEND_WAIT = timedelta(seconds=60)
+
+
+def require_current_password(
+    db: Session, user: User, password: str, key: str, now: datetime, detail: str
+) -> None:
+    if (
+        is_locked(db, key, now)
+        or record_attempt(db, key, now, limit=PASSWORD_CHANGE_FAILURE_LIMIT, lockout=LOCKOUT)
+        > PASSWORD_CHANGE_FAILURE_LIMIT
+        or not verify_password(user.password_hash, password)
+    ):
+        raise HTTPException(status_code=400, detail=detail)
+    clear_attempts(db, key)
+
+
+def email_status(user: User, now: datetime) -> EmailStatus:
+    pending = user.email_verification
+    active = pending is not None and ensure_utc(pending.expires_at) > now
+    return EmailStatus(
+        verified=user.email_verified_at is not None,
+        pending_email=pending.email if active else None,
+    )
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -58,17 +101,11 @@ def set_session_cookie(response: Response, token: str) -> None:
     )
 
 
-def default_display_name(identifier: str) -> str:
-    name = identifier.split("@", 1)[0] if "@" in identifier else identifier
-    return name[:160]
-
-
 @router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get_db)) -> User:
-    identifier = normalize_email(payload.identifier)
     user = User(
-        email=identifier,
-        display_name=default_display_name(identifier),
+        email=payload.email,
+        display_name=payload.email.split("@", 1)[0][:160],
         password_hash=hash_password(payload.password),
     )
     db.add(user)
@@ -78,7 +115,7 @@ def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="That username or email is already in use",
+            detail="That email is already in use",
         ) from error
     db.refresh(user)
     token, _expires_at = create_session(db, user)
@@ -146,7 +183,7 @@ def login(
 def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> Message:
     token = request.cookies.get(get_settings().session_cookie_name)
     if token:
-        db.execute(delete(UserSession).where(UserSession.token_hash == session_token_hash(token)))
+        db.execute(delete(UserSession).where(UserSession.token_hash == hash_token(token)))
         db.commit()
     response.delete_cookie(get_settings().session_cookie_name, path="/")
     return Message(message="Logged out")
@@ -166,23 +203,10 @@ def change_password(
 ) -> Message:
     now = datetime.now(UTC)
     key = password_change_key(user.id)
-    if is_locked(db, key, now):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Could not change password"
-        )
-    if (
-        record_attempt(db, key, now, limit=PASSWORD_CHANGE_FAILURE_LIMIT, lockout=LOCKOUT)
-        > PASSWORD_CHANGE_FAILURE_LIMIT
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Could not change password"
-        )
-    if not verify_password(user.password_hash, payload.current_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Could not change password"
-        )
+    require_current_password(
+        db, user, payload.current_password, key, now, "Could not change password"
+    )
     user.password_hash = hash_password(payload.new_password)
-    clear_attempts(db, key)
     session = current_session(request, db)
     if session is not None:
         db.execute(
@@ -193,3 +217,96 @@ def change_password(
         )
     db.commit()
     return Message(message="Password changed")
+
+
+@router.get("/email", response_model=EmailStatus)
+def get_email(user: User = Depends(get_current_user)) -> EmailStatus:
+    return email_status(user, datetime.now(UTC))
+
+
+@router.post("/email", response_model=EmailStatus)
+def request_email(
+    payload: EmailRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> EmailStatus:
+    now = datetime.now(UTC)
+    key = f"email-update:{user.id}"
+    require_current_password(db, user, payload.current_password, key, now, "Could not update email")
+    db.commit()
+
+    email = payload.email
+    if db.scalar(select(User.id).where(User.id != user.id, User.email == email)) is not None:
+        raise HTTPException(status_code=409, detail="That email is already in use")
+
+    pending = user.email_verification
+    if email == user.email and user.email_verified_at:
+        if pending is not None:
+            user.email_verification = None
+            db.commit()
+        return email_status(user, now)
+    send_attempt = reserve_window_attempt(
+        db,
+        f"email-send:{user.id}",
+        now,
+        window=VERIFICATION_RESEND_WAIT,
+        limit=1,
+    )
+    if send_attempt is None:
+        raise HTTPException(status_code=429, detail="Wait one minute before sending another email")
+
+    token = secrets.token_urlsafe(32)
+    if pending is None:
+        pending = EmailVerification()
+        user.email_verification = pending
+    pending.email = email
+    pending.token_hash = hash_token(token)
+    pending.expires_at = now + VERIFICATION_LIFETIME
+    try:
+        url = public_app_url()
+        link = f"{url}/#/verify-email?token={token}"
+        send_email(
+            email,
+            "Verify your Next Task email",
+            "Open this link to verify your Next Task email. "
+            "It expires in 24 hours. If you did not request this, ignore this email.\n\n"
+            f"{link}\n",
+        )
+        db.commit()
+    except (MailConfigurationError, MailDeliveryError) as error:
+        db.rollback()
+        release_window_attempt(db, send_attempt)
+        if isinstance(error, MailConfigurationError):
+            logger.error("Email configuration failed: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail="Email verification is unavailable. Check the server's email settings.",
+            ) from error
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return email_status(user, now)
+
+
+@router.post("/email/verify", response_model=Message)
+def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> Message:
+    now = datetime.now(UTC)
+    token_hash = hash_token(payload.token)
+    consumed = db.execute(
+        delete(EmailVerification)
+        .where(EmailVerification.token_hash == token_hash, EmailVerification.expires_at > now)
+        .returning(EmailVerification.user_id, EmailVerification.email)
+    ).first()
+    if consumed is None:
+        raise HTTPException(status_code=400, detail="Verification link is invalid or expired")
+    user_id, email = consumed
+    user = db.get(User, user_id)
+    if user is None:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Verification link is invalid or expired")
+    user.email = email
+    user.email_verified_at = now
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That email is already in use") from error
+    return Message(message="Email verified")

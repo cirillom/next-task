@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 def signup(client: TestClient, name: str) -> int:
     response = client.post(
         "/api/auth/signup",
-        json={"identifier": name, "password": "a secure password"},
+        json={"email": f"{name}@example.com", "password": "a secure password"},
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]

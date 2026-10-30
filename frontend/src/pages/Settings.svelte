@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
+  import AccountSettings from '../lib/components/AccountSettings.svelte';
   import GeminiSettings from '../lib/components/GeminiSettings.svelte';
   import PomodoroSettings from '../lib/components/PomodoroSettings.svelte';
   import type { User } from '../lib/api/types';
@@ -7,7 +9,6 @@
   import AppButton from '../lib/components/AppButton.svelte';
   import PasswordField from '../lib/components/PasswordField.svelte';
   import TextArea from '../lib/components/TextArea.svelte';
-  import { onMount } from 'svelte';
 
   export let user: User;
   let currentPassword = '';
@@ -37,7 +38,7 @@
     }
   }
 
-  onMount(loadWorkflow);
+  onMount(() => { void loadWorkflow(); });
 
   async function changePassword() {
     error = '';
@@ -58,7 +59,7 @@
 
 <div class="page-heading"><div><p class="eyebrow">Your account</p><h1>Settings</h1></div></div>
 <div class="settings-stack narrow">
-  <section class="panel"><h2>Profile</h2><dl><div><dt>Name</dt><dd>{user.display_name}</dd></div><div><dt>Username / email</dt><dd>{user.email}</dd></div></dl></section>
+  <AccountSettings {user} />
   <section class="panel"><h2>Scoring</h2><form on:submit|preventDefault={saveFormula}><label>Scoring formula<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, tagValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><AppButton type="submit" variant="primary">Save scoring formula</AppButton></form>{#if workflowError}<p class="error" role="alert">{workflowError}</p>{/if}{#if workflowNotice}<p class="notice">{workflowNotice}</p>{/if}</section>
   <PomodoroSettings />
   <GeminiSettings />

@@ -9,6 +9,12 @@ from app.auth.rate_limit import account_key, clear_attempts, password_change_key
 from app.auth.security import hash_password, normalize_email
 from app.database import SessionLocal
 from app.models import User
+from app.services.mail import (
+    MailConfigurationError,
+    MailDeliveryError,
+    normalize_email_address,
+    send_email,
+)
 
 
 def read_password(prompt: str, from_stdin: bool) -> str:
@@ -23,11 +29,14 @@ def read_password(prompt: str, from_stdin: bool) -> str:
 
 
 def create_user(args: argparse.Namespace) -> None:
-    email = normalize_email(args.email or input("Email: "))
+    try:
+        email = normalize_email_address(args.email or input("Email: "))
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     display_name = (args.display_name or input("Display name: ")).strip()
     password = read_password("Password: ", args.password_stdin)
-    if not email or not display_name:
-        raise SystemExit("Email and display name are required.")
+    if not display_name:
+        raise SystemExit("Display name is required.")
     with SessionLocal() as db:
         user = User(email=email, display_name=display_name, password_hash=hash_password(password))
         db.add(user)
@@ -54,6 +63,19 @@ def reset_password(args: argparse.Namespace) -> None:
     print(f"Reset password for {email}; existing sessions were revoked.")
 
 
+def test_email(args: argparse.Namespace) -> None:
+    try:
+        recipient = normalize_email_address(args.recipient)
+        send_email(
+            recipient,
+            "Next Task SMTP test",
+            "This is a test message from your Next Task server.\n",
+        )
+    except (ValueError, MailConfigurationError, MailDeliveryError) as error:
+        raise SystemExit(str(error)) from error
+    print(f"SMTP server accepted the test message for {recipient}.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(required=True)
@@ -68,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     reset.add_argument("email")
     reset.add_argument("--password-stdin", action="store_true")
     reset.set_defaults(handler=reset_password)
+    test_mail = subparsers.add_parser(
+        "test-email", help="Send a test email through configured SMTP"
+    )
+    test_mail.add_argument("recipient")
+    test_mail.set_defaults(handler=test_email)
     return parser
 
 

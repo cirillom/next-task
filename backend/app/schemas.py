@@ -3,6 +3,8 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.services.mail import normalize_email_address
+
 
 def clean_required(value: str, tag: bool = False) -> str:
     cleaned = value.strip().removeprefix("#") if tag else value.strip()
@@ -21,6 +23,7 @@ def ensure_utc(value: datetime | None) -> datetime | None:
 
 # SQLite returns naive datetimes; API timestamps always identify a UTC instant.
 UtcDateTime = Annotated[datetime, AfterValidator(ensure_utc)]
+EmailAddress = Annotated[str, Field(max_length=320), AfterValidator(normalize_email_address)]
 
 
 class ApiModel(BaseModel):
@@ -44,18 +47,27 @@ class LoginRequest(ApiModel):
 
 
 class SignUpRequest(ApiModel):
-    identifier: str = Field(min_length=1, max_length=320)
+    email: EmailAddress
     password: str = Field(min_length=10, max_length=1024)
-
-    @field_validator("identifier")
-    @classmethod
-    def clean_identifier(cls, value: str) -> str:
-        return clean_required(value).lower()
 
 
 class PasswordChange(ApiModel):
     current_password: str
     new_password: str = Field(min_length=10, max_length=1024)
+
+
+class EmailRequest(ApiModel):
+    email: EmailAddress
+    current_password: str = Field(max_length=1024)
+
+
+class EmailStatus(ApiModel):
+    verified: bool
+    pending_email: str | None
+
+
+class VerifyEmailRequest(ApiModel):
+    token: str = Field(min_length=32, max_length=256)
 
 
 class ScoringSettings(ApiModel):

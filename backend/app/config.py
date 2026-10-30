@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +16,13 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     credential_secret: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.8-flash"
+    public_app_url: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_security: Literal["starttls", "ssl"] = "starttls"
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: str = ""
 
 
 @lru_cache

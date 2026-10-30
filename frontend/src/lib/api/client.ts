@@ -1,4 +1,5 @@
 import type {
+  EmailStatus,
   NextScope,
   PomodoroSession,
   PomodoroSettings,
@@ -31,7 +32,11 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     let message = `Request failed (${response.status})`;
     try {
       const body = await response.json();
-      message = typeof body.detail === 'string' ? body.detail : message;
+      const detail = body.detail;
+      if (typeof detail === 'string') message = detail;
+      else if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') {
+        message = detail[0].msg.replace(/^Value error, /, '');
+      }
     } catch {
       // Keep the status-based message for non-JSON failures.
     }
@@ -47,13 +52,18 @@ const json = (method: string, body?: unknown): RequestInit => ({
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  login: (identifier: string, password: string) =>
-    request<User>('/api/auth/login', json('POST', { email: identifier, password })),
-  signup: (identifier: string, password: string) =>
-    request<User>('/api/auth/signup', json('POST', { identifier, password })),
+  login: (email: string, password: string) =>
+    request<User>('/api/auth/login', json('POST', { email, password })),
+  signup: (email: string, password: string) =>
+    request<User>('/api/auth/signup', json('POST', { email, password })),
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),
+  emailStatus: () => request<EmailStatus>('/api/auth/email'),
+  requestEmail: (email: string, current_password: string) =>
+    request<EmailStatus>('/api/auth/email', json('POST', { email, current_password })),
+  verifyEmail: (token: string) =>
+    request<{ message: string }>('/api/auth/email/verify', json('POST', { token })),
 
   pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
   updatePomodoroSettings: (body: PomodoroSettings) =>

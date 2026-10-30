@@ -8,7 +8,7 @@
 
   const dispatch = createEventDispatcher<{ authenticated: User }>();
   let mode: 'login' | 'signup' = 'login';
-  let identifier = '';
+  let email = '';
   let password = '';
   let error = '';
   let showLockoutHint = false;
@@ -20,8 +20,8 @@
     showLockoutHint = false;
     try {
       const user = mode === 'signup'
-        ? await api.signup(identifier, password)
-        : await api.login(identifier, password);
+        ? await api.signup(email, password)
+        : await api.login(email, password);
       dispatch('authenticated', user);
     } catch (reason) {
       error = reason instanceof ApiError && reason.status === 429
@@ -53,8 +53,8 @@
     </p>
     <form on:submit|preventDefault={submit}>
       <label>
-        Username or email
-        <TextField bind:value={identifier} autocomplete="username" required />
+        Email
+        <TextField type={mode === 'signup' ? 'email' : 'text'} inputmode="email" bind:value={email} autocomplete="username" required />
       </label>
       {#key mode}
         <PasswordField
