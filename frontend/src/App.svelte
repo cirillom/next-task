@@ -12,6 +12,7 @@
   import QuickCapture from './lib/components/QuickCapture.svelte';
   import TaskEditor from './pages/TaskEditor.svelte';
   import Tasks from './pages/Tasks.svelte';
+  import VerifyEmail from './pages/VerifyEmail.svelte';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
@@ -34,6 +35,8 @@
   let refreshKey = 0;
   let focusTaskVersion = 0;
   let focusScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
+  let verificationView = false;
+  let verificationToken: string | null = null;
 
   async function loadDraftCount() {
     try {
@@ -60,8 +63,12 @@
   }
 
   function readHash() {
-    const requested = location.hash.replace('#/', '') as View;
-    view = views.includes(requested) ? requested : 'next';
+    const requested = location.hash.replace('#/', '');
+    verificationView = requested.startsWith('verify-email?');
+    verificationToken = verificationView ? new URLSearchParams(requested.split('?', 2)[1]).get('token') : null;
+    if (verificationView) return;
+    const candidate = requested as View;
+    view = views.includes(candidate) ? candidate : 'next';
   }
   function navigate(nextView: View) { location.hash = `/${nextView}`; view = nextView; }
   async function logout() { await api.logout(); user = null; draftCount = 0; }
@@ -130,6 +137,8 @@
 
 {#if loading}
   <main class="splash"><div class="brand-mark">✓</div><h1>Next Task</h1><p>Opening your tasks…</p></main>
+{:else if verificationView}
+  <VerifyEmail token={verificationToken} signedIn={user !== null} />
 {:else if !user}
   <Login on:authenticated={async (event) => { user = event.detail; await loadDraftCount(); }} />
 {:else if view === 'focus'}

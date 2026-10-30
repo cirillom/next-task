@@ -90,6 +90,52 @@ The image runs as UID/GID `10001`, so prepare the persistent directory first as
 documented in the deployment README. Secure cookies are enabled in the homeserver
 Compose file.
 
+### Account email delivery and verification
+
+Contact emails are separate from the existing username/email login identifier.
+Existing accounts keep their login after the migration, but no old address is
+automatically trusted for password recovery. A signed-in user can enter a contact
+email in Settings and confirm it with their current password. The app sends a
+verification link that expires after 24 hours and works only once. Changing an
+address leaves the old verified address active until the new one is confirmed.
+Requests to resend are limited to once per minute per account.
+
+Configure SMTP in the deployment environment file used by Compose (for the
+homeserver example, `~/services/.env`). Keep the actual password out of the
+repository:
+
+```dotenv
+NEXT_TASK_PUBLIC_APP_URL=https://tasks.example.com
+NEXT_TASK_SMTP_HOST=smtp.example.com
+NEXT_TASK_SMTP_PORT=587
+NEXT_TASK_SMTP_SECURITY=starttls
+NEXT_TASK_SMTP_USERNAME=your-smtp-username
+NEXT_TASK_SMTP_PASSWORD=your-smtp-secret
+NEXT_TASK_SMTP_FROM_EMAIL=tasks@example.com
+```
+
+`NEXT_TASK_PUBLIC_APP_URL` must be the fixed public HTTPS origin, with no path,
+query, or fragment. It is never inferred from request headers. Use
+`NEXT_TASK_SMTP_SECURITY=ssl` with the server's implicit TLS port if needed;
+plaintext SMTP is not supported. Username and password can both be omitted for
+an SMTP server that permits unauthenticated delivery over TLS. The same settings
+work with a Google, self-hosted, or transactional SMTP server. SMTP settings are
+optional until account email delivery is needed; password login continues to
+work if the mail server is down.
+
+After deployment, send an operator test message and confirm that it arrives in
+the inbox (including the spam folder):
+
+```bash
+docker compose --env-file ../.env exec next-task uv run python -m app.cli test-email you@example.com
+```
+
+The command reports when the SMTP server accepts the message; inbox delivery
+must be checked separately. Mail failures return an error to the user and log
+the transport error type without logging credentials or verification links.
+For a local trial, provide an HTTPS public URL that reaches the local app and
+point the SMTP settings to a test server.
+
 ### Password login limits behind a proxy
 
 Login attempts are counted in the SQLite database, so the limits survive app

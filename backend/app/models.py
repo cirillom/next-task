@@ -30,6 +30,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    contact_email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True)
+    contact_email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(Text)
     gemini_model: Mapped[str | None] = mapped_column(String(100))
     scoring_formula: Mapped[str | None] = mapped_column(Text)
@@ -39,6 +41,9 @@ class User(Base):
 
     sessions: Mapped[list[UserSession]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    email_verification: Mapped[EmailVerification | None] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -55,6 +60,20 @@ class UserSession(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class EmailVerification(Base):
+    __tablename__ = "email_verifications"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="email_verification")
 
 
 class AuthRateLimit(Base):

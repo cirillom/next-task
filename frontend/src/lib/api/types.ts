@@ -5,6 +5,13 @@ export interface User {
   created_at: string;
 }
 
+export interface ContactEmailStatus {
+  verified_email: string | null;
+  verified_at: string | null;
+  pending_email: string | null;
+  pending_expires_at: string | null;
+}
+
 export interface TagSummary {
   id: number;
   name: string;

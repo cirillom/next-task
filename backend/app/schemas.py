@@ -58,6 +58,22 @@ class PasswordChange(ApiModel):
     new_password: str = Field(min_length=10, max_length=1024)
 
 
+class ContactEmailRequest(ApiModel):
+    email: str = Field(min_length=3, max_length=320)
+    current_password: str = Field(max_length=1024)
+
+
+class ContactEmailStatus(ApiModel):
+    verified_email: str | None
+    verified_at: UtcDateTime | None
+    pending_email: str | None
+    pending_expires_at: UtcDateTime | None
+
+
+class VerifyEmailRequest(ApiModel):
+    token: str = Field(min_length=32, max_length=256)
+
+
 class ScoringSettings(ApiModel):
     scoring_formula: str = Field(max_length=4000)
 
