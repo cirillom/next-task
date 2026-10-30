@@ -2,10 +2,11 @@
   import { api } from '../lib/api/client';
   import GeminiSettings from '../lib/components/GeminiSettings.svelte';
   import PomodoroSettings from '../lib/components/PomodoroSettings.svelte';
-  import type { User } from '../lib/api/types';
+  import type { ContactEmailStatus, User } from '../lib/api/types';
   import packageInfo from '../../package.json';
   import AppButton from '../lib/components/AppButton.svelte';
   import PasswordField from '../lib/components/PasswordField.svelte';
+  import TextField from '../lib/components/TextField.svelte';
   import TextArea from '../lib/components/TextArea.svelte';
   import { onMount } from 'svelte';
 
@@ -18,6 +19,37 @@
   let formula = '';
   let workflowError = '';
   let workflowNotice = '';
+  let contactStatus: ContactEmailStatus | null = null;
+  let contactEmail = '';
+  let contactPassword = '';
+  let contactError = '';
+  let contactNotice = '';
+  let contactBusy = false;
+
+  async function loadContactEmail() {
+    try {
+      contactStatus = await api.contactEmail();
+      contactEmail = contactStatus.pending_email ?? contactStatus.verified_email ?? '';
+    } catch (reason) {
+      contactError = reason instanceof Error ? reason.message : 'Could not load contact email';
+    }
+  }
+
+  async function requestContactEmail() {
+    contactError = contactNotice = '';
+    contactBusy = true;
+    try {
+      contactStatus = await api.requestContactEmail(contactEmail, contactPassword);
+      contactPassword = '';
+      contactNotice = contactStatus.pending_email
+        ? 'Verification email sent. Open the link within 24 hours.'
+        : 'Your verified contact email is unchanged.';
+    } catch (reason) {
+      contactError = reason instanceof Error ? reason.message : 'Could not send verification email';
+    } finally {
+      contactBusy = false;
+    }
+  }
 
   async function loadWorkflow() {
     try {
@@ -37,7 +69,7 @@
     }
   }
 
-  onMount(loadWorkflow);
+  onMount(() => { void loadWorkflow(); void loadContactEmail(); });
 
   async function changePassword() {
     error = '';
@@ -59,6 +91,23 @@
 <div class="page-heading"><div><p class="eyebrow">Your account</p><h1>Settings</h1></div></div>
 <div class="settings-stack narrow">
   <section class="panel"><h2>Profile</h2><dl><div><dt>Name</dt><dd>{user.display_name}</dd></div><div><dt>Username / email</dt><dd>{user.email}</dd></div></dl></section>
+  <section class="panel">
+    <h2>Contact email</h2>
+    <p class="help">Your login identifier stays the same. Only a verified contact email can be used for account recovery later.</p>
+    {#if contactStatus}
+      <p>Verified: <strong>{contactStatus.verified_email ?? 'None'}</strong></p>
+      {#if contactStatus.pending_email}
+        <p>Waiting for verification: <strong>{contactStatus.pending_email}</strong></p>
+      {/if}
+    {/if}
+    <form on:submit|preventDefault={requestContactEmail}>
+      <label>Contact email<TextField type="email" bind:value={contactEmail} autocomplete="email" required /></label>
+      <PasswordField id="contact-current-password" label="Current password" bind:value={contactPassword} autocomplete="current-password" required />
+      {#if contactError}<p class="error" role="alert">{contactError}</p>{/if}
+      {#if contactNotice}<p class="notice" role="status">{contactNotice}</p>{/if}
+      <AppButton type="submit" variant="primary" disabled={contactBusy}>{contactBusy ? 'Sending…' : 'Send verification email'}</AppButton>
+    </form>
+  </section>
   <section class="panel"><h2>Scoring</h2><form on:submit|preventDefault={saveFormula}><label>Scoring formula<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">Variables: priority, ageDays, idleDays, dueOffsetDays, hasDueDate, tagValue. Supports arithmetic, comparisons, exp(), and Python-style conditional expressions.</p><AppButton type="submit" variant="primary">Save scoring formula</AppButton></form>{#if workflowError}<p class="error" role="alert">{workflowError}</p>{/if}{#if workflowNotice}<p class="notice">{workflowNotice}</p>{/if}</section>
   <PomodoroSettings />
   <GeminiSettings />

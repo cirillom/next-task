@@ -1,4 +1,5 @@
 import type {
+  ContactEmailStatus,
   NextScope,
   PomodoroSession,
   PomodoroSettings,
@@ -54,6 +55,11 @@ export const api = {
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),
+  contactEmail: () => request<ContactEmailStatus>('/api/auth/contact-email'),
+  requestContactEmail: (email: string, current_password: string) =>
+    request<ContactEmailStatus>('/api/auth/contact-email', json('POST', { email, current_password })),
+  verifyContactEmail: (token: string) =>
+    request<{ message: string }>('/api/auth/contact-email/verify', json('POST', { token })),
 
   pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
   updatePomodoroSettings: (body: PomodoroSettings) =>
