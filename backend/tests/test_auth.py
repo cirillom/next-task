@@ -67,19 +67,25 @@ def test_password_is_hashed_and_login_sets_http_only_cookie(
     assert client.get("/api/auth/me").status_code == 200
 
 
-def test_signup_accepts_username_and_logs_user_in(client: TestClient) -> None:
+def test_signup_requires_email_and_logs_user_in(client: TestClient) -> None:
+    invalid = client.post(
+        "/api/auth/signup",
+        json={"email": "NewUser", "password": "a secure password"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["detail"][0]["msg"] == "Value error, Enter a valid email address"
     response = client.post(
         "/api/auth/signup",
-        json={"identifier": "  NewUser  ", "password": "a secure password"},
+        json={"email": "  NewUser@Example.com  ", "password": "a secure password"},
     )
     assert response.status_code == 201
     assert "HttpOnly" in response.headers["set-cookie"]
-    assert response.json()["email"] == "newuser"
+    assert response.json()["email"] == "newuser@example.com"
     assert response.json()["display_name"] == "newuser"
     assert client.get("/api/auth/me").status_code == 200
 
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == "newuser"))
+        user = db.scalar(select(User).where(User.email == "newuser@example.com"))
         assert user is not None
         assert user.password_hash.startswith("$argon2id$")
         assert "a secure password" not in user.password_hash
@@ -87,7 +93,7 @@ def test_signup_accepts_username_and_logs_user_in(client: TestClient) -> None:
     client.post("/api/auth/logout")
     login = client.post(
         "/api/auth/login",
-        json={"email": "NEWUSER", "password": "a secure password"},
+        json={"email": "NEWUSER@EXAMPLE.COM", "password": "a secure password"},
     )
     assert login.status_code == 200
 
@@ -97,7 +103,7 @@ def test_signup_accepts_email_and_rejects_duplicates_and_short_passwords(
 ) -> None:
     created = client.post(
         "/api/auth/signup",
-        json={"identifier": "Person@Example.com", "password": "a secure password"},
+        json={"email": "Person@Example.com", "password": "a secure password"},
     )
     assert created.status_code == 201
     assert created.json()["email"] == "person@example.com"
@@ -105,14 +111,14 @@ def test_signup_accepts_email_and_rejects_duplicates_and_short_passwords(
 
     duplicate = client.post(
         "/api/auth/signup",
-        json={"identifier": "person@example.com", "password": "another secure password"},
+        json={"email": "person@example.com", "password": "another secure password"},
     )
     assert duplicate.status_code == 409
-    assert duplicate.json()["detail"] == "That username or email is already in use"
+    assert duplicate.json()["detail"] == "That email is already in use"
 
     short = client.post(
         "/api/auth/signup",
-        json={"identifier": "another-user", "password": "short"},
+        json={"email": "another-user", "password": "short"},
     )
     assert short.status_code == 422
 
@@ -150,7 +156,7 @@ def test_five_failures_lock_account_temporarily_and_success_resets_it(
     for _ in range(5):
         denied = login(client, user.email, "wrong password")
         assert denied.status_code == 401
-        assert denied.json()["detail"] == "Invalid username/email or password"
+        assert denied.json()["detail"] == "Invalid email or password"
     assert login(client, user.email, "correct horse").status_code == 401
 
     with SessionLocal() as db:

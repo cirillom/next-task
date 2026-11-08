@@ -90,6 +90,54 @@ The image runs as UID/GID `10001`, so prepare the persistent directory first as
 documented in the deployment README. Secure cookies are enabled in the homeserver
 Compose file.
 
+### Account email delivery and verification
+
+New accounts require an email address. Existing accounts keep their current
+sign-in value after the migration, including older accounts created with a
+username. No existing address is automatically considered verified. In Settings,
+a signed-in user can verify their current email or enter a new one and confirm
+the request with their password. The link expires after 24 hours and works only
+once. A new address becomes the sign-in email only after verification; until
+then, the current sign-in value continues to work. An invalid address cannot be
+verified. Requests to resend are limited to once per minute per account.
+
+Configure SMTP in the deployment environment file used by Compose (for the
+homeserver example, `~/services/.env`). Keep the actual password out of the
+repository:
+
+```dotenv
+NEXT_TASK_PUBLIC_APP_URL=https://tasks.example.com
+NEXT_TASK_SMTP_HOST=smtp.example.com
+NEXT_TASK_SMTP_PORT=587
+NEXT_TASK_SMTP_SECURITY=starttls
+NEXT_TASK_SMTP_USERNAME=your-smtp-username
+NEXT_TASK_SMTP_PASSWORD=your-smtp-secret
+NEXT_TASK_SMTP_FROM_EMAIL=tasks@example.com
+```
+
+`NEXT_TASK_PUBLIC_APP_URL` must be the fixed public HTTPS origin, with no path,
+query, or fragment. HTTP is allowed only for `localhost`, `127.0.0.1`, and `::1`
+when testing locally. It is never inferred from request headers. Use
+`NEXT_TASK_SMTP_SECURITY=ssl` with the server's implicit TLS port if needed;
+plaintext SMTP is not supported. Username and password can both be omitted for
+an SMTP server that permits unauthenticated delivery over TLS. The same settings
+work with a Google, self-hosted, or transactional SMTP server. SMTP settings are
+optional until account email delivery is needed; password login continues to
+work if the mail server is down.
+
+After deployment, send an operator test message and confirm that it arrives in
+the inbox (including the spam folder):
+
+```bash
+docker compose --env-file ../.env exec next-task uv run python -m app.cli test-email you@example.com
+```
+
+The command reports when the SMTP server accepts the message; inbox delivery
+must be checked separately. Mail failures return an error to the user and log
+the transport error type without logging credentials or verification links.
+For a local trial, use `NEXT_TASK_PUBLIC_APP_URL=http://localhost:8000` in the
+repository's ignored `.env`; Compose serves the app at that address.
+
 ### Password login limits behind a proxy
 
 Login attempts are counted in the SQLite database, so the limits survive app

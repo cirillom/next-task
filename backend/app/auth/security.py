@@ -30,7 +30,7 @@ def verify_password(password_hash: str, password: str) -> bool:
         return False
 
 
-def session_token_hash(token: str) -> str:
+def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -39,7 +39,7 @@ def create_session(db: Session, user: User) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
     db.execute(delete(UserSession).where(UserSession.expires_at < datetime.now(UTC)))
     db.add(
-        UserSession(token_hash=session_token_hash(token), user_id=user.id, expires_at=expires_at)
+        UserSession(token_hash=hash_token(token), user_id=user.id, expires_at=expires_at)
     )
     db.commit()
     return token, expires_at
@@ -54,7 +54,7 @@ def current_session(request: Request, db: Session) -> UserSession | None:
     if not token:
         return None
     session = db.scalar(
-        select(UserSession).where(UserSession.token_hash == session_token_hash(token))
+        select(UserSession).where(UserSession.token_hash == hash_token(token))
     )
     if session is None:
         return None
