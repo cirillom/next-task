@@ -138,6 +138,38 @@ the transport error type without logging credentials or verification links.
 For a local trial, use `NEXT_TASK_PUBLIC_APP_URL=http://localhost:8000` in the
 repository's ignored `.env`; Compose serves the app at that address.
 
+### Password recovery
+
+Use **Forgot password?** on the sign-in screen to request a reset link for the
+account's verified email. Links expire after 30 minutes, work once, and are stored
+only as hashes. A successfully sent replacement link supersedes the previous
+one; a failed send leaves the previous link available until it expires.
+
+The request always gives the same response for existing, unknown, and unverified
+addresses. Address lookup and email delivery run after the HTTP response, so SMTP
+timing and delivery errors do not disclose whether an account exists. Requests
+are limited to 10 per IP and 3 per address in 15 minutes; exceeding the address
+limit keeps the generic response. Reset attempts are limited to 10 per IP in
+15 minutes. These limits persist in the database and do not lock password login.
+
+A successful reset revokes all sessions, pending email changes, and outstanding
+reset links, clears the account's password lockout, and sends a change
+notification. The user must sign in with the new password. Password changes and
+operator resets also invalidate outstanding recovery links; changing the verified
+email invalidates links sent to the old address.
+
+Delivery runs in the app process rather than a separate worker service. If the
+process restarts before sending, request a new link. Mail failures are logged
+without addresses, passwords, or links. A notification delivery failure does not
+undo a successful password reset. Configure and check SMTP with the operator
+`test-email` command before enabling recovery for users.
+
+Older accounts without a verified email still need the operator reset command:
+
+```bash
+docker compose exec next-task uv run python -m app.cli reset-password existing-login
+```
+
 ### Password login limits behind a proxy
 
 Login attempts are counted in the SQLite database, so the limits survive app

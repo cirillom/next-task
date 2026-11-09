@@ -64,6 +64,10 @@ export const api = {
     request<EmailStatus>('/api/auth/email', json('POST', { email, current_password })),
   verifyEmail: (token: string) =>
     request<{ message: string }>('/api/auth/email/verify', json('POST', { token })),
+  requestPasswordReset: (email: string) =>
+    request<{ message: string }>('/api/auth/forgot-password', json('POST', { email })),
+  resetPassword: (token: string, new_password: string) =>
+    request<{ message: string }>('/api/auth/reset-password', json('POST', { token, new_password })),
 
   pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
   updatePomodoroSettings: (body: PomodoroSettings) =>

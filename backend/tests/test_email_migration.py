@@ -41,6 +41,7 @@ def test_existing_username_and_email_identifier_remain_unverified(tmp_path: Path
         ).fetchall()
         assert rows == [("legacy-user", None), ("person@example.com", None)]
         assert db.execute("SELECT COUNT(*) FROM email_verifications").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM password_resets").fetchone()[0] == 0
 
 
 def test_upgrade_preserves_accounts_tasks_sessions_and_pending_links(tmp_path: Path) -> None:

@@ -8,9 +8,10 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.auth.rate_limit import account_key, clear_attempts, password_change_key
 from app.config import get_settings
 from app.database import get_db
-from app.models import User, UserSession
+from app.models import EmailVerification, PasswordReset, User, UserSession
 
 password_hasher = PasswordHasher()
 
@@ -32,6 +33,21 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def replace_password(
+    db: Session, user: User, password: str, keep_session: str | None = None
+) -> None:
+    """Change only the password and invalidate old sessions and recovery links; caller commits."""
+    user.password_hash = hash_password(password)
+    sessions = delete(UserSession).where(UserSession.user_id == user.id)
+    if keep_session is not None:
+        sessions = sessions.where(UserSession.token_hash != keep_session)
+    db.execute(sessions)
+    db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
+    db.execute(delete(EmailVerification).where(EmailVerification.user_id == user.id))
+    clear_attempts(db, account_key(user.id))
+    clear_attempts(db, password_change_key(user.id))
 
 
 def create_session(db: Session, user: User) -> tuple[str, datetime]:

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from '../lib/api/client';
   import AppButton from '../lib/components/AppButton.svelte';
+  import { reloadApp } from '../lib/navigation';
 
   export let token: string | null;
   export let signedIn: boolean;
@@ -31,7 +32,7 @@
     <h1>Verify your email</h1>
     {#if verified}
       <p>Your email is verified. You can use it to sign in.</p>
-      <a href={signedIn ? '/#/settings' : '/#/'}>Continue to Next Task</a>
+      <a href={signedIn ? '/#/settings' : '/#/'} on:click|preventDefault={() => reloadApp(signedIn ? '/#/settings' : '/#/')}>Continue to Next Task</a>
     {:else if !token}
       <p class="error" role="alert">This verification link is invalid.</p>
     {:else}

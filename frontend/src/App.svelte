@@ -13,6 +13,7 @@
   import TaskEditor from './pages/TaskEditor.svelte';
   import Tasks from './pages/Tasks.svelte';
   import VerifyEmail from './pages/VerifyEmail.svelte';
+  import PasswordRecovery from './pages/PasswordRecovery.svelte';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
@@ -35,8 +36,8 @@
   let refreshKey = 0;
   let focusTaskVersion = 0;
   let focusScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
-  let verificationView = false;
-  let verificationToken: string | null = null;
+  let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | null = null;
+  let accountToken: string | null = null;
 
   async function loadDraftCount() {
     try {
@@ -63,10 +64,10 @@
   }
 
   function readHash() {
-    const requested = location.hash.replace('#/', '');
-    verificationView = requested.startsWith('verify-email?');
-    verificationToken = verificationView ? new URLSearchParams(requested.split('?', 2)[1]).get('token') : null;
-    if (verificationView) return;
+    const [requested, query = ''] = location.hash.replace('#/', '').split('?', 2);
+    accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' ? requested : null;
+    accountToken = new URLSearchParams(query).get('token');
+    if (accountView) return;
     const candidate = requested as View;
     view = views.includes(candidate) ? candidate : 'next';
   }
@@ -137,8 +138,14 @@
 
 {#if loading}
   <main class="splash"><div class="brand-mark">✓</div><h1>Next Task</h1><p>Opening your tasks…</p></main>
-{:else if verificationView}
-  <VerifyEmail token={verificationToken} signedIn={user !== null} />
+{:else if accountView}
+  {#key `${accountView}:${accountToken}`}
+    {#if accountView === 'verify-email'}
+      <VerifyEmail token={accountToken} signedIn={user !== null} />
+    {:else}
+      <PasswordRecovery reset={accountView === 'reset-password'} token={accountToken} />
+    {/if}
+  {/key}
 {:else if !user}
   <Login on:authenticated={async (event) => { user = event.detail; await loadDraftCount(); }} />
 {:else if view === 'focus'}
