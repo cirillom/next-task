@@ -66,8 +66,16 @@ class EmailStatus(ApiModel):
     pending_email: str | None
 
 
-class VerifyEmailRequest(ApiModel):
+class TokenRequest(ApiModel):
     token: str = Field(min_length=32, max_length=256)
+
+
+class PasswordResetRequest(ApiModel):
+    email: str = Field(min_length=1, max_length=320)
+
+
+class PasswordResetConfirm(TokenRequest):
+    new_password: str = Field(min_length=10, max_length=1024)
 
 
 class ScoringSettings(ApiModel):

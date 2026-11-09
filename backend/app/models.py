@@ -74,6 +74,18 @@ class EmailVerification(Base):
     user: Mapped[User] = relationship(back_populates="email_verification")
 
 
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    credential_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AuthRateLimit(Base):
     __tablename__ = "auth_rate_limits"
 

@@ -35,11 +35,12 @@ from app.auth.security import (
     hash_password,
     hash_token,
     normalize_email,
+    replace_password,
     verify_password,
 )
 from app.config import get_settings
 from app.database import get_db
-from app.models import EmailVerification, User, UserSession
+from app.models import EmailVerification, PasswordReset, User, UserSession
 from app.schemas import (
     EmailRequest,
     EmailStatus,
@@ -47,8 +48,8 @@ from app.schemas import (
     Message,
     PasswordChange,
     SignUpRequest,
+    TokenRequest,
     UserRead,
-    VerifyEmailRequest,
     ensure_utc,
 )
 from app.services.mail import (
@@ -206,15 +207,8 @@ def change_password(
     require_current_password(
         db, user, payload.current_password, key, now, "Could not change password"
     )
-    user.password_hash = hash_password(payload.new_password)
     session = current_session(request, db)
-    if session is not None:
-        db.execute(
-            delete(UserSession).where(
-                UserSession.user_id == user.id,
-                UserSession.token_hash != session.token_hash,
-            )
-        )
+    replace_password(db, user, payload.new_password, session.token_hash if session else None)
     db.commit()
     return Message(message="Password changed")
 
@@ -287,7 +281,7 @@ def request_email(
 
 
 @router.post("/email/verify", response_model=Message)
-def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> Message:
+def verify_email(payload: TokenRequest, db: Session = Depends(get_db)) -> Message:
     now = datetime.now(UTC)
     token_hash = hash_token(payload.token)
     consumed = db.execute(
@@ -302,9 +296,10 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     if user is None:
         db.rollback()
         raise HTTPException(status_code=400, detail="Verification link is invalid or expired")
-    user.email = email
-    user.email_verified_at = now
     try:
+        user.email = email
+        user.email_verified_at = now
+        db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
         db.commit()
     except IntegrityError as error:
         db.rollback()

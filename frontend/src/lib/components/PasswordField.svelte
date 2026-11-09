@@ -23,6 +23,7 @@
       {minlength}
       {required}
       {disabled}
+      {...$$restProps}
     />
     <button
       type="button"

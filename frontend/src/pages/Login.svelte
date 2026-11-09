@@ -66,6 +66,9 @@
           required
         />
       {/key}
+      {#if mode === 'login'}
+        <a class="forgot-password" href="#/forgot-password">Forgot password?</a>
+      {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       {#if showLockoutHint}
         <p class="muted">After five unsuccessful attempts, sign-in may pause for 15 minutes. If your password is correct, wait before trying again.</p>
@@ -85,6 +88,7 @@
 </main>
 
 <style>
+  .forgot-password { justify-self: end; font-size: .82rem; }
   .auth-switch {
     width: 100%;
     margin-top: .8rem;

@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from app.config import get_settings
-from app.routes import auth, drafts, gemini, pomodoro, settings, tags, tasks
+from app.routes import auth, drafts, gemini, password_recovery, pomodoro, settings, tags, tasks
 
 app = FastAPI(title="Next Task", docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.include_router(auth.router)
+app.include_router(password_recovery.router)
 app.include_router(gemini.router)
 app.include_router(pomodoro.router)
 app.include_router(settings.router)
