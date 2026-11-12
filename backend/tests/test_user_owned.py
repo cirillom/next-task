@@ -1,16 +1,8 @@
 """User ownership and core task flows after removing workspaces."""
 
-from app.main import app
+from collections.abc import Callable
+
 from fastapi.testclient import TestClient
-
-
-def signup(client: TestClient, name: str) -> int:
-    response = client.post(
-        "/api/auth/signup",
-        json={"email": f"{name}@example.com", "password": "a secure password"},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["id"]
 
 
 def task(client: TestClient, title: str, **extra: object) -> dict:
@@ -19,9 +11,8 @@ def task(client: TestClient, title: str, **extra: object) -> dict:
     return response.json()
 
 
-def test_signup_and_user_formula(client: TestClient) -> None:
-    user_id = signup(client, "first-user")
-    assert client.get("/api/auth/me").json()["id"] == user_id
+def test_user_formula(logged_in_client: Callable[[str], TestClient]) -> None:
+    client = logged_in_client("first-user@example.com")
     assert client.get("/api/settings/scoring").status_code == 200
     changed = client.put(
         "/api/settings/scoring", json={"scoring_formula": "priority * 10 + tagValue"}
@@ -36,8 +27,9 @@ def test_signup_and_user_formula(client: TestClient) -> None:
     )
 
 
-def test_user_tasks_share_one_ranked_queue(client: TestClient) -> None:
-    user_id = signup(client, "queue-user")
+def test_user_tasks_share_one_ranked_queue(logged_in_client: Callable[[str], TestClient]) -> None:
+    client = logged_in_client("queue-user@example.com")
+    user_id = client.get("/api/auth/me").json()["id"]
     tag = client.post("/api/tags", json={"name": "project", "score_value": 3}).json()
     first = task(client, "First", tag_ids=[tag["id"]])
     second = task(client, "Second", parent_task_id=first["id"])
@@ -47,12 +39,15 @@ def test_user_tasks_share_one_ranked_queue(client: TestClient) -> None:
     assert client.get("/api/tags").json()[0]["score_value"] == 3
 
 
-def test_user_boundaries_cover_tasks_tags_and_pomodoro(client: TestClient) -> None:
-    first_id = signup(client, "first")
+def test_user_boundaries_cover_tasks_tags_and_pomodoro(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("first@example.com")
+    first_id = client.get("/api/auth/me").json()["id"]
     first_tag = client.post("/api/tags", json={"name": "private"}).json()
     first_task = task(client, "Private task", tag_ids=[first_tag["id"]])
-    second = TestClient(app)
-    second_id = signup(second, "second")
+    second = logged_in_client("second@example.com")
+    second_id = second.get("/api/auth/me").json()["id"]
     assert first_id != second_id
     assert second.get("/api/tasks").json() == []
     assert second.get("/api/tags").json() == []
@@ -80,8 +75,10 @@ def test_user_boundaries_cover_tasks_tags_and_pomodoro(client: TestClient) -> No
     )
 
 
-def test_drafts_blocks_completion_and_focus_use_user_tasks(client: TestClient) -> None:
-    signup(client, "flows")
+def test_drafts_blocks_completion_and_focus_use_user_tasks(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    client = logged_in_client("flows@example.com")
     draft = client.post("/api/drafts", json={"title": "Idea"})
     assert draft.status_code == 201, draft.text
     assert draft.json()["priority"] == 0

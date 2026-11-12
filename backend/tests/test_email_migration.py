@@ -42,6 +42,7 @@ def test_existing_username_and_email_identifier_remain_unverified(tmp_path: Path
         assert rows == [("legacy-user", None), ("person@example.com", None)]
         assert db.execute("SELECT COUNT(*) FROM email_verifications").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM password_resets").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0] == 0
 
 
 def test_upgrade_preserves_accounts_tasks_sessions_and_pending_links(tmp_path: Path) -> None:
@@ -84,4 +85,26 @@ def test_upgrade_preserves_accounts_tasks_sessions_and_pending_links(tmp_path: P
         assert "requested_at" not in {
             row[1] for row in db.execute("PRAGMA table_info(email_verifications)")
         }
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_invitation_upgrade_preserves_existing_recovery_links(tmp_path: Path) -> None:
+    path = tmp_path / "recovery.sqlite3"
+    upgrade(path, "f61e8ac94207")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, email, display_name, password_hash, email_verified_at) "
+            "VALUES (1, 'owner@example.com', 'Owner', 'hash', '2026-11-09 12:00:00')"
+        )
+        db.execute(
+            "INSERT INTO password_resets (user_id, email, credential_hash, token_hash, expires_at) "
+            "VALUES (1, 'owner@example.com', 'credential', 'token', '2027-01-01 00:00:00')"
+        )
+    upgrade(path, "head")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT email, password_hash FROM users").fetchall() == [
+            ("owner@example.com", "hash")
+        ]
+        assert db.execute("SELECT token_hash FROM password_resets").fetchall() == [("token",)]
+        assert db.execute("SELECT COUNT(*) FROM invitations").fetchone() == (0,)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []

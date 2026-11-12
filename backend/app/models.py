@@ -86,6 +86,14 @@ class PasswordReset(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class Invitation(Base):
+    __tablename__ = "invitations"
+
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AuthRateLimit(Base):
     __tablename__ = "auth_rate_limits"
 

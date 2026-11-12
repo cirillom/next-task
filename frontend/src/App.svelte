@@ -14,6 +14,7 @@
   import Tasks from './pages/Tasks.svelte';
   import VerifyEmail from './pages/VerifyEmail.svelte';
   import PasswordRecovery from './pages/PasswordRecovery.svelte';
+  import AcceptInvitation from './pages/AcceptInvitation.svelte';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
@@ -36,7 +37,7 @@
   let refreshKey = 0;
   let focusTaskVersion = 0;
   let focusScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
-  let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | null = null;
+  let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | 'accept-invite' | null = null;
   let accountToken: string | null = null;
 
   async function loadDraftCount() {
@@ -65,7 +66,7 @@
 
   function readHash() {
     const [requested, query = ''] = location.hash.replace('#/', '').split('?', 2);
-    accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' ? requested : null;
+    accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' || requested === 'accept-invite' ? requested : null;
     accountToken = new URLSearchParams(query).get('token');
     if (accountView) return;
     const candidate = requested as View;
@@ -142,6 +143,8 @@
   {#key `${accountView}:${accountToken}`}
     {#if accountView === 'verify-email'}
       <VerifyEmail token={accountToken} signedIn={user !== null} />
+    {:else if accountView === 'accept-invite'}
+      <AcceptInvitation token={accountToken} signedIn={user !== null} />
     {:else}
       <PasswordRecovery reset={accountView === 'reset-password'} token={accountToken} />
     {/if}

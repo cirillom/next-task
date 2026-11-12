@@ -67,62 +67,6 @@ def test_password_is_hashed_and_login_sets_http_only_cookie(
     assert client.get("/api/auth/me").status_code == 200
 
 
-def test_signup_requires_email_and_logs_user_in(client: TestClient) -> None:
-    invalid = client.post(
-        "/api/auth/signup",
-        json={"email": "NewUser", "password": "a secure password"},
-    )
-    assert invalid.status_code == 422
-    assert invalid.json()["detail"][0]["msg"] == "Value error, Enter a valid email address"
-    response = client.post(
-        "/api/auth/signup",
-        json={"email": "  NewUser@Example.com  ", "password": "a secure password"},
-    )
-    assert response.status_code == 201
-    assert "HttpOnly" in response.headers["set-cookie"]
-    assert response.json()["email"] == "newuser@example.com"
-    assert response.json()["display_name"] == "newuser"
-    assert client.get("/api/auth/me").status_code == 200
-
-    with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == "newuser@example.com"))
-        assert user is not None
-        assert user.password_hash.startswith("$argon2id$")
-        assert "a secure password" not in user.password_hash
-
-    client.post("/api/auth/logout")
-    login = client.post(
-        "/api/auth/login",
-        json={"email": "NEWUSER@EXAMPLE.COM", "password": "a secure password"},
-    )
-    assert login.status_code == 200
-
-
-def test_signup_accepts_email_and_rejects_duplicates_and_short_passwords(
-    client: TestClient,
-) -> None:
-    created = client.post(
-        "/api/auth/signup",
-        json={"email": "Person@Example.com", "password": "a secure password"},
-    )
-    assert created.status_code == 201
-    assert created.json()["email"] == "person@example.com"
-    assert created.json()["display_name"] == "person"
-
-    duplicate = client.post(
-        "/api/auth/signup",
-        json={"email": "person@example.com", "password": "another secure password"},
-    )
-    assert duplicate.status_code == 409
-    assert duplicate.json()["detail"] == "That email is already in use"
-
-    short = client.post(
-        "/api/auth/signup",
-        json={"email": "another-user", "password": "short"},
-    )
-    assert short.status_code == 422
-
-
 def test_password_change_revokes_other_sessions(
     create_user: Callable[[str, str, str], User],
 ) -> None:

@@ -7,7 +7,6 @@
   import TextField from '../lib/components/TextField.svelte';
 
   const dispatch = createEventDispatcher<{ authenticated: User }>();
-  let mode: 'login' | 'signup' = 'login';
   let email = '';
   let password = '';
   let error = '';
@@ -19,25 +18,16 @@
     error = '';
     showLockoutHint = false;
     try {
-      const user = mode === 'signup'
-        ? await api.signup(email, password)
-        : await api.login(email, password);
+      const user = await api.login(email, password);
       dispatch('authenticated', user);
     } catch (reason) {
       error = reason instanceof ApiError && reason.status === 429
         ? 'Too many sign-in attempts. Please wait and try again.'
-        : reason instanceof Error ? reason.message : mode === 'signup' ? 'Could not create account' : 'Could not sign in';
-      showLockoutHint = mode === 'login' && reason instanceof ApiError && reason.status === 401;
+        : reason instanceof Error ? reason.message : 'Could not sign in';
+      showLockoutHint = reason instanceof ApiError && reason.status === 401;
     } finally {
       busy = false;
     }
-  }
-
-  function switchMode() {
-    mode = mode === 'login' ? 'signup' : 'login';
-    password = '';
-    error = '';
-    showLockoutHint = false;
   }
 </script>
 
@@ -47,58 +37,33 @@
     <p class="eyebrow">Self-hosted task ranking</p>
     <h1>Next Task</h1>
     <p class="muted">
-      {mode === 'signup'
-        ? 'Create an account and start deciding what deserves your attention next.'
-        : 'Sign in to decide what deserves your attention next.'}
+      Sign in to decide what deserves your attention next.
     </p>
     <form on:submit|preventDefault={submit}>
       <label>
         Email
-        <TextField type={mode === 'signup' ? 'email' : 'text'} inputmode="email" bind:value={email} autocomplete="username" required />
+        <TextField type="text" inputmode="email" bind:value={email} autocomplete="username" required />
       </label>
-      {#key mode}
-        <PasswordField
-          id="account-password"
-          label="Password"
-          bind:value={password}
-          autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
-          minlength={mode === 'signup' ? 10 : undefined}
-          required
-        />
-      {/key}
-      {#if mode === 'login'}
-        <a class="forgot-password" href="#/forgot-password">Forgot password?</a>
-      {/if}
+      <PasswordField
+        id="account-password"
+        label="Password"
+        bind:value={password}
+        autocomplete="current-password"
+        required
+      />
+      <a class="forgot-password" href="#/forgot-password">Forgot password?</a>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       {#if showLockoutHint}
         <p class="muted">After five unsuccessful attempts, sign-in may pause for 15 minutes. If your password is correct, wait before trying again.</p>
       {/if}
       <AppButton type="submit" variant="primary" disabled={busy}>
-        {#if mode === 'signup'}
-          {busy ? 'Creating account…' : 'Create account'}
-        {:else}
-          {busy ? 'Signing in…' : 'Sign in'}
-        {/if}
+        {busy ? 'Signing in…' : 'Sign in'}
       </AppButton>
     </form>
-    <button type="button" class="auth-switch" disabled={busy} on:click={switchMode}>
-      {mode === 'signup' ? 'Already have an account? Sign in' : 'Create account'}
-    </button>
+    <p class="muted">Accounts are available by invitation.</p>
   </section>
 </main>
 
 <style>
   .forgot-password { justify-self: end; font-size: .82rem; }
-  .auth-switch {
-    width: 100%;
-    margin-top: .8rem;
-    border: 0;
-    background: transparent;
-    color: var(--forest-2);
-    padding: .35rem;
-    font-size: .82rem;
-    font-weight: 700;
-    text-decoration: underline;
-    text-underline-offset: .15rem;
-  }
 </style>

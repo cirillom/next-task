@@ -46,11 +46,6 @@ class LoginRequest(ApiModel):
     password: str = Field(max_length=1024)
 
 
-class SignUpRequest(ApiModel):
-    email: EmailAddress
-    password: str = Field(min_length=10, max_length=1024)
-
-
 class PasswordChange(ApiModel):
     current_password: str
     new_password: str = Field(min_length=10, max_length=1024)
@@ -68,6 +63,16 @@ class EmailStatus(ApiModel):
 
 class TokenRequest(ApiModel):
     token: str = Field(min_length=32, max_length=256)
+
+
+class InvitationAccept(TokenRequest):
+    display_name: str = Field(min_length=1, max_length=160)
+    password: str = Field(min_length=10, max_length=1024)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str) -> str:
+        return clean_required(value)
 
 
 class PasswordResetRequest(ApiModel):

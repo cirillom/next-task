@@ -208,7 +208,7 @@ def test_mail_outage_does_not_hold_database_write_lock(
         assert future.result().status_code == 503
 
 
-def test_email_collision_and_signup_protection(
+def test_email_collision_protection(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],
     monkeypatch: pytest.MonkeyPatch,
@@ -237,13 +237,6 @@ def test_email_collision_and_signup_protection(
         == 409
     )
     assert client.get("/api/auth/email").json()["verified"] is False
-    assert (
-        client.post(
-            "/api/auth/signup",
-            json={"email": "shared@example.com", "password": "a secure password"},
-        ).status_code
-        == 409
-    )
 
 
 def test_mail_service_uses_starttls_and_reports_delivery_errors(
