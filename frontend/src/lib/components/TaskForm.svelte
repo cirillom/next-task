@@ -232,8 +232,8 @@
         <strong>Children {#if taskDetails?.subtasks.length}<small>{completedSubtasks} / {taskDetails.subtasks.length} complete</small>{/if}</strong>
         {#each taskDetails?.subtasks || [] as subtask (subtask.id)}
           <div class:finished={!!subtask.finished_at} class="subtask-row">
-            <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag} aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
-            <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}</button>
+            <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag || !!subtask.abandoned_by_task_id} aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
+            <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}{subtask.abandoned_by_task_id ? ' (abandoned)' : ''}</button>
             <small>#{subtask.id}</small>
             <AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>Remove</AppButton>
           </div>

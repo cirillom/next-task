@@ -99,6 +99,8 @@ class TaskSummary(ApiModel):
     id: int
     title: str
     finished_at: UtcDateTime | None
+    abandoned_at: UtcDateTime | None = None
+    abandoned_by_task_id: int | None = None
     unfinished_descendant_count: int = 0
 
 
@@ -150,6 +152,8 @@ class TaskRead(ApiModel):
     due_date: date | None
     last_worked_at: UtcDateTime | None
     finished_at: UtcDateTime | None
+    abandoned_at: UtcDateTime | None
+    abandoned_by_task_id: int | None
     parent_task_id: int | None
     parent_task: TaskSummary | None
     unfinished_descendant_count: int

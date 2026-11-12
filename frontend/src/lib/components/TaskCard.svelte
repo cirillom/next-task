@@ -11,6 +11,7 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import TaskAbandonment from './TaskAbandonment.svelte';
 
   export let task: Task;
   export let readOnly = false;
@@ -173,40 +174,43 @@
 
   {#if task.active_blocks.length}<BlockSummary blocks={task.active_blocks} compact on:openTask={(event) => dispatch('open', event.detail)} />{/if}
 
-  {#if !readOnly}
+  {#if !readOnly || task.abandoned_by_task_id}
     <div class="task-actions">
-      <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? 'Reopen task' : 'Finish task'} title={task.finished_at ? 'Reopen task' : 'Finish task'} disabled={busy} on:click={toggleFinished}>
-        {#if task.finished_at}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>Reopen</span>
-        {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>Finish</span>
-        {/if}
-      </button>
+      {#if !readOnly && !task.abandoned_by_task_id}
+        <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? 'Reopen task' : 'Finish task'} title={task.finished_at ? 'Reopen task' : 'Finish task'} disabled={busy} on:click={toggleFinished}>
+          {#if task.finished_at}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>Reopen</span>
+          {:else}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>Finish</span>
+          {/if}
+        </button>
 
-      <button type="button" class="quick-action worked-action" disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>Worked now</span>
-      </button>
+        <button type="button" class="quick-action worked-action" disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>Worked now</span>
+        </button>
 
-      <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
-      </button>
+        <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
+        </button>
 
-      <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
-        <DateTimeInput
-          bind:value={dueDateDraft}
-          pickerOnly
-          pickerText={dueDateDraft ? `Due ${formatDate(dueDateDraft)}` : 'Due date'}
-          pickerLabel={dueDateDraft ? `Change due date from ${formatDate(dueDateDraft)}` : 'Set due date'}
-          disabled={busy}
-          on:change={(event) => void updateDueDate(event.detail)}
-        />
-      </div>
+        <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
+          <DateTimeInput
+            bind:value={dueDateDraft}
+            pickerOnly
+            pickerText={dueDateDraft ? `Due ${formatDate(dueDateDraft)}` : 'Due date'}
+            pickerLabel={dueDateDraft ? `Change due date from ${formatDate(dueDateDraft)}` : 'Set due date'}
+            disabled={busy}
+            on:change={(event) => void updateDueDate(event.detail)}
+          />
+        </div>
 
-      <div class="priority-stepper" aria-label="Priority">
-        <button type="button" aria-label="Decrease priority" title="Decrease priority" disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
-        <span title="Priority">{task.priority}</span>
-        <button type="button" aria-label="Increase priority" title="Increase priority" disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
-      </div>
+        <div class="priority-stepper" aria-label="Priority">
+          <button type="button" aria-label="Decrease priority" title="Decrease priority" disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
+          <span title="Priority">{task.priority}</span>
+          <button type="button" aria-label="Increase priority" title="Increase priority" disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
+        </div>
+      {/if}
+      <TaskAbandonment {task} {readOnly} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   {/if}
 </article>

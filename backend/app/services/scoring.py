@@ -172,7 +172,7 @@ def score_variables(task: Task, now: datetime | None = None) -> dict[str, float]
 
 
 def score_task(task: Task, now: datetime | None = None, formula: str | None = None) -> float:
-    if task.finished_at is not None:
+    if task.finished_at is not None or task.abandoned_by_task_id is not None:
         return 0.0
     if formula is None:
         formula = task.user.scoring_formula or DEFAULT_SCORING_FORMULA

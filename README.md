@@ -18,6 +18,27 @@ or ending a period on one signed-in device is reflected on the others. The timer
 a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
 be a one-time notification or a repeating alarm that must be dismissed on any device.
 
+## Abandoning tasks
+
+Use **Abandon task** when work is no longer worth doing. The task and its
+descendants leave active lists, Next recommendations, Drafts, and focus queues
+without being marked finished. In Tasks, open Filters and select
+**Abandonment → Abandoned** to find them. **Restore task** brings back the
+unfinished branch; descendants abandoned separately remain abandoned. A child
+hidden by its parent links to that parent so you can restore the branch there.
+
+Abandonment preserves notes, tags, dates, relationships, and blocking history.
+It resolves outgoing dependency blocks for the whole abandoned branch, allowing
+dependent work to proceed once its other blockers are resolved. Those resolutions
+remain in history after restoration, matching Finish followed by Reopen. Abandoned
+tasks cannot be selected as new blockers. Finishing a parent skips abandoned
+branches. Restored tasks are ranked again using the current formula and dates.
+
+Abandoning a pinned task or its parent clears the Pomodoro pin without changing
+the timer. Focus recalculates the next eligible task in the current session scope.
+Finished tasks must be reopened before they can be abandoned; drafts inherit
+abandonment from their parents but cannot be abandoned separately.
+
 ## Docker development
 
 The repository's `docker-compose.yml` builds the current checkout, publishes port

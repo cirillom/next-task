@@ -20,6 +20,7 @@
   let tags: Tag[] = [];
   let search = '';
   let finishedFilter: FinishedFilter = 'unfinished';
+  let abandonmentFilter: 'exclude' | 'only' | 'include' = 'exclude';
   let blockedFilter: BlockedFilter = 'all';
   let tagScope: NextScope = emptyTagScope();
   let sortField: SortField = 'score';
@@ -33,6 +34,7 @@
 
   $: activeFilterCount = [
     finishedFilter !== 'unfinished',
+    abandonmentFilter !== 'exclude',
     blockedFilter !== 'all',
     tagScope.include_tag_ids.length > 0,
     tagScope.exclude_tag_ids.length > 0
@@ -41,6 +43,7 @@
   function taskParams(finished: boolean) {
     return {
       finished,
+      abandoned: abandonmentFilter,
       search,
       include_tag_id: tagScope.include_tag_ids,
       exclude_tag_id: tagScope.exclude_tag_ids,
@@ -121,7 +124,7 @@
       const visited = new Set<number>();
       while (parentId !== null && ids.has(parentId) && !visited.has(parentId)) {
         visited.add(parentId);
-        if (!task.finished_at) descendantsByTask.get(parentId)?.add(task.id);
+        if (!task.finished_at && !task.abandoned_by_task_id) descendantsByTask.get(parentId)?.add(task.id);
         parentId = byId.get(parentId)?.parent_task_id ?? null;
       }
     }
@@ -131,7 +134,7 @@
     while (remaining.size) {
       const remainingIds = new Set(remaining.keys());
       const available = [...remaining.values()].filter((task) => {
-        if (task.finished_at) return true;
+        if (task.finished_at || task.abandoned_by_task_id) return true;
         const descendants = descendantsByTask.get(task.id);
         return !descendants || ![...descendants].some((id) => remainingIds.has(id));
       });
@@ -208,6 +211,7 @@
 
   function clearFilters() {
     finishedFilter = 'unfinished';
+    abandonmentFilter = 'exclude';
     blockedFilter = 'all';
     tagScope = emptyTagScope();
     void refreshTasks();
@@ -258,6 +262,14 @@
         </div>
 
         <div class="filter-grid">
+          <label>
+            Abandonment
+            <select bind:value={abandonmentFilter} on:change={refreshTasks}>
+              <option value="exclude">Not abandoned</option>
+              <option value="only">Abandoned</option>
+              <option value="include">All</option>
+            </select>
+          </label>
           <label>
             Completion
             <select bind:value={finishedFilter} on:change={refreshTasks}>

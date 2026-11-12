@@ -222,7 +222,12 @@
         dispatch('end');
         return;
       }
+      const lostPinnedTask = !!currentTask && latest.task_id === null;
       await applySession(latest);
+      if (lostPinnedTask && !selecting) {
+        await selectNextTask();
+        await loadSessionTasks();
+      }
     } catch (reason) {
       error = reason instanceof Error ? reason.message : 'Could not synchronize the Pomodoro session';
     } finally {
@@ -361,7 +366,7 @@
   }
 
   async function focusTask(task: Task): Promise<boolean> {
-    if (task.finished_at || task.current_block) return false;
+    if (task.finished_at || task.current_block || task.abandoned_by_task_id) return false;
     try {
       const updatedSession = await api.updatePomodoroSessionTask(task.id);
       session = updatedSession;
@@ -532,6 +537,13 @@
   async function handleTaskChanged(updated: Task) {
     if (!currentTask || updated.id !== currentTask.id || !settings) return;
 
+    if (updated.abandoned_by_task_id) {
+      currentTask = null;
+      resetDescriptionEditor(null);
+      await selectNextTask();
+      return;
+    }
+
     if (updated.current_block || updated.finished_at) {
       const shouldAskForBreak = running && phase === 'focus';
       const resolution: TaskResolution = updated.current_block ? 'blocked' : 'finished';
@@ -563,7 +575,7 @@
 
     try {
       const refreshed = await api.task(currentTask.id);
-      if (refreshed.finished_at || refreshed.current_block) {
+      if (refreshed.finished_at || refreshed.current_block || refreshed.abandoned_by_task_id) {
         await handleTaskChanged(refreshed);
       } else {
         currentTask = refreshed;
@@ -764,7 +776,7 @@
           </section>
 
           <p class="session-rule">
-            This task stays pinned across focus and break periods until you finish it, block it, or choose another task.
+            This task stays pinned across focus and break periods until you finish it, block it, abandon it, or choose another task.
           </p>
         {:else}
           <div class="empty-focus">

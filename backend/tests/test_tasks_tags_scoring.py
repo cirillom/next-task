@@ -80,6 +80,8 @@ def test_task_hierarchy_rejects_self_cycles_and_cross_user_parents(
         "id": first["id"],
         "title": "First",
         "finished_at": None,
+        "abandoned_at": None,
+        "abandoned_by_task_id": None,
         "unfinished_descendant_count": 1,
     }
 

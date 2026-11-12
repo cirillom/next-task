@@ -43,6 +43,8 @@ def update_scoring_settings(
     ).all()
     now = datetime.now(UTC)
     for task in tasks:
+        if task.abandoned_by_task_id is not None:
+            continue
         try:
             evaluate_formula(payload.scoring_formula, score_variables(task, now))
         except FormulaError as error:
