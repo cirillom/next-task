@@ -90,6 +90,36 @@ The image runs as UID/GID `10001`, so prepare the persistent directory first as
 documented in the deployment README. Secure cookies are enabled in the homeserver
 Compose file.
 
+### Invite-only accounts
+
+Public signup is disabled. To invite a beta user, have the app send a link using
+the SMTP settings below:
+
+```bash
+docker compose --env-file ../.env exec next-task uv run python -m app.cli invite-user person@example.com
+docker compose --env-file ../.env exec next-task uv run python -m app.cli revoke-invite person@example.com
+```
+
+Run `invite-user` again to resend. Each invocation replaces the previous link;
+links expire 24 hours after issuance and work once. If delivery fails, the command
+reports an error and invalidates the new link; retry the command to send another.
+Configuration failures before issuance leave an existing link unchanged. SMTP
+acceptance does not guarantee inbox delivery. A crash after issuance can leave a
+pending link; revoke or resend it using the same commands.
+
+Opening an invitation does not consume it. The recipient chooses a display name
+and a password of at least 10 characters, then submits the form to create the
+account. The invited email is verified through redemption and cannot be replaced
+by the form. The user signs in normally afterward. No account is created merely
+by sending an invitation. Expired, revoked, replaced, or used links cannot create
+accounts. Redemption is limited to 10 attempts per IP per 15 minutes, separately
+from login limits.
+
+Existing accounts retain access, including legacy usernames. Operator
+`create-user` and `reset-password` commands remain available for emergencies;
+`create-user` does not automatically verify an email. Invitations cannot replace
+existing accounts. This release does not add an admin UI or require 2FA.
+
 ### Account email delivery and verification
 
 New accounts require an email address. Existing accounts keep their current

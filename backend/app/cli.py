@@ -2,12 +2,13 @@ import argparse
 import getpass
 import sys
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.auth.security import hash_password, normalize_email, replace_password
 from app.database import SessionLocal
-from app.models import User
+from app.models import Invitation, User
+from app.services.invitations import send_invitation
 from app.services.mail import (
     MailConfigurationError,
     MailDeliveryError,
@@ -72,6 +73,27 @@ def test_email(args: argparse.Namespace) -> None:
     print(f"SMTP server accepted the test message for {recipient}.")
 
 
+def invite_user(args: argparse.Namespace) -> None:
+    try:
+        send_invitation(args.email)
+    except (ValueError, MailDeliveryError) as error:
+        raise SystemExit(str(error)) from error
+    except SQLAlchemyError as error:
+        raise SystemExit("Invitation could not be saved. Check the database and retry.") from error
+    print("SMTP server accepted the invitation. The link expires in 24 hours.")
+
+
+def revoke_invite(args: argparse.Namespace) -> None:
+    try:
+        email = normalize_email_address(args.email)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    with SessionLocal() as db:
+        db.execute(delete(Invitation).where(Invitation.email == email))
+        db.commit()
+    print("Invitation revoked. Previously sent links can no longer create an account.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(required=True)
@@ -91,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     test_mail.add_argument("recipient")
     test_mail.set_defaults(handler=test_email)
+    invite = subparsers.add_parser("invite-user", help="Send or replace a 24-hour email invitation")
+    invite.add_argument("email")
+    invite.set_defaults(handler=invite_user)
+    revoke = subparsers.add_parser("revoke-invite", help="Revoke an outstanding invitation")
+    revoke.add_argument("email")
+    revoke.set_defaults(handler=revoke_invite)
     return parser
 
 

@@ -54,8 +54,8 @@ export const api = {
   me: () => request<User>('/api/auth/me'),
   login: (email: string, password: string) =>
     request<User>('/api/auth/login', json('POST', { email, password })),
-  signup: (email: string, password: string) =>
-    request<User>('/api/auth/signup', json('POST', { email, password })),
+  acceptInvitation: (token: string, display_name: string, password: string) =>
+    request<{ message: string }>('/api/auth/invitations/accept', json('POST', { token, display_name, password })),
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),

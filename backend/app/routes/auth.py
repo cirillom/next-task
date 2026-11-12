@@ -47,7 +47,6 @@ from app.schemas import (
     LoginRequest,
     Message,
     PasswordChange,
-    SignUpRequest,
     TokenRequest,
     UserRead,
     ensure_utc,
@@ -100,28 +99,6 @@ def set_session_cookie(response: Response, token: str) -> None:
         samesite="lax",
         path="/",
     )
-
-
-@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get_db)) -> User:
-    user = User(
-        email=payload.email,
-        display_name=payload.email.split("@", 1)[0][:160],
-        password_hash=hash_password(payload.password),
-    )
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="That email is already in use",
-        ) from error
-    db.refresh(user)
-    token, _expires_at = create_session(db, user)
-    set_session_cookie(response, token)
-    return user
 
 
 @router.post("/login", response_model=UserRead)
