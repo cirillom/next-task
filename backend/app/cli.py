@@ -15,6 +15,7 @@ from app.services.mail import (
     normalize_email_address,
     send_email,
 )
+from app.services.onboarding import add_onboarding_data
 
 
 def read_password(prompt: str, from_stdin: bool) -> str:
@@ -41,6 +42,7 @@ def create_user(args: argparse.Namespace) -> None:
         user = User(email=email, display_name=display_name, password_hash=hash_password(password))
         db.add(user)
         try:
+            add_onboarding_data(db, user)
             db.commit()
         except IntegrityError as error:
             db.rollback()

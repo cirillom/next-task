@@ -18,6 +18,27 @@ or ending a period on one signed-in device is reflected on the others. The timer
 a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
 be a one-time notification or a repeating alarm that must be dismissed on any device.
 
+## New-account examples
+
+New accounts receive seven editable tags and four Portuguese example tasks when
+an invitation is redeemed or an operator runs `create-user`. Account creation and
+its examples share one transaction. Existing accounts and later sign-ins are
+unaffected; no migration or shared demo account is needed.
+
+The root tags are Pessoal (green, value 0), Trabalho (blue, value 0), and Urgente
+(red, value 5). Pessoal contains Rotina (0) and Aprendizado (1); Trabalho contains
+Projetos (1) and Administrativo (0). With the default formula, Urgente adds 100
+points. Each tag has a short explanation.
+
+The four tasks introduce ranking and the full default formula, hierarchical tags
+and their values, deadlines, and creating real work/starting Focus. They form a
+normal dependency chain so Next presents them in that order as each is finished
+or abandoned, even if the deadline example becomes overdue. Users can edit these
+relationships like any others; filters or user edits can change what Next shows.
+All creation timestamps match account creation, with no invented work history.
+Only the deadline example has a due date: seven calendar days after account
+creation, using the server timezone consistently with deadline scoring.
+
 ## Abandoning tasks
 
 Use **Abandon task** when work is no longer worth doing. The task and its
