@@ -75,6 +75,7 @@ def test_upgrade_preserves_accounts_tasks_sessions_and_pending_links(tmp_path: P
             "SELECT email, email_verified_at FROM users ORDER BY id"
         ).fetchall() == [("owner@example.com", verified_at), ("legacy-user", None)]
         assert db.execute("SELECT user_id, title FROM tasks").fetchall() == [(1, "Keep this task")]
+        assert db.execute("SELECT abandoned_at FROM tasks").fetchall() == [(None,)]
         assert db.execute("SELECT token_hash FROM user_sessions").fetchone() == (
             "session-token-hash",
         )

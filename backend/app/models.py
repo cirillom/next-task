@@ -133,6 +133,7 @@ class Task(Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     last_worked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    abandoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
@@ -156,6 +157,15 @@ class Task(Base):
         order_by="TaskBlock.blocked_at.desc()",
         foreign_keys="TaskBlock.task_id",
     )
+
+    @property
+    def abandoned_by_task_id(self) -> int | None:
+        current: Task | None = self
+        while current is not None:
+            if current.abandoned_at is not None:
+                return current.id
+            current = current.parent
+        return None
 
 
 class TaskBlock(Base):

@@ -154,6 +154,8 @@ export const api = {
     request<Task>(`/api/tasks/${id}`, json('PATCH', body)),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, json('DELETE')),
   finishTask: (id: number) => request<Task>(`/api/tasks/${id}/finish`, json('POST')),
+  abandonTask: (id: number) => request<Task>(`/api/tasks/${id}/abandon`, json('POST')),
+  restoreTask: (id: number) => request<Task>(`/api/tasks/${id}/restore`, json('POST')),
   reopenTask: (id: number) => request<Task>(`/api/tasks/${id}/reopen`, json('POST')),
   blockTask: (id: number, body: { reason?: string | null; blocking_task_id?: number | null; unblocked_at?: string | null }) =>
     request<Task>(`/api/tasks/${id}/block`, json('POST', body)),

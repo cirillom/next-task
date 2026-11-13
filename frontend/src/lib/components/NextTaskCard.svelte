@@ -9,6 +9,7 @@
   import Markdown from './Markdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
+  import TaskAbandonment from './TaskAbandonment.svelte';
   import TagBadge from './TagBadge.svelte';
 
   export let task: Task;
@@ -166,20 +167,23 @@
 
   {#if task.active_blocks.length}<BlockSummary blocks={task.active_blocks} compact on:openTask={(event) => dispatch('open', event.detail)} />{/if}
 
-  {#if !readOnly}
+  {#if !readOnly || task.abandoned_by_task_id}
     <div class="recommended-actions">
-      <button type="button" class="action-button finish-action" disabled={busy} on:click={finish}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-        <span>Finish</span>
-      </button>
-      <button type="button" class="action-button worked-action" disabled={busy} on:click={markWorkedNow}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>
-        <span>Worked now</span>
-      </button>
-      <button type="button" class="action-button block-action" disabled={busy} on:click={() => (blockModalOpen = true)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-        <span>Block</span>
-      </button>
+      {#if !readOnly && !task.abandoned_by_task_id}
+        <button type="button" class="action-button finish-action" disabled={busy} on:click={finish}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
+          <span>Finish</span>
+        </button>
+        <button type="button" class="action-button worked-action" disabled={busy} on:click={markWorkedNow}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>
+          <span>Worked now</span>
+        </button>
+        <button type="button" class="action-button block-action" disabled={busy} on:click={() => (blockModalOpen = true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
+          <span>Block</span>
+        </button>
+      {/if}
+      <TaskAbandonment {task} {readOnly} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   {/if}
 </article>

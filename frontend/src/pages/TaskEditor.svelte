@@ -6,6 +6,7 @@
   import BlockTaskModal from '../lib/components/BlockTaskModal.svelte';
   import TaskCompletionDialog from '../lib/components/TaskCompletionDialog.svelte';
   import TaskForm from '../lib/components/TaskForm.svelte';
+  import TaskAbandonment from '../lib/components/TaskAbandonment.svelte';
 
   export let taskId = 0;
   export let initialTitle = '';
@@ -36,6 +37,8 @@
       id: item.id,
       title: item.title,
       finished_at: item.finished_at,
+      abandoned_at: item.abandoned_at,
+      abandoned_by_task_id: item.abandoned_by_task_id,
       unfinished_descendant_count: item.unfinished_descendant_count
     };
   }
@@ -297,7 +300,7 @@
       </div>
       <div class="editor-header-actions">
         {#if task}
-          {#if !isDraft}
+          {#if !isDraft && !task.abandoned_by_task_id}
             <button
               type="button"
               class="finish-action"
@@ -313,6 +316,7 @@
                 <span>Finish</span>
               {/if}
             </button>
+            <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'Could not abandon task')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'Could not restore task')} on:open={(event) => dispatch('openTask', event.detail)} />
             <button
               type="button"
               class="quick-action block-action"
@@ -346,6 +350,9 @@
     {:else}
       {#if isDraft}
         <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
+      {/if}
+      {#if task?.abandoned_by_task_id}
+        <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'Could not abandon task')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'Could not restore task')} on:open={(event) => dispatch('openTask', event.detail)} />
       {/if}
       <TaskForm
         bind:this={form}

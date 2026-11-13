@@ -69,6 +69,11 @@ def _advance(session: PomodoroSession, settings: PomodoroSettingsRead) -> None:
 def _reconcile(
     db: Session, session: PomodoroSession, settings: PomodoroSettingsRead, now: datetime
 ) -> None:
+    if session.task_id is not None:
+        task = db.get(Task, session.task_id)
+        if task is not None and task.abandoned_by_task_id is not None:
+            session.task_id = None
+            db.commit()
     if session.state != "running" or session.ends_at is None or _utc(session.ends_at) > now:
         return
     if settings.alert_mode == "alarm":
@@ -133,13 +138,15 @@ def _validate_scope(
         scoped_tag_ids = set(scope.include_tag_ids + scope.exclude_tag_ids)
         tags = db.scalars(select(Tag).where(Tag.id.in_(scoped_tag_ids))).all()
         if len(tags) != len(scoped_tag_ids) or any(tag.user_id != user_id for tag in tags):
-            raise HTTPException(
-                status_code=422, detail="Session tags must belong to the user"
-            )
+            raise HTTPException(status_code=422, detail="Session tags must belong to the user")
     if task_id is not None:
         task = db.scalar(select(Task).where(Task.id == task_id, Task.user_id == user_id))
         if task is None:
             raise HTTPException(status_code=422, detail="Task must belong to the user")
+        if task.abandoned_by_task_id is not None:
+            raise HTTPException(
+                status_code=422, detail="Abandoned tasks cannot be selected for focus"
+            )
 
 
 @router.get("/settings", response_model=PomodoroSettingsRead)

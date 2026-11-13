@@ -2,13 +2,14 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
 from app.models import Tag, Task, TaskBlock, User
+from app.pomodoro_models import PomodoroSession
 from app.schemas import (
     BlockCreate,
     BlockRead,
@@ -63,7 +64,10 @@ def descendant_tasks(task: Task) -> list[Task]:
 
 
 def unfinished_descendant_count(task: Task) -> int:
-    return sum(descendant.finished_at is None for descendant in descendant_tasks(task))
+    return sum(
+        descendant.finished_at is None and descendant.abandoned_by_task_id is None
+        for descendant in descendant_tasks(task)
+    )
 
 
 def task_summary(task: Task) -> TaskSummary:
@@ -71,6 +75,8 @@ def task_summary(task: Task) -> TaskSummary:
         id=task.id,
         title=task.title,
         finished_at=task.finished_at,
+        abandoned_at=task.abandoned_at,
+        abandoned_by_task_id=task.abandoned_by_task_id,
         unfinished_descendant_count=unfinished_descendant_count(task),
     )
 
@@ -79,7 +85,7 @@ def hierarchy_rank_metadata(
     task: Task, scoring: ScoringPlan
 ) -> tuple[float, int | None, float | None]:
     own_score = round(score_task(task, scoring.now, scoring.formula), 2)
-    if task.finished_at is not None:
+    if task.finished_at is not None or task.abandoned_by_task_id is not None:
         return own_score, None, None
 
     ranking_score = own_score
@@ -87,7 +93,7 @@ def hierarchy_rank_metadata(
     source_score: float | None = None
     ancestor = task.parent
     while ancestor is not None:
-        if ancestor.finished_at is None:
+        if ancestor.finished_at is None and ancestor.abandoned_by_task_id is None:
             ancestor_score = round(score_task(ancestor, scoring.now, scoring.formula), 2)
             if ancestor_score > ranking_score:
                 ranking_score = ancestor_score
@@ -130,6 +136,8 @@ def task_read(
         due_date=task.due_date,
         last_worked_at=task.last_worked_at,
         finished_at=task.finished_at,
+        abandoned_at=task.abandoned_at,
+        abandoned_by_task_id=task.abandoned_by_task_id,
         parent_task_id=task.parent_task_id,
         parent_task=task_summary(task.parent) if task.parent else None,
         unfinished_descendant_count=unfinished_descendant_count(task),
@@ -162,7 +170,11 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
     for task in tasks:
         ancestor = task.parent
         while ancestor is not None:
-            if ancestor.id not in scoring_ids and ancestor.finished_at is None:
+            if (
+                ancestor.id not in scoring_ids
+                and ancestor.finished_at is None
+                and ancestor.abandoned_by_task_id is None
+            ):
                 scoring_tasks.append(ancestor)
                 scoring_ids.add(ancestor.id)
             ancestor = ancestor.parent
@@ -176,7 +188,9 @@ def hierarchy_ranked_task_reads(db: Session, tasks: list[Task]) -> list[TaskRead
             {
                 descendant.id
                 for descendant in descendant_tasks(task)
-                if descendant.id in task_ids and descendant.finished_at is None
+                if descendant.id in task_ids
+                and descendant.finished_at is None
+                and descendant.abandoned_by_task_id is None
             }
             if task.finished_at is None
             else set()
@@ -234,6 +248,7 @@ def apply_task_relations(
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
     finished: bool | None = False,
+    abandoned: Literal["exclude", "only", "include"] = "exclude",
     tag_id: int | None = None,
     include_tag_id: list[int] | None = Query(default=None),
     exclude_tag_id: list[int] | None = Query(default=None),
@@ -281,8 +296,18 @@ def list_tasks(
         pattern = f"%{search.strip()}%"
         query = query.where(or_(Task.title.ilike(pattern), Task.description.ilike(pattern)))
     tasks = list(db.scalars(query.order_by(Task.created_at.desc())).unique().all())
+    if abandoned != "include":
+        tasks = [
+            task
+            for task in tasks
+            if (task.abandoned_by_task_id is not None) == (abandoned == "only")
+        ]
     if actionable:
-        tasks = [task for task in tasks if unfinished_descendant_count(task) == 0]
+        tasks = [
+            task
+            for task in tasks
+            if task.abandoned_by_task_id is None and unfinished_descendant_count(task) == 0
+        ]
     return hierarchy_ranked_task_reads(db, tasks)
 
 
@@ -326,6 +351,8 @@ def update_task(
     apply_task_relations(db, task, values.pop("tag_ids", None))
     for key, value in values.items():
         setattr(task, key, value)
+    if task.abandoned_by_task_id is not None:
+        deactivate_abandoned_branch(db, task, datetime.now(UTC))
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -359,10 +386,14 @@ def finish_task(
     task = get_task_for_user(db, task_id, user)
     if task.priority == 0:
         raise HTTPException(status_code=409, detail="Finalize this draft before finishing it")
+    if task.abandoned_by_task_id is not None:
+        raise HTTPException(
+            status_code=409, detail="Restore this task's abandoned branch before finishing it"
+        )
     now = datetime.now(UTC)
     changed = False
     for candidate in [task, *descendant_tasks(task)]:
-        if candidate.finished_at is None:
+        if candidate.finished_at is None and candidate.abandoned_by_task_id is None:
             candidate.finished_at = now
             active_blocks = db.scalars(
                 select(TaskBlock).where(
@@ -379,6 +410,51 @@ def finish_task(
     if changed:
         db.commit()
         db.refresh(task)
+    return task_read(db, task)
+
+
+def deactivate_abandoned_branch(db: Session, task: Task, now: datetime) -> None:
+    affected = [task.id, *(child.id for child in descendant_tasks(task))]
+    db.execute(
+        update(PomodoroSession)
+        .where(PomodoroSession.user_id == task.user_id, PomodoroSession.task_id.in_(affected))
+        .values(task_id=None)
+    )
+    db.execute(
+        update(TaskBlock)
+        .where(TaskBlock.blocking_task_id.in_(affected), TaskBlock.unblocked_at.is_(None))
+        .values(unblocked_at=now)
+    )
+
+
+@router.post("/{task_id}/abandon", response_model=TaskRead)
+def abandon_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    task = get_task_for_user(db, task_id, user)
+    if task.priority == 0 or task.finished_at is not None:
+        raise HTTPException(status_code=409, detail="Only unfinished tasks can be abandoned")
+    now = datetime.now(UTC)
+    if task.abandoned_at is None:
+        task.abandoned_at = now
+    deactivate_abandoned_branch(db, task, now)
+    db.commit()
+    db.refresh(task)
+    return task_read(db, task)
+
+
+@router.post("/{task_id}/restore", response_model=TaskRead)
+def restore_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TaskRead:
+    task = get_task_for_user(db, task_id, user)
+    task.abandoned_at = None
+    db.commit()
+    db.refresh(task)
     return task_read(db, task)
 
 
@@ -423,6 +499,8 @@ def block_task(
             raise HTTPException(status_code=422, detail="A task cannot block itself")
         if blocker.finished_at is not None:
             raise HTTPException(status_code=422, detail="Blocking task must be unfinished")
+        if blocker.abandoned_by_task_id is not None:
+            raise HTTPException(status_code=422, detail="Abandoned tasks cannot block other tasks")
         reachable = (
             select(TaskBlock.task_id.label("task_id"))
             .where(

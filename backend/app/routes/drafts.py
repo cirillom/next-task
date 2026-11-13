@@ -45,7 +45,11 @@ def list_drafts(
         .all()
     )
     names = tag_display_names(db, user.id)
-    return [task_read(db, task, display_names=names) for task in drafts]
+    return [
+        task_read(db, task, display_names=names)
+        for task in drafts
+        if task.abandoned_by_task_id is None
+    ]
 
 
 @router.post("", response_model=TaskRead, status_code=201)
