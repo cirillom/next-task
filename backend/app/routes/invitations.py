@@ -10,6 +10,7 @@ from app.auth.security import hash_password, hash_token
 from app.database import get_db
 from app.models import Invitation, User
 from app.schemas import InvitationAccept, Message
+from app.services.onboarding import add_onboarding_data
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 INVALID_INVITATION = "This invitation is invalid or expired. Ask for a new invitation."
@@ -39,15 +40,15 @@ def accept_invitation(
     )
     if email is None:
         raise HTTPException(status_code=400, detail=INVALID_INVITATION)
-    db.add(
-        User(
-            email=email,
-            display_name=payload.display_name,
-            password_hash=hash_password(payload.password),
-            email_verified_at=now,
-        )
+    user = User(
+        email=email,
+        display_name=payload.display_name,
+        password_hash=hash_password(payload.password),
+        email_verified_at=now,
     )
+    db.add(user)
     try:
+        add_onboarding_data(db, user)
         db.commit()
     except IntegrityError as error:
         db.rollback()
