@@ -1,12 +1,13 @@
 <script lang="ts">
+  import { t, text, localized } from '../i18n';
   import { createEventDispatcher, tick } from 'svelte';
   import DOMPurify from 'dompurify';
   import { marked } from 'marked';
 
   export let value = '';
   export let disabled = false;
-  export let label = 'Description';
-  export let placeholder = 'Add details, links, lists, tables, or code…';
+  export let label = 'ui.markdownEditor.description';
+  export let placeholder = 'ui.markdownEditor.addDetailsLinksListsTablesOrCode';
   export let compact = false;
 
   const dispatch = createEventDispatcher<{ input: string }>();
@@ -97,7 +98,7 @@
     if (task) {
       const offset = Math.min(indentationWidth(task[1]) * .45, 4.5);
       const checked = task[2].toLowerCase() === 'x';
-      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="${checked ? 'Mark task item incomplete' : 'Mark task item complete'}" /><span>${inlineMarkdown(task[3])}</span></div>`;
+      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="${escapeHtml($t(checked ? 'markdown.markIncomplete' : 'markdown.markComplete'))}" /><span>${inlineMarkdown(task[3])}</span></div>`;
     }
 
     const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
@@ -312,10 +313,10 @@
 
 <div class:compact class="markdown-editor-live">
   <div class="editor-heading">
-    {#if label}<span class="field-label">{label}</span>{/if}
+    {#if label}<span class="field-label">{$text(label)}</span>{/if}
     {#if !disabled}
       <button type="button" class="source-toggle" aria-pressed={sourceMode} on:click={toggleSourceMode}>
-        {sourceMode ? 'Live editor' : 'Edit full text'}
+        {sourceMode ? $t('ui.markdownEditor.liveEditor') : $t('ui.markdownEditor.editFullText')}
       </button>
     {/if}
   </div>
@@ -326,12 +327,12 @@
       value={value}
       rows="10"
       spellcheck="true"
-      aria-label={`${label || 'Description'} full text`}
-      {placeholder}
+      aria-label={$t('ui.markdownEditor.fullText', { value1: $text(label) || $t('ui.markdownEditor.description') })}
+      placeholder={$text(placeholder)}
       on:input={handleSourceInput}
     ></textarea>
   {:else}
-    <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={label || 'Markdown editor'} data-placeholder={placeholder} on:mousedown={handleSurfaceMouseDown}>
+    <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={$text(label) || $t('ui.markdownEditor.markdownEditor')} data-placeholder={$text(placeholder)} on:mousedown={handleSurfaceMouseDown}>
       {#each lines as line, index (index)}
         {@const codeRole = codeBlockRole(index)}
         {#if activeLine === index && !disabled}
@@ -344,7 +345,7 @@
             rows="1"
             value={line}
             spellcheck="true"
-            aria-label={`Markdown source line ${index + 1}`}
+            aria-label={$t('ui.markdownEditor.markdownSourceLine', { value1: index + 1 })}
             on:input={(event) => void handleLineInput(index, event)}
             on:keydown={(event) => void handleLineKeydown(index, event)}
             on:blur={handleActiveBlur}
@@ -361,7 +362,7 @@
             on:click={(event) => handleRenderedClick(index, event)}
             on:change={(event) => handleRenderedChange(index, event)}
             on:keydown={(event) => handleRenderedKeydown(index, event)}
-          >{@html renderedLineHtml(line, index)}</div>
+          >{@html $localized(renderedLineHtml(line, index))}</div>
         {/if}
       {/each}
     </div>

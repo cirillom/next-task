@@ -66,7 +66,11 @@ def test_request_is_generic_and_only_verified_accounts_receive_links(
         for email in (EMAIL.upper(), "missing@example.com", "unverified@example.com", "legacy-user")
     ]
     assert all(response.status_code == 202 for response in responses)
-    assert all(response.json() == {"message": recovery.RESET_REQUESTED} for response in responses)
+    assert all(
+        response.json()
+        == {"message": recovery.RESET_REQUESTED, "code": recovery.RESET_REQUESTED.key, "params": {}}
+        for response in responses
+    )
     assert len(messages) == 1
     assert messages[0][0] == EMAIL
     assert "https://tasks.example.com/#/reset-password?token=" in messages[0][2]
@@ -111,9 +115,12 @@ def test_reset_revokes_sessions_and_tokens_without_signing_in(
 
     public = TestClient(app)
     for _ in range(5):
-        assert public.post(
-            "/api/auth/login", json={"email": EMAIL, "password": "wrong password"}
-        ).status_code == 401
+        assert (
+            public.post(
+                "/api/auth/login", json={"email": EMAIL, "password": "wrong password"}
+            ).status_code
+            == 401
+        )
     response = reset(public, token)
     assert response.status_code == 200
     assert public.get("/api/auth/me").status_code == 401

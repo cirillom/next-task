@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { text } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { TaskSummary } from '../api/types';
   import TextField from './TextField.svelte';
@@ -6,7 +7,7 @@
 
   export let tasks: TaskSummary[] = [];
   export let excludeIds: number[] = [];
-  export let placeholder = 'Search task...';
+  export let placeholder = 'ui.taskSearchSelect.searchTask';
   export let disabled = false;
   export let allowCreate = true;
 
@@ -38,10 +39,10 @@
 <div class="task-search">
   <TextField
     bind:value={search}
-    {placeholder}
+    placeholder={$text(placeholder)}
     autocomplete="off"
     role="combobox"
-    aria-label={placeholder}
+    aria-label={$text(placeholder)}
     aria-autocomplete="list"
     aria-expanded={open}
     {disabled}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import TextField from './TextField.svelte';
 
   export let id: string;
@@ -28,9 +29,9 @@
     <button
       type="button"
       class="visibility-toggle"
-      aria-label={`${visible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+      aria-label={$t(visible ? 'password.hide' : 'password.show', {label: label.toLowerCase()})}
       aria-pressed={visible}
-      title={`${visible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+      title={$t(visible ? 'password.hide' : 'password.show', {label: label.toLowerCase()})}
       {disabled}
       on:click={() => (visible = !visible)}
     >

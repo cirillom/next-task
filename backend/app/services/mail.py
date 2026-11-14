@@ -8,6 +8,7 @@ from email.message import EmailMessage
 from urllib.parse import urlsplit
 
 from app.config import get_settings
+from app.i18n import localized
 
 logger = logging.getLogger(__name__)
 LOCAL_PART = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+\Z")
@@ -25,7 +26,7 @@ class MailDeliveryError(RuntimeError):
 def normalize_email_address(value: str) -> str:
     email = value.strip().lower()
     if len(email) > 320 or email.count("@") != 1 or any(ord(char) > 127 for char in email):
-        raise ValueError("Enter a valid email address")
+        raise ValueError(localized("api.enterAValidEmailAddress"))
     local, domain = email.split("@")
     if (
         not local
@@ -38,16 +39,14 @@ def normalize_email_address(value: str) -> str:
         or "." not in domain
         or any(not DOMAIN_LABEL.fullmatch(label) or len(label) > 63 for label in domain.split("."))
     ):
-        raise ValueError("Enter a valid email address")
+        raise ValueError(localized("api.enterAValidEmailAddress"))
     return email
 
 
 def public_app_url() -> str:
     value = get_settings().public_app_url.strip().rstrip("/")
     parsed = urlsplit(value)
-    local_http = parsed.scheme == "http" and parsed.hostname in {
-        "localhost", "127.0.0.1", "::1"
-    }
+    local_http = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
     if (
         (parsed.scheme != "https" and not local_http)
         or not parsed.hostname
@@ -57,29 +56,31 @@ def public_app_url() -> str:
         or parsed.fragment
         or parsed.path
     ):
-        raise MailConfigurationError(
-            "NEXT_TASK_PUBLIC_APP_URL must be an HTTPS origin, or HTTP on localhost"
-        )
+        raise MailConfigurationError(localized("api.nextTaskPublicAppUrlMustBeAnHttps"))
     try:
         if parsed.port is not None and parsed.port < 1:
-            raise ValueError("invalid port")
+            raise ValueError(localized("api.invalidPort"))
     except ValueError as error:
-        raise MailConfigurationError("NEXT_TASK_PUBLIC_APP_URL has an invalid port") from error
+        raise MailConfigurationError(
+            localized("api.nextTaskPublicAppUrlHasAnInvalidPort")
+        ) from error
     return value
 
 
 def send_email(recipient: str, subject: str, body: str) -> None:
     settings = get_settings()
     if not settings.smtp_host.strip() or not 1 <= settings.smtp_port <= 65535:
-        raise MailConfigurationError("SMTP host and port must be configured")
+        raise MailConfigurationError(localized("api.smtpHostAndPortMustBeConfigured"))
     try:
         sender = normalize_email_address(settings.smtp_from_email)
         recipient = normalize_email_address(recipient)
     except ValueError as error:
-        raise MailConfigurationError("SMTP sender or recipient is invalid") from error
+        raise MailConfigurationError(localized("api.smtpSenderOrRecipientIsInvalid")) from error
     password = settings.smtp_password.get_secret_value()
     if bool(settings.smtp_username) != bool(password):
-        raise MailConfigurationError("SMTP username and password must be configured together")
+        raise MailConfigurationError(
+            localized("api.smtpUsernameAndPasswordMustBeConfiguredTogether")
+        )
 
     message = EmailMessage()
     message["From"] = sender
@@ -102,4 +103,4 @@ def send_email(recipient: str, subject: str, body: str) -> None:
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as error:
         logger.error("SMTP delivery failed (%s)", type(error).__name__)
-        raise MailDeliveryError("Email could not be sent. Try again later.") from error
+        raise MailDeliveryError(localized("api.emailCouldNotBeSentTryAgainLater")) from error

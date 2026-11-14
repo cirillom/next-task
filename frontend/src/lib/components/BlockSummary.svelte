@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Block } from '../api/types';
   import { formatDateTime } from '../format';
@@ -13,20 +14,20 @@
   <div class="blocked-reason block-summary" class:compact>
     {#if blocks.length === 1}
       <div class="block-entry" class:clamped={compact}>
-        <strong>Blocked:</strong>
+        <strong>{$t('ui.blockSummary.blocked')}</strong>
         <BlockLabel block={blocks[0]} on:openTask={(event) => dispatch('openTask', event.detail)} />
-        {#if blocks[0].reason && blocks[0].unblocked_at}<span class="block-note"> · Auto-unblocks {formatDateTime(blocks[0].unblocked_at)}</span>{/if}
+        {#if blocks[0].reason && blocks[0].unblocked_at}<span class="block-note"> {$t('ui.blockSummary.autoUnblocks', { value1: formatDateTime(blocks[0].unblocked_at) })}</span>{/if}
       </div>
     {:else}
-      <strong>Blocked:</strong>
+      <strong>{$t('ui.blockSummary.blocked')}</strong>
       <ul>
         {#each compact ? blocks.slice(0, 3) : blocks as block (block.id)}
           <li><div class="block-entry" class:clamped={compact}>
             <BlockLabel {block} on:openTask={(event) => dispatch('openTask', event.detail)} />
-            {#if block.reason && block.unblocked_at}<span class="block-note"> · Auto-unblocks {formatDateTime(block.unblocked_at)}</span>{/if}
+            {#if block.reason && block.unblocked_at}<span class="block-note"> {$t('ui.blockSummary.autoUnblocks', { value1: formatDateTime(block.unblocked_at) })}</span>{/if}
           </div></li>
         {/each}
-        {#if compact && blocks.length > 3}<li class="block-note">... +{blocks.length - 3} more</li>{/if}
+        {#if compact && blocks.length > 3}<li class="block-note">{$t('ui.blockSummary.more', { value1: blocks.length - 3 })}</li>{/if}
       </ul>
     {/if}
   </div>

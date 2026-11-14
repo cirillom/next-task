@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, localized, numeric, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
@@ -16,7 +17,7 @@
   export let task: Task;
   export let readOnly = false;
 
-  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
+  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: Message; createBlocker: { taskId: number; title: string } }>();
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
@@ -33,7 +34,7 @@
 
   function idleLabel(): string {
     const days = daysSince(idleAnchor());
-    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor())})`;
+    return $t('ui.nextTaskCard.idle', { count: days, date: formatDate(idleAnchor()) });
   }
 
   async function act(action: () => Promise<Task>) {
@@ -41,7 +42,7 @@
     try {
       dispatch('changed', await action());
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Action failed');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.actionFailed'));
     } finally {
       busy = false;
     }
@@ -53,7 +54,7 @@
       dispatch('changed', await action());
       blockModalOpen = false;
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : fallbackMessage);
+      dispatch('error', errorMessage(error, fallbackMessage));
     } finally {
       busy = false;
     }
@@ -62,14 +63,14 @@
   function block(request: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null }) {
     void runBlockingAction(
       () => api.blockTask(task.id, request),
-      'Could not block task'
+      'ui.nextTaskCard.couldNotBlockTask'
     );
   }
 
   function reblock(request: { unblocked_at: string | null }) {
     void runBlockingAction(
       () => api.reblockTask(task.id, request.unblocked_at),
-      'Could not reblock task'
+      'ui.nextTaskCard.couldNotReblockTask'
     );
   }
 
@@ -78,7 +79,7 @@
     try {
       dispatch('changed', await api.deleteBlock(task.id, blockId));
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Could not delete blocking reason');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.couldNotDeleteBlockingReason'));
     } finally {
       busy = false;
     }
@@ -96,7 +97,7 @@
       dispatch('changed', updated);
     } catch (error) {
       dueDateDraft = task.due_date || '';
-      dispatch('error', error instanceof Error ? error.message : 'Could not update due date');
+      dispatch('error', errorMessage(error, 'ui.taskCard.couldNotUpdateDueDate'));
     } finally {
       busy = false;
     }
@@ -121,7 +122,7 @@
       completionOpen = false;
       dispatch('changed', updated);
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Could not finish task');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.couldNotFinishTask'));
     } finally {
       busy = false;
     }
@@ -139,15 +140,15 @@
         <button
           type="button"
           class="edit-button"
-          aria-label="Edit task"
-          title="Edit task"
+          aria-label={$t('ui.nextTaskCard.editTask')}
+          title={$t('ui.nextTaskCard.editTask')}
           disabled={busy}
           on:click={() => dispatch('open', task.id)}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
         </button>
       {/if}
-      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+      <span class="score" title={$t('ui.nextTaskCard.calculatedScore')}>{$numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
       <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   </div>
@@ -157,15 +158,15 @@
   {#if task.description}
     <div class:expanded={descriptionExpanded} class="task-description"><Markdown source={task.description} /></div>
     <button type="button" class="description-toggle" aria-expanded={descriptionExpanded} on:click={() => (descriptionExpanded = !descriptionExpanded)}>
-      {descriptionExpanded ? 'Collapse description' : 'Expand description'}
+      {descriptionExpanded ? $t('ui.nextTaskCard.collapseDescription') : $t('ui.nextTaskCard.expandDescription')}
     </button>
   {/if}
 
   <div class="meta-row">
-    {#if readOnly}<span class="priority" title="Priority">{task.priority}</span>{/if}
-    <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
-    {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>Finished {formatDateTime(task.finished_at)}</span>{/if}
-    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
+    {#if readOnly}<span class="priority" title={$t('ui.taskCard.priority')}>{task.priority}</span>{/if}
+    <span class="date-meta" title={formatDateTime(task.created_at)}>{$t('ui.nextTaskCard.created', { value1: formatDate(task.created_at) })}</span>
+    {#if task.finished_at}<span class="date-meta" title={formatDateTime(task.finished_at)}>{$t('ui.taskCard.finished', { value1: formatDateTime(task.finished_at) })}</span>{/if}
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{$localized(idleLabel())}</span>
   </div>
 
   {#if task.direct_tags.length}
@@ -177,37 +178,37 @@
   {#if !readOnly || task.abandoned_by_task_id}
     <div class="task-actions">
       {#if !readOnly && !task.abandoned_by_task_id}
-        <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? 'Reopen task' : 'Finish task'} title={task.finished_at ? 'Reopen task' : 'Finish task'} disabled={busy} on:click={toggleFinished}>
+        <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} title={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} disabled={busy} on:click={toggleFinished}>
           {#if task.finished_at}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>Reopen</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>{$t('ui.taskCard.reopen')}</span>
           {:else}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>Finish</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>{$t('ui.nextTaskCard.finish')}</span>
           {/if}
         </button>
 
-        <button type="button" class="quick-action worked-action" disabled={busy} title="Set last worked on to now" on:click={markWorkedNow}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>Worked now</span>
+        <button type="button" class="quick-action worked-action" disabled={busy} title={$t('ui.taskCard.setLastWorkedOnToNow')} on:click={markWorkedNow}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>{$t('ui.nextTaskCard.workedNow')}</span>
         </button>
 
         <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')}</span>
         </button>
 
         <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
           <DateTimeInput
             bind:value={dueDateDraft}
             pickerOnly
-            pickerText={dueDateDraft ? `Due ${formatDate(dueDateDraft)}` : 'Due date'}
-            pickerLabel={dueDateDraft ? `Change due date from ${formatDate(dueDateDraft)}` : 'Set due date'}
+            pickerText={dueDateDraft ? $t('ui.nextTaskCard.due', { value1: formatDate(dueDateDraft) }) : $t('ui.taskCard.dueDate')}
+            pickerLabel={dueDateDraft ? $t('ui.taskCard.changeDueDateFrom', { value1: formatDate(dueDateDraft) }) : $t('ui.taskCard.setDueDate')}
             disabled={busy}
             on:change={(event) => void updateDueDate(event.detail)}
           />
         </div>
 
-        <div class="priority-stepper" aria-label="Priority">
-          <button type="button" aria-label="Decrease priority" title="Decrease priority" disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
-          <span title="Priority">{task.priority}</span>
-          <button type="button" aria-label="Increase priority" title="Increase priority" disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
+        <div class="priority-stepper" aria-label={$t('ui.taskCard.priority')}>
+          <button type="button" aria-label={$t('ui.taskCard.decreasePriority')} title={$t('ui.taskCard.decreasePriority')} disabled={busy || task.priority <= 1} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority - 1 }))}>−</button>
+          <span title={$t('ui.taskCard.priority')}>{task.priority}</span>
+          <button type="button" aria-label={$t('ui.taskCard.increasePriority')} title={$t('ui.taskCard.increasePriority')} disabled={busy} on:click={() => act(() => api.updateTask(task.id, { priority: task.priority + 1 }))}>+</button>
         </div>
       {/if}
       <TaskAbandonment {task} {readOnly} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
@@ -216,7 +217,7 @@
 </article>
 
 {#if blockModalOpen}
-  <BlockTaskModal taskTitle={task.title} taskId={task.id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
+  <BlockTaskModal taskTitle={task.title} taskId={task.id} history={task.blocking_history} {busy} on:close={() => (blockModalOpen = false)} on:block={(event) => block(event.detail)} on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'ui.blockTaskModal.couldNotUnblockTask')} on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }} on:openTask={(event) => dispatch('open', event.detail)} on:reblock={(event) => reblock(event.detail)} on:deleteBlock={(event) => deleteBlock(event.detail)} />
 {/if}
 
 {#if completionOpen}

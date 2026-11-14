@@ -33,6 +33,9 @@ package-dir = {"" = "backend"}
 [tool.setuptools.packages.find]
 where = ["backend"]
 
+[tool.setuptools.package-data]
+app = ["locales/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 addopts = "-q"

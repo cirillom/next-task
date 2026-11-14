@@ -1,3 +1,5 @@
+import { translate } from './i18n';
+
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;
 
@@ -66,8 +68,8 @@ export function parseDateInput(value: string, includeTime = false): string | nul
 
 export function dateInputError(value: string, includeTime = false, min = ''): string {
   const parsed = parseDateInput(value, includeTime);
-  if (parsed === null) return `Enter a valid ${includeTime ? 'local date and time as dd/mm/yyyy HH:mm (00:00–23:59)' : 'date as dd/mm/yyyy'}.`;
-  if (parsed && min && parsed < min) return `Enter ${formatDateInput(min, includeTime)} or later.`;
+  if (parsed === null) return translate(includeTime ? "format.invalidDateTime" : "format.invalidDate");
+  if (parsed && min && parsed < min) return translate('format.minDate', { date: formatDateInput(min, includeTime) });
   return '';
 }
 
@@ -79,11 +81,11 @@ export function daysSince(value: string | Date, now = Date.now()): number {
 export function formatRelativeTime(value: string | Date, now = Date.now()): string {
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return translate('format.justNow');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return translate("format.minutes", {count: minutes});
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return translate("format.hours", {count: hours});
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return translate("format.days", {count: days});
 }

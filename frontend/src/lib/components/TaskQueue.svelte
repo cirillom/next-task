@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, localized, numeric } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Task } from '../api/types';
   import { daysSince, formatDate } from '../format';
@@ -19,7 +20,7 @@
 
   function idleLabel(task: Task): string {
     const days = daysSince(idleAnchor(task));
-    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor(task))})`;
+    return $t('ui.nextTaskCard.idle', { count: days, date: formatDate(idleAnchor(task)) });
   }
 </script>
 
@@ -33,12 +34,12 @@
         </button>
         <TaskHierarchy {task} compact={true} on:open={(event) => dispatch('open', event.detail)} />
         <div class="queue-meta">
-          {#if task.id === currentTaskId}<span class="current-chip">Current</span>{/if}
-          {#if task.current_block}<span class="blocked-chip">Blocked{task.active_blocks.length > 1 ? ` (${task.active_blocks.length})` : ''}</span>{/if}
-          <span>Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-          {#if !task.finished_at}<span>{idleLabel(task)}</span>{/if}
-          <span>Priority {task.priority}</span>
-          <span>Score {task.score.toFixed(1)}</span>
+          {#if task.id === currentTaskId}<span class="current-chip">{$t('ui.taskQueue.current')}</span>{/if}
+          {#if task.current_block}<span class="blocked-chip">{$t('ui.taskQueue.blocked', { value1: task.active_blocks.length > 1 ? ` (${task.active_blocks.length})` : '' })}</span>{/if}
+          <span>{$t('ui.nextTaskCard.due', { value1: task.due_date ? formatDate(task.due_date) : '—' })}</span>
+          {#if !task.finished_at}<span>{$localized(idleLabel(task))}</span>{/if}
+          <span>{$t('ui.nextTaskCard.priority', { value1: task.priority })}</span>
+          <span>{$t('ui.taskQueue.score', { value1: $numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>
           <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
         </div>
       </div>
@@ -46,8 +47,8 @@
         <button
           type="button"
           class="edit-button"
-          aria-label={`Edit ${task.title}`}
-          title="Edit task"
+          aria-label={$t('ui.taskQueue.edit', { value1: task.title })}
+          title={$t('ui.nextTaskCard.editTask')}
           on:click={() => dispatch('open', task.id)}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -59,12 +60,12 @@
           <button
             type="button"
             class="queue-action"
-            aria-label={`Focus on ${task.title}`}
-            title="Make this the current Pomodoro task"
+            aria-label={$t('ui.taskQueue.focusOn', { value1: task.title })}
+            title={$t('ui.taskQueue.makeThisTheCurrentPomodoroTask')}
             on:click={() => dispatch('focus', task)}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
-            <span>Focus</span>
+            <span>{$t('ui.pomodoroLauncher.focus')}</span>
           </button>
         {/if}
         {#if allowUnblock && task.current_block}
@@ -72,15 +73,15 @@
             type="button"
             class="queue-action"
             disabled={busyTaskId !== null}
-            aria-label={`${task.active_blocks.length > 1 ? 'Manage blockers for' : 'Unblock'} ${task.title}`}
-            title={task.active_blocks.length > 1 ? 'Manage blockers' : 'Unblock task'}
+            aria-label={$t(task.active_blocks.length > 1 ? 'ui.taskQueue.manageFor' : 'ui.taskQueue.unblockNamed', {title: task.title})}
+            title={task.active_blocks.length > 1 ? $t('ui.taskQueue.manageBlockers') : $t('ui.taskQueue.unblockTask')}
             on:click={() => dispatch('unblock', task)}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7 10V8a5 5 0 0 1 9.5-2" />
               <rect x="5" y="10" width="14" height="10" rx="2" />
             </svg>
-            <span>{busyTaskId === task.id ? 'Unblocking…' : 'Unblock'}</span>
+            <span>{busyTaskId === task.id ? $t('ui.taskQueue.unblocking') : $t('ui.blockTaskModal.unblock')}</span>
           </button>
         {/if}
       </div>

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.auth.security import hash_password, normalize_email, replace_password
 from app.database import SessionLocal
+from app.i18n import DEFAULT_LANGUAGE, LANGUAGES, translate
 from app.models import Invitation, User
 from app.services.invitations import send_invitation
 from app.services.mail import (
@@ -39,7 +40,12 @@ def create_user(args: argparse.Namespace) -> None:
     if not display_name:
         raise SystemExit("Display name is required.")
     with SessionLocal() as db:
-        user = User(email=email, display_name=display_name, password_hash=hash_password(password))
+        user = User(
+            email=email,
+            display_name=display_name,
+            password_hash=hash_password(password),
+            language=getattr(args, "language", DEFAULT_LANGUAGE),
+        )
         db.add(user)
         try:
             add_onboarding_data(db, user)
@@ -67,8 +73,8 @@ def test_email(args: argparse.Namespace) -> None:
         recipient = normalize_email_address(args.recipient)
         send_email(
             recipient,
-            "Next Task SMTP test",
-            "This is a test message from your Next Task server.\n",
+            translate("mail.testSubject", getattr(args, "language", DEFAULT_LANGUAGE)),
+            translate("mail.testBody", getattr(args, "language", DEFAULT_LANGUAGE)),
         )
     except (ValueError, MailConfigurationError, MailDeliveryError) as error:
         raise SystemExit(str(error)) from error
@@ -77,7 +83,7 @@ def test_email(args: argparse.Namespace) -> None:
 
 def invite_user(args: argparse.Namespace) -> None:
     try:
-        send_invitation(args.email)
+        send_invitation(args.email, getattr(args, "language", DEFAULT_LANGUAGE))
     except (ValueError, MailDeliveryError) as error:
         raise SystemExit(str(error)) from error
     except SQLAlchemyError as error:
@@ -121,6 +127,13 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = subparsers.add_parser("revoke-invite", help="Revoke an outstanding invitation")
     revoke.add_argument("email")
     revoke.set_defaults(handler=revoke_invite)
+    for command in (create, invite, test_mail):
+        command.add_argument(
+            "--language",
+            choices=tuple(LANGUAGES),
+            default=DEFAULT_LANGUAGE,
+            help="Language for account examples and emails (default: en)",
+        )
     return parser
 
 

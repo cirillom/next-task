@@ -15,6 +15,7 @@ from app.gemini_schemas import (
     TextToTaskDraft,
     TextToTaskRequest,
 )
+from app.i18n import error_detail, localized
 from app.models import Tag, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
@@ -46,7 +47,7 @@ def save_gemini_key(
     try:
         user.gemini_api_key_encrypted = encrypt_credential(payload.api_key)
     except CredentialError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        raise HTTPException(status_code=503, detail=error_detail(error)) from error
     user.gemini_model = None
     db.commit()
     return integration_status(user)
@@ -55,13 +56,15 @@ def save_gemini_key(
 @router.get("/api/integrations/gemini/models", response_model=list[GeminiModelRead])
 def get_gemini_models(user: User = Depends(get_current_user)) -> list[GeminiModelRead]:
     if not user.gemini_api_key_encrypted:
-        raise HTTPException(status_code=409, detail="Add a Gemini API key before choosing a model")
+        raise HTTPException(
+            status_code=409, detail=localized("api.addAGeminiApiKeyBeforeChoosingAModel")
+        )
     try:
         return list_gemini_models(decrypt_credential(user.gemini_api_key_encrypted))
     except CredentialError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        raise HTTPException(status_code=503, detail=error_detail(error)) from error
     except GeminiServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        raise HTTPException(status_code=error.status_code, detail=error_detail(error)) from error
 
 
 @router.put("/api/integrations/gemini/model", response_model=GeminiSettingsRead)
@@ -73,7 +76,7 @@ def save_gemini_model(
     available = get_gemini_models(user)
     if payload.model not in {item.id for item in available}:
         raise HTTPException(
-            status_code=422, detail="Choose a text model available for this API key"
+            status_code=422, detail=localized("api.chooseATextModelAvailableForThisApiKey")
         )
     user.gemini_model = payload.model
     db.commit()
@@ -107,7 +110,7 @@ def text_to_task(
     if not user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=409,
-            detail="Add a Gemini API key in Settings before using text to task",
+            detail=localized("api.addAGeminiApiKeyInSettingsBeforeUsing"),
         )
     tags = list(
         db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name, Tag.id)).all()
@@ -122,9 +125,9 @@ def text_to_task(
         model = user.gemini_model or get_settings().gemini_model
         generated = generate_task_draft(api_key, context, payload.text, model=model)
     except CredentialError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        raise HTTPException(status_code=503, detail=error_detail(error)) from error
     except GeminiServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        raise HTTPException(status_code=error.status_code, detail=error_detail(error)) from error
 
     tags_by_name: dict[str, list[Tag]] = {}
     for tag in tags:

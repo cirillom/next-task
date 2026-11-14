@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, rich, localized, message, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api, ApiError } from '../lib/api/client';
   import AppButton from '../lib/components/AppButton.svelte';
@@ -26,7 +27,7 @@
   export let sessionScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
 
   const dispatch = createEventDispatcher<{ openTask: number; end: void; createBlocker: { taskId: number; title: string } }>();
-  const baseDocumentTitle = typeof document === 'undefined' ? 'Next Task' : document.title;
+  const baseDocumentTitle = typeof document === 'undefined' ? $t('ui.app.nextTask') : document.title;
 
   let settings: PomodoroSettings | null = null;
   let session: PomodoroSession | null = null;
@@ -49,7 +50,7 @@
   let unblockingTaskId: number | null = null;
   let breakPrompt: TaskResolution | null = null;
   let audioContext: AudioContext | null = null;
-  let error = '';
+  let error: Message = '';
   let timer: number;
   let pollTimer: number;
   let syncInFlight = false;
@@ -88,27 +89,27 @@
   }
 
   function phaseLabel(): string {
-    if (phase === 'focus') return 'FOCUS';
-    if (phase === 'long-break') return 'LONG BREAK';
-    return 'SHORT BREAK';
+    if (phase === 'focus') return $t('ui.focus.focusPhase');
+    if (phase === 'long-break') return $t('ui.focus.longBreak');
+    return $t('ui.focus.shortBreak');
   }
 
   function startLabel(): string {
-    if (phase === 'focus') return 'Start focus';
-    if (phase === 'long-break') return 'Start long break';
-    return 'Start short break';
+    if (phase === 'focus') return $t('ui.focus.startFocus');
+    if (phase === 'long-break') return $t('ui.focus.startLongBreak');
+    return $t('ui.focus.startShortBreak');
   }
 
   function tabStateLabel(): string {
-    if (ringing) return 'Alarm';
-    if (phase === 'focus') return running ? 'Focus' : 'Focus ready';
-    if (phase === 'long-break') return running ? 'Long break' : 'Long break ready';
-    return running ? 'Break' : 'Break ready';
+    if (ringing) return $t('ui.pomodoroSettings.alarm');
+    if (phase === 'focus') return running ? $t('ui.pomodoroLauncher.focus') : $t('ui.focus.focusReady');
+    if (phase === 'long-break') return running ? $t('ui.pomodoroLauncher.longBreak') : $t('ui.focus.longBreakReady');
+    return running ? $t('ui.focus.break') : $t('ui.focus.breakReady');
   }
 
   function nextBreakLabel(): string {
-    if (!settings) return 'Start break';
-    return shortBreaksTaken >= settings.short_breaks_before_long ? 'Start long break' : 'Start short break';
+    if (!settings) return $t('ui.focus.startBreak');
+    return shortBreaksTaken >= settings.short_breaks_before_long ? $t('ui.focus.startLongBreak') : $t('ui.focus.startShortBreak');
   }
 
   function ensureAudioContext(): AudioContext | null {
@@ -229,7 +230,7 @@
         await loadSessionTasks();
       }
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not synchronize the Pomodoro session';
+      error = errorMessage(reason, 'ui.focus.couldNotSynchronizeThePomodoroSession');
     } finally {
       syncInFlight = false;
     }
@@ -256,7 +257,7 @@
         pinnedOutsideScope = !matching.some((task) => task.id === pinnedId);
       }
     } catch (reason) {
-      if (request === scopeCheckRequest) error = reason instanceof Error ? reason.message : 'Could not check the pinned task scope';
+      if (request === scopeCheckRequest) error = errorMessage(reason, 'ui.focus.couldNotCheckThePinnedTaskScope');
     }
   }
 
@@ -264,7 +265,7 @@
     try {
       tags = await api.tags();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load session tags';
+      error = errorMessage(reason, 'ui.focus.couldNotLoadSessionTags');
     }
     await Promise.all([loadSessionTasks(), refreshPinnedScope()]);
   }
@@ -301,10 +302,10 @@
           const latest = await api.pomodoroSession();
           if (latest) await applySession(latest, false);
         } catch (syncReason) {
-          error = syncReason instanceof Error ? syncReason.message : 'Could not load the latest session scope';
+          error = errorMessage(syncReason, 'ui.focus.couldNotLoadTheLatestSessionScope');
         }
       } else {
-        error = reason instanceof Error ? reason.message : 'Could not save session scope';
+        error = errorMessage(reason, 'ui.focus.couldNotSaveSessionScope');
       }
     } finally {
       scopeSaving = false;
@@ -338,7 +339,7 @@
       resetDescriptionEditor(currentTask);
       if (session) session = await api.updatePomodoroSessionTask(currentTask?.id ?? null);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not select the next task';
+      error = errorMessage(reason, 'ui.focus.couldNotSelectTheNextTask');
     } finally {
       selecting = false;
     }
@@ -352,14 +353,14 @@
     try {
       const ranked = await rankedTasksForScope(scope);
       if (!sameTagScope(scope, session?.scope ?? sessionScope)) {
-        error = 'The session scope changed. Find a correctly scoped task again.';
+        error = message('ui.focus.theSessionScopeChangedFindACorrectlyScoped');
       } else if (!ranked.length) {
-        error = 'No actionable task matches this session scope. Edit the scope or add a matching task.';
+        error = message('ui.focus.noActionableTaskMatchesThisSessionScopeEdit');
       } else {
         if (await focusTask(ranked[0])) void loadSessionTasks();
       }
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not find a correctly scoped task';
+      error = errorMessage(reason, 'ui.focus.couldNotFindACorrectlyScopedTask');
     } finally {
       findingScopedTask = false;
     }
@@ -377,7 +378,7 @@
       error = '';
       return true;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not change the Pomodoro task';
+      error = errorMessage(reason, 'ui.focus.couldNotChangeThePomodoroTask');
       return false;
     }
   }
@@ -394,7 +395,7 @@
       });
       if (request === listRequest) sessionTasks = ranked;
     } catch (reason) {
-      if (request === listRequest) error = reason instanceof Error ? reason.message : 'Could not load session tasks';
+      if (request === listRequest) error = errorMessage(reason, 'ui.focus.couldNotLoadSessionTasks');
     } finally {
       if (request === listRequest) listLoading = false;
     }
@@ -412,7 +413,7 @@
       await api.unblockOne(task.id, task.active_blocks[0].id);
       await loadSessionTasks();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not unblock task';
+      error = errorMessage(reason, 'ui.focus.couldNotUnblockTask');
     } finally {
       unblockingTaskId = null;
     }
@@ -443,7 +444,7 @@
       descriptionSaveState = 'saved';
     } catch (reason) {
       descriptionSaveState = 'error';
-      error = reason instanceof Error ? reason.message : 'Could not save description';
+      error = errorMessage(reason, 'ui.focus.couldNotSaveDescription');
     } finally {
       descriptionSaveInFlight = false;
       if (pendingDescriptionSave) void drainDescriptionSave();
@@ -462,7 +463,7 @@
         sessionTasks = sessionTasks.map((task) => task.id === updated.id ? updated : task);
         void loadSessionTasks();
       } catch (reason) {
-        error = reason instanceof Error ? reason.message : 'Could not record task work';
+        error = errorMessage(reason, 'ui.focus.couldNotRecordTaskWork');
         return;
       }
     }
@@ -470,7 +471,7 @@
     try {
       await applySession(await api.startPomodoroPeriod(), false);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not start the Pomodoro period';
+      error = errorMessage(reason, 'ui.focus.couldNotStartThePomodoroPeriod');
     }
   }
 
@@ -481,7 +482,7 @@
       breakPrompt = null;
       if (phase === 'focus' && !currentTask) await selectNextTask();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not end the Pomodoro period';
+      error = errorMessage(reason, 'ui.focus.couldNotEndThePomodoroPeriod');
     }
   }
 
@@ -507,7 +508,7 @@
       await applySession(await api.skipPomodoroPeriod(), false);
       await startCurrentPeriod();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not start the break';
+      error = errorMessage(reason, 'ui.focus.couldNotStartTheBreak');
     }
   }
 
@@ -517,7 +518,7 @@
       lastAlarmAt = 0;
       if (phase === 'focus' && !currentTask) await selectNextTask();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not dismiss the alarm';
+      error = errorMessage(reason, 'ui.focus.couldNotDismissTheAlarm');
     }
   }
 
@@ -526,7 +527,7 @@
       await api.endPomodoroSession();
       dispatch('end');
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not end the Pomodoro session';
+      error = errorMessage(reason, 'ui.focus.couldNotEndThePomodoroSession');
     }
   }
 
@@ -598,7 +599,7 @@
   }
 
   $: if (typeof document !== 'undefined') {
-    document.title = `${formatTime(remainingSeconds)} · ${tabStateLabel()} — Next Task`;
+    document.title = $t('ui.focus.nextTask', { value1: formatTime(remainingSeconds), value2: tabStateLabel() });
   }
 
   onMount(() => {
@@ -622,7 +623,7 @@
         await loadSessionTasks();
         await refreshPinnedScope();
       } catch (reason) {
-        error = reason instanceof Error ? reason.message : 'Could not start focus mode';
+        error = errorMessage(reason, 'ui.focus.couldNotStartFocusMode');
       } finally {
         loading = false;
       }
@@ -647,76 +648,76 @@
 
 <div class:break-mode={phase !== 'focus'} class="focus-screen">
   <header class="focus-header">
-    <div class="focus-brand"><span class="focus-dot"></span><strong>Next Task</strong></div>
+    <div class="focus-brand"><span class="focus-dot"></span><strong>{$t('ui.app.nextTask')}</strong></div>
     <div class="focus-header-actions">
       {#if phase === 'focus'}
-        <AppButton on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
+        <AppButton on:click={() => dispatch('openTask', 0)}>{$t('ui.focus.newTask')}</AppButton>
       {/if}
-      <AppButton on:click={endSession}>End session</AppButton>
+      <AppButton on:click={endSession}>{$t('ui.focus.endSession')}</AppButton>
     </div>
   </header>
 
   <main class="focus-content">
-    <div class="phase-chip">{phaseLabel()}</div>
-    <div class="timer" aria-live="polite">{formatTime(remainingSeconds)}</div>
+    <div class="phase-chip">{$localized(phaseLabel())}</div>
+    <div class="timer" aria-live="polite">{$localized(formatTime(remainingSeconds))}</div>
 
     <div class="period-controls">
       {#if ringing}
-        <span class="running-label alarm-label">Alarm ringing</span>
-        <AppButton variant="primary" className="period-button" on:click={dismissAlarm}>Dismiss alarm</AppButton>
+        <span class="running-label alarm-label">{$t('ui.focus.alarmRinging')}</span>
+        <AppButton variant="primary" className="period-button" on:click={dismissAlarm}>{$t('ui.focus.dismissAlarm')}</AppButton>
       {:else if running}
-        <span class="running-label">Running</span>
+        <span class="running-label">{$t('ui.focus.running')}</span>
         <AppButton className="period-button" on:click={cutPeriodShort}>
-          {phase === 'focus' ? 'End focus early' : 'End break early'}
+          {phase === 'focus' ? $t('ui.focus.endFocusEarly') : $t('ui.focus.endBreakEarly')}
         </AppButton>
       {:else}
         <AppButton variant="primary" className="period-button" disabled={loading || selecting} on:click={startCurrentPeriod}>
-          {startLabel()}
+          {$localized(startLabel())}
         </AppButton>
       {/if}
     </div>
 
     {#if settings}
-      <div class="cycle-dots" aria-label={`${shortBreaksTaken} short breaks before the next long break`}>
+      <div class="cycle-dots" aria-label={$t('ui.focus.shortBreaksBeforeTheNextLongBreak', { value1: shortBreaksTaken })}>
         {#each Array(settings.short_breaks_before_long) as _, index}
           <span class:done={index < shortBreaksTaken}></span>
         {/each}
-        <span class="long-dot" title="Long break"></span>
+        <span class="long-dot" title={$t('ui.pomodoroLauncher.longBreak')}></span>
       </div>
     {/if}
 
-    <section class="session-scope" aria-label="Session scope">
+    <section class="session-scope" aria-label={$t('ui.focus.sessionScope')}>
       <div class="session-scope-heading">
-        <strong>Session scope</strong>
-        <button type="button" disabled={!session || scopeSaving} on:click={openScopeEditor}>Edit scope</button>
+        <strong>{$t('ui.focus.sessionScope')}</strong>
+        <button type="button" disabled={!session || scopeSaving} on:click={openScopeEditor}>{$t('ui.focus.editScope')}</button>
       </div>
       <div class="scope-selection">
-        <span>Include</span>
+        <span>{$t('ui.focus.include')}</span>
         {#if activeScope.include_tag_ids.length}
           {#each activeScope.include_tag_ids as tagId (tagId)}
             {@const tag = tagById.get(tagId)}
-            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">Deleted tag #{tagId}</small>{/if}
+            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">{$t('ui.focus.deletedTag', { value1: tagId })}</small>{/if}
           {/each}
-        {:else}<span class="scope-empty">All tags</span>{/if}
+        {:else}<span class="scope-empty">{$t('ui.focus.allTags')}</span>{/if}
       </div>
       <div class="scope-selection">
-        <span>Exclude</span>
+        <span>{$t('ui.focus.exclude')}</span>
         {#if activeScope.exclude_tag_ids.length}
           {#each activeScope.exclude_tag_ids as tagId (tagId)}
             {@const tag = tagById.get(tagId)}
-            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">Deleted tag #{tagId}</small>{/if}
+            {#if tag}<TagBadge {tag}>{tag.display_name}</TagBadge>{:else}<small class="missing-tag">{$t('ui.focus.deletedTag', { value1: tagId })}</small>{/if}
           {/each}
-        {:else}<span class="scope-empty">None excluded</span>{/if}
+        {:else}<span class="scope-empty">{$t('ui.focus.noneExcluded')}</span>{/if}
       </div>
-      <p class="scope-match">Match included tags: <strong>{activeScope.tag_match === 'all' ? 'All' : 'Any'}</strong></p>
+      <p class="scope-match">{$t('ui.focus.matchIncludedTags')} <strong>{activeScope.tag_match === 'all' ? $t('ui.tagScopeFilters.all') : $t('ui.tagScopeFilters.any')}</strong></p>
 
       {#if editingScope}
         <div class="scope-editor">
           <TagScopeFilters {tags} scope={scopeDraft} matchName="session-tag-match" disabled={scopeSaving || scopeConflict} on:change={(event) => (scopeDraft = event.detail)} />
-          {#if scopeConflict}<p class="error" role="alert">This scope changed on another device. Close and reopen the editor to use the latest scope.</p>{/if}
+          {#if scopeConflict}<p class="error" role="alert">{$t('ui.focus.thisScopeChangedOnAnotherDeviceCloseAnd')}</p>{/if}
           <div class="scope-editor-actions">
-            <AppButton disabled={scopeSaving} on:click={closeScopeEditor}>Cancel</AppButton>
-            <AppButton variant="primary" disabled={scopeSaving || scopeConflict} on:click={saveScope}>{scopeSaving ? 'Saving…' : 'Save scope'}</AppButton>
+            <AppButton disabled={scopeSaving} on:click={closeScopeEditor}>{$t('ui.blockTaskModal.cancel')}</AppButton>
+            <AppButton variant="primary" disabled={scopeSaving || scopeConflict} on:click={saveScope}>{scopeSaving ? $t('ui.geminiSettings.saving') : $t('ui.focus.saveScope')}</AppButton>
           </div>
         </div>
       {/if}
@@ -724,30 +725,30 @@
 
     {#if pinnedOutsideScope && currentTask}
       <p class="scope-warning" role="status">
-        <strong>{currentTask.title}</strong> is outside this session scope and remains pinned.
+        {@html $rich('ui.focus.outsideScope', {title: currentTask.title})}
         <button type="button" disabled={findingScopedTask} on:click={findCorrectlyScopedTask}>
-          {findingScopedTask ? 'Finding correctly scoped task…' : 'Find correctly scoped task'}
+          {findingScopedTask ? $t('ui.focus.findingCorrectlyScopedTask') : $t('ui.focus.findCorrectlyScopedTask')}
         </button>
       </p>
     {/if}
 
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
     <ScoringWarning message={sessionTasks[0]?.scoring_warning ?? currentTask?.scoring_warning ?? null} />
 
     {#if loading}
-      <section class="focus-placeholder">Preparing your Pomodoro session…</section>
+      <section class="focus-placeholder">{$t('ui.focus.preparingYourPomodoroSession')}</section>
     {:else if phase === 'focus'}
       <section class="focus-task-area">
         <div class="focus-task-heading">
           <div>
-            <p class="eyebrow">Your task for this session</p>
-            <h1>{currentTask ? 'Focus on this' : 'Nothing actionable right now'}</h1>
+            <p class="eyebrow">{$t('ui.focus.yourTaskForThisSession')}</p>
+            <h1>{currentTask ? $t('ui.focus.focusOnThis') : $t('ui.focus.nothingActionableRightNow')}</h1>
           </div>
-          {#if currentTask}<span class="locked-task">Current Pomodoro task</span>{/if}
+          {#if currentTask}<span class="locked-task">{$t('ui.focus.currentPomodoroTask')}</span>{/if}
         </div>
 
         {#if selecting}
-          <div class="focus-placeholder">Ranking your tasks…</div>
+          <div class="focus-placeholder">{$t('ui.focus.rankingYourTasks')}</div>
         {:else if currentTask}
           <TaskCard
             task={currentTask}
@@ -757,12 +758,12 @@
             on:error={(event) => (error = event.detail)}
           />
 
-          <section class="focus-description-editor" aria-label="Task working notes">
+          <section class="focus-description-editor" aria-label={$t('ui.focus.taskWorkingNotes')}>
             <div class="description-heading">
-              <strong>Working notes</strong>
+              <strong>{$t('ui.focus.workingNotes')}</strong>
               {#if descriptionSaveState !== 'idle'}
                 <span class:error-state={descriptionSaveState === 'error'} class="save-state" aria-live="polite">
-                  {descriptionSaveState === 'saving' ? 'Saving…' : descriptionSaveState === 'saved' ? 'Saved' : 'Save failed'}
+                  {descriptionSaveState === 'saving' ? $t('ui.geminiSettings.saving') : descriptionSaveState === 'saved' ? $t('ui.focus.saved') : $t('ui.focus.saveFailed')}
                 </span>
               {/if}
             </div>
@@ -770,18 +771,18 @@
               bind:value={descriptionDraft}
 
               label=""
-              placeholder="Take notes, update checklists, paste links, or write Markdown…"
+              placeholder={$t('ui.focus.takeNotesUpdateChecklistsPasteLinksOrWrite')}
               on:input={(event) => scheduleDescriptionSave(event.detail)}
             />
           </section>
 
           <p class="session-rule">
-            This task stays pinned across focus and break periods until you finish it, block it, abandon it, or choose another task.
+            {$t('ui.focus.thisTaskStaysPinnedAcrossFocusAndBreak')}
           </p>
         {:else}
           <div class="empty-focus">
-            <p>No unfinished, unblocked tasks are available in this session scope.</p>
-            <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>Create a task</AppButton>
+            <p>{$t('ui.focus.noUnfinishedUnblockedTasksAreAvailableInThis')}</p>
+            <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>{$t('ui.focus.createATask')}</AppButton>
           </div>
         {/if}
 
@@ -789,18 +790,18 @@
     {:else}
       <section class="break-card">
         <div class="break-icon" aria-hidden="true">☕</div>
-        <h1>{running ? 'Take your break' : 'Break ready when you are'}</h1>
+        <h1>{running ? $t('ui.focus.takeYourBreak') : $t('ui.focus.breakReadyWhenYouAre')}</h1>
         <p>
           {#if running}
-            Step away until the timer ends, or end the break early when you are ready to move on.
+            {$t('ui.focus.stepAwayUntilTheTimerEndsOrEnd')}
           {:else}
-            The break timer will not start until you start it explicitly.
+            {$t('ui.focus.theBreakTimerWillNotStartUntilYou')}
           {/if}
         </p>
         {#if currentTask}
-          <p class="pinned-note"><strong>{currentTask.title}</strong> remains pinned for the next focus period.</p>
+          <p class="pinned-note">{@html $rich('ui.focus.pinnedForNext', {title: currentTask.title})}</p>
         {:else}
-          <p class="pinned-note">Your next task will be ranked within this session scope.</p>
+          <p class="pinned-note">{$t('ui.focus.yourNextTaskWillBeRankedWithinThis')}</p>
         {/if}
       </section>
     {/if}
@@ -808,30 +809,30 @@
     {#if !loading}
       <div class="choose-task-row">
         <button type="button" class="choose-task-toggle" aria-expanded={queueOpen} on:click={() => (queueOpen = !queueOpen)}>
-          <span>{queueOpen ? 'Hide task queue' : 'Choose another task'}</span>
+          <span>{queueOpen ? $t('ui.focus.hideTaskQueue') : $t('ui.focus.chooseAnotherTask')}</span>
           <span class="queue-count">{sessionTasks.length}</span>
           <span aria-hidden="true">{queueOpen ? '▴' : '▾'}</span>
         </button>
       </div>
 
       {#if queueOpen}
-        <section class="session-tasks" aria-label="Tasks in this Pomodoro session scope">
+        <section class="session-tasks" aria-label={$t('ui.focus.tasksInThisPomodoroSessionScope')}>
           <div class="session-tasks__heading">
-            <h2>Queue</h2>
+            <h2>{$t('ui.focus.queue')}</h2>
             <label class="blocked-filter">
-              <span>Blocked</span>
+              <span>{$t('ui.focus.blocked')}</span>
               <select bind:value={taskListBlocked} on:change={loadSessionTasks}>
-                <option value="">Either</option>
-                <option value="false">Not blocked</option>
-                <option value="true">Blocked</option>
+                <option value="">{$t('ui.focus.either')}</option>
+                <option value="false">{$t('ui.focus.notBlocked')}</option>
+                <option value="true">{$t('ui.focus.blocked')}</option>
               </select>
             </label>
           </div>
 
           {#if listLoading}
-            <p class="task-list-empty">Loading tasks…</p>
+            <p class="task-list-empty">{$t('ui.focus.loadingTasks')}</p>
           {:else if sessionTasks.length === 0}
-            <p class="task-list-empty">No matching unfinished tasks.</p>
+            <p class="task-list-empty">{$t('ui.focus.noMatchingUnfinishedTasks')}</p>
           {:else}
             <TaskQueue
               tasks={sessionTasks}
@@ -852,12 +853,12 @@
   {#if breakPrompt}
     <div class="break-prompt-backdrop" role="presentation">
       <section class="break-prompt" role="dialog" aria-modal="true" aria-labelledby="break-prompt-title" aria-describedby="break-prompt-description">
-        <p class="eyebrow">{breakPrompt === 'finished' ? 'Task completed' : 'Task blocked'}</p>
-        <h2 id="break-prompt-title">Start a break?</h2>
-        <p id="break-prompt-description">Take a break now, or keep the current focus timer running with the next task.</p>
+        <p class="eyebrow">{breakPrompt === 'finished' ? $t('ui.focus.taskCompleted') : $t('ui.focus.taskBlocked')}</p>
+        <h2 id="break-prompt-title">{$t('ui.focus.startABreak')}</h2>
+        <p id="break-prompt-description">{$t('ui.focus.takeABreakNowOrKeepTheCurrent')}</p>
         <div class="break-prompt-actions">
-          <AppButton on:click={keepFocusingAfterTask}>Keep focusing</AppButton>
-          <AppButton variant="primary" on:click={startBreakAfterTask}>{nextBreakLabel()}</AppButton>
+          <AppButton on:click={keepFocusingAfterTask}>{$t('ui.focus.keepFocusing')}</AppButton>
+          <AppButton variant="primary" on:click={startBreakAfterTask}>{$localized(nextBreakLabel())}</AppButton>
         </div>
       </section>
     </div>

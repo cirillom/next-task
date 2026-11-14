@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, localized } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Tag } from '../api/types';
   import { hierarchicalTagResults, tagHierarchyPaths } from '../tagHierarchy';
@@ -13,8 +14,8 @@
   export let disabled = false;
   export let creating = false;
   export let allowCreate = true;
-  export let selectedLabel = 'Selected direct tags';
-  export let searchLabel = 'Search tags';
+  export let selectedLabel = 'ui.tagPicker.selectedDirectTags';
+  export let searchLabel = 'ui.tagPicker.searchTags';
   export let displayName: (tag: Tag) => string = (tag) => tag.display_name;
   export let createdParentId = 0;
 
@@ -114,7 +115,7 @@
 <div class="tag-picker">
   {#if suggestedNames.length && !disabled}
     <div class="tag-suggestions">
-      <small>Suggested new tags</small>
+      <small>{$t('ui.tagPicker.suggestedNewTags')}</small>
       {#each suggestedNames as suggestion}
         <button type="button" on:click={() => chooseSuggestion(suggestion)}>{suggestion}</button>
       {/each}
@@ -122,12 +123,12 @@
   {/if}
 
   {#if selectedTags.length}
-    <div class="selected-tags" aria-label={selectedLabel}>
+    <div class="selected-tags" aria-label={$text(selectedLabel)}>
       {#each selectedTags as tag (tag.id)}
         <TagBadge {tag} selected>
-          {displayName(tag)}
+          {$localized(displayName(tag))}
           {#if !disabled}
-            <button type="button" aria-label={`Remove ${displayName(tag)}`} on:click={() => remove(tag.id)}>×</button>
+            <button type="button" aria-label={$t('ui.tagPicker.remove', { value1: displayName(tag) })} on:click={() => remove(tag.id)}>×</button>
           {/if}
         </TagBadge>
       {/each}
@@ -137,8 +138,8 @@
   <div class="picker-control">
     <TextField
       bind:value={search}
-      aria-label={searchLabel}
-      placeholder="Search tags or hierarchy"
+      aria-label={$text(searchLabel)}
+      placeholder={$t('ui.tagPicker.searchTagsOrHierarchy')}
       autocomplete="off"
       disabled={disabled}
       on:focus={() => (open = true)}
@@ -147,7 +148,7 @@
     />
 
     {#if open && !disabled}
-      <div class="tag-options" role="listbox" aria-label="Tag options">
+      <div class="tag-options" role="listbox" aria-label={$t('ui.tagPicker.tagOptions')}>
         {#each filteredTags as result (`${result.tag.id}-${result.depth}`)}
           <button
             type="button"
@@ -157,7 +158,7 @@
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
-              <TagBadge tag={result.tag} selected={selectedIds.includes(result.tag.id)}>{displayName(result.tag)}</TagBadge>
+              <TagBadge tag={result.tag} selected={selectedIds.includes(result.tag.id)}>{$localized(displayName(result.tag))}</TagBadge>
               {#each contextPaths(result.tag) as path}
                 <small>{path}</small>
               {/each}
@@ -173,29 +174,29 @@
             on:mousedown|preventDefault={requestCreate}
           >
             <span class="option-check" aria-hidden="true">+</span>
-            <span class="option-copy"><strong>{creating ? 'Creating…' : `Create ${search.trim()}`}</strong></span>
+            <span class="option-copy"><strong>{creating ? $t('ui.quickCapture.creating') : $t('ui.tagPicker.create', { value1: search.trim() })}</strong></span>
           </button>
         {:else if !filteredTags.length}
-          <span class="tag-empty">No matching tags</span>
+          <span class="tag-empty">{$t('ui.tagPicker.noMatchingTags')}</span>
         {/if}
       </div>
     {/if}
   </div>
 
   {#if createOpen && allowCreate && !disabled}
-    <div class="inline-tag-create" aria-label="Create tag">
+    <div class="inline-tag-create" aria-label={$t('ui.tagPicker.createTag')}>
       <label>
-        Name
+        {$t('ui.accountSettings.name')}
         <TextField bind:value={createName} maxlength="120" disabled={creating} />
       </label>
       <label>
-        Parent tags
+        {$t('ui.tagPicker.parentTags')}
         <TagSelect
           bind:value={createParentId}
           options={[...tags].sort((left, right) => left.name.localeCompare(right.name)).map((tag) => ({ tag, context: tagHierarchyPaths(tag, tags)[0] }))}
           existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)}
-          emptyLabel="Choose a parent tag..."
-          label="Parent tag"
+          emptyLabel={$t('ui.tagPicker.chooseAParentTag')}
+          label={$t('ui.tagPicker.parentTag')}
           searchable
           allowCreate={!childDraft}
           on:create={(event) => requestCreateParent(event.detail)}
@@ -203,13 +204,13 @@
         />
       </label>
       <label class="color-input">
-        Color
+        {$t('ui.tagPicker.color')}
         <input type="color" bind:value={createColor} disabled={creating} />
       </label>
       <div class="inline-create-actions">
-        <AppButton disabled={creating} on:click={cancelCreate}>Cancel</AppButton>
+        <AppButton disabled={creating} on:click={cancelCreate}>{$t('ui.blockTaskModal.cancel')}</AppButton>
         <AppButton variant="primary" disabled={creating || !createName.trim() || sameScope} on:click={submitCreate}>
-          {creating ? 'Creating…' : 'Create and select'}
+          {creating ? $t('ui.quickCapture.creating') : $t('ui.tagPicker.createAndSelect')}
         </AppButton>
       </div>
     </div>

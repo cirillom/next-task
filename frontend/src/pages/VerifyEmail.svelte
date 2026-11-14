@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { api } from '../lib/api/client';
   import AppButton from '../lib/components/AppButton.svelte';
   import { reloadApp } from '../lib/navigation';
@@ -8,7 +9,7 @@
 
   let busy = false;
   let verified = false;
-  let error = '';
+  let error: Message = '';
 
   async function verify() {
     if (!token) return;
@@ -19,7 +20,7 @@
       verified = true;
       history.replaceState(null, '', signedIn ? '#/settings' : '#/');
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not verify this email';
+      error = errorMessage(reason, 'ui.verifyEmail.couldNotVerifyThisEmail');
     } finally {
       busy = false;
     }
@@ -29,17 +30,17 @@
 <main class="login-page">
   <section class="login-card">
     <div class="brand-mark">✓</div>
-    <h1>Verify your email</h1>
+    <h1>{$t('ui.verifyEmail.verifyYourEmail')}</h1>
     {#if verified}
-      <p>Your email is verified. You can use it to sign in.</p>
-      <a href={signedIn ? '/#/settings' : '/#/'} on:click|preventDefault={() => reloadApp(signedIn ? '/#/settings' : '/#/')}>Continue to Next Task</a>
+      <p>{$t('ui.verifyEmail.yourEmailIsVerifiedYouCanUseIt')}</p>
+      <a href={signedIn ? '/#/settings' : '/#/'} on:click|preventDefault={() => reloadApp(signedIn ? '/#/settings' : '/#/')}>{$t('ui.verifyEmail.continueToNextTask')}</a>
     {:else if !token}
-      <p class="error" role="alert">This verification link is invalid.</p>
+      <p class="error" role="alert">{$t('ui.verifyEmail.thisVerificationLinkIsInvalid')}</p>
     {:else}
-      <p>Confirm this address for your Next Task account. If you changed your email, use the new address to sign in afterward.</p>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
+      <p>{$t('ui.verifyEmail.confirmThisAddressForYourNextTaskAccount')}</p>
+      {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
       <AppButton variant="primary" disabled={busy} on:click={verify}>
-        {busy ? 'Verifying…' : 'Verify email'}
+        {busy ? $t('ui.verifyEmail.verifying') : $t('ui.accountSettings.verifyEmail')}
       </AppButton>
     {/if}
   </section>

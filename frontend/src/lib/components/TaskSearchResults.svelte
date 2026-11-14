@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { TaskSummary } from '../api/types';
 
@@ -25,9 +26,9 @@
     <button type="button" on:mousedown|preventDefault={() => dispatch('select', task)}>{task.title} <small>#{task.id}</small></button>
   {/each}
   {#if allowCreate && query.trim()}
-    <button type="button" class="create-option" on:mousedown|preventDefault={() => dispatch('create', query.trim())}>+ Create “{query.trim()}”</button>
+    <button type="button" class="create-option" on:mousedown|preventDefault={() => dispatch('create', query.trim())}>{$t('ui.tagSelect.create', { value1: query.trim() })}</button>
   {:else if !matches.length}
-    <span class="empty-option">No matching tasks</span>
+    <span class="empty-option">{$t('ui.taskSearchResults.noMatchingTasks')}</span>
   {/if}
 </div>
 

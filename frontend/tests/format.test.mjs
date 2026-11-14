@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import ts from 'typescript';
 
 // Use the project's TypeScript compiler so tests also run on the CI Node 22 runtime.
-const source = readFileSync(new URL('../src/lib/format.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
-const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`;
+const helperUrl = new URL('./sourceModule.mjs', import.meta.url).href;
+const sourceUrl = new URL('../src/lib/format.ts', import.meta.url).href;
 
 const zones = [
   ['UTC', '09/09/2026, 01:05', '2026-09-09T01:05', '2026-09-09T14:30:00.000Z'],
@@ -20,8 +17,9 @@ for (const [zone, display, local, saved] of zones) {
   test(`fixed date/time format and UTC round trips in ${zone} with US locale`, () => {
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
       import assert from 'node:assert/strict';
-      import { formatDate, formatDateTime, localDate, localDateTime, formatDateInput,
-        parseDateInput, dateInputError, daysSince, formatRelativeTime } from '${moduleUrl}';
+      import { sourceModule } from '${helperUrl}';
+      const { formatDate, formatDateTime, localDate, localDateTime, formatDateInput,
+        parseDateInput, dateInputError, daysSince, formatRelativeTime } = await import(sourceModule(new URL('${sourceUrl}')));
       const instant = '2026-09-09T01:05:00Z';
       assert.equal(formatDateTime(instant), ${JSON.stringify(display)});
       assert.equal(formatDateTime('2026-09-08T22:05:00-03:00'), ${JSON.stringify(display)});

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale, localized } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import { dateInputError, formatDateInput, parseDateInput } from '../format';
 
@@ -15,7 +16,7 @@
   let textValue = '';
 
   $: textValue = formatDateInput(value, includeTime);
-  $: if (input) input.setCustomValidity(dateInputError(textValue, includeTime, min));
+  $: if (input) input.setCustomValidity($localized(dateInputError(textValue, includeTime, min)));
 
   export function focus() {
     input?.focus();
@@ -25,7 +26,7 @@
     textValue = (event.currentTarget as HTMLInputElement).value;
     const parsed = parseDateInput(textValue, includeTime);
     if (parsed !== null) value = parsed;
-    input.setCustomValidity(dateInputError(textValue, includeTime, min));
+    input.setCustomValidity($localized(dateInputError(textValue, includeTime, min)));
   }
 
   function selectFromPicker(event: Event) {
@@ -55,15 +56,15 @@
       class="text-input"
       type="text"
       value={textValue}
-      placeholder={includeTime ? 'dd/mm/yyyy HH:mm' : 'dd/mm/yyyy'}
-      title={includeTime ? 'dd/mm/yyyy HH:mm · 24-hour time in your device timezone' : 'dd/mm/yyyy'}
+      placeholder={includeTime ? $t('ui.dateTimeInput.ddMmYyyyHhMm') : $t('format.datePattern')}
+      title={includeTime ? $t('ui.dateTimeInput.ddMmYyyyHhMm24HourTime') : $t('format.datePattern')}
       {disabled}
       {required}
       on:input={update}
       on:focus
     />
   {/if}
-  <label class="picker-trigger" class:disabled title={pickerLabel || (includeTime ? 'Choose date and time' : 'Choose date')}>
+  <label class="picker-trigger" class:disabled title={pickerLabel || (includeTime ? $t('ui.dateTimeInput.chooseDateAndTime') : $t('ui.dateTimeInput.chooseDate'))}>
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
       <path d="M8 3v5M16 3v5M3.5 10h17" />
@@ -74,8 +75,8 @@
       value={value}
       {min}
       step={includeTime ? 60 : undefined}
-      lang="pt-BR"
-      aria-label={pickerLabel || (includeTime ? 'Choose date and time' : 'Choose date')}
+      lang={$locale}
+      aria-label={pickerLabel || (includeTime ? $t('ui.dateTimeInput.chooseDateAndTime') : $t('ui.dateTimeInput.chooseDate'))}
       {disabled}
       on:click={openPicker}
       on:change={selectFromPicker}

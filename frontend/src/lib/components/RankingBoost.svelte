@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, numeric } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Task } from '../api/types';
 
@@ -11,9 +12,9 @@
   <button
     type="button"
     class="ranking-boost"
-    title={`Open ancestor #${task.ranking_source_task_id}. This task is ranked with that ancestor's score ${task.ranking_source_score.toFixed(1)} because unfinished descendants must appear before their ancestors.`}
+    title={$t('ui.rankingBoost.openAncestorThisTaskIsRankedWithThat', { value1: task.ranking_source_task_id, value2: $numeric(task.ranking_source_score, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
     on:click={() => dispatch('open', task.ranking_source_task_id!)}
-  >↑ from #{task.ranking_source_task_id} · {task.ranking_source_score.toFixed(1)}</button>
+  >{$t('ui.rankingBoost.from', { value1: task.ranking_source_task_id, value2: $numeric(task.ranking_source_score, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</button>
 {/if}
 
 <style>

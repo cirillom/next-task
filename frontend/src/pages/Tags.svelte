@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Tag, TagMergePreview } from '../lib/api/types';
@@ -52,10 +53,10 @@
   let mergeOpen = false;
   let mergeDestinationId = 0;
   let mergePreview: TagMergePreview | null = null;
-  let mergeError = '';
+  let mergeError: Message = '';
   let mergeLoading = false;
 
-  let error = '';
+  let error: Message = '';
   let busy = false;
 
   $: selectedTag = tags.find((tag) => tag.id === selectedId) || null;
@@ -125,7 +126,7 @@
       if (selected) selectTag(selected);
       else selectedId = 0;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load tags';
+      error = errorMessage(reason, 'ui.tags.couldNotLoadTags');
     }
   }
 
@@ -208,7 +209,7 @@
         await load(created.id);
       }
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not create tag';
+      error = errorMessage(reason, 'ui.taskForm.couldNotCreateTag');
     } finally {
       busy = false;
     }
@@ -227,7 +228,7 @@
       });
       await load(selectedTag.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not update tag';
+      error = errorMessage(reason, 'ui.tags.couldNotUpdateTag');
     } finally {
       busy = false;
     }
@@ -247,7 +248,7 @@
       editColor = draft.color;
       editScoreValue = draft.scoreValue;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not add parent';
+      error = errorMessage(reason, 'ui.tags.couldNotAddParent');
     } finally {
       busy = false;
     }
@@ -261,7 +262,7 @@
       await api.removeTagParent(selectedTag.id, parentId);
       await load(selectedTag.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not remove parent';
+      error = errorMessage(reason, 'ui.tags.couldNotRemoveParent');
     } finally {
       busy = false;
     }
@@ -297,7 +298,7 @@
         Number(mergeDestinationId)
       );
     } catch (reason) {
-      mergeError = reason instanceof Error ? reason.message : 'Could not preview tag merge';
+      mergeError = errorMessage(reason, 'ui.tags.couldNotPreviewTagMerge');
     } finally {
       mergeLoading = false;
     }
@@ -312,14 +313,14 @@
       mergeOpen = false;
       await load(merged.id);
     } catch (reason) {
-      mergeError = reason instanceof Error ? reason.message : 'Could not merge tags';
+      mergeError = errorMessage(reason, 'ui.tags.couldNotMergeTags');
     } finally {
       busy = false;
     }
   }
 
   async function remove() {
-    if (!selectedTag || !window.confirm(`Delete ${selectedTag.name}? It will be removed from tasks.`)) {
+    if (!selectedTag || !window.confirm($t('ui.tags.deleteItWillBeRemovedFromTasks', { value1: selectedTag.name }))) {
       return;
     }
 
@@ -330,7 +331,7 @@
       selectedId = 0;
       await load(0);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not delete tag';
+      error = errorMessage(reason, 'ui.tags.couldNotDeleteTag');
     } finally {
       busy = false;
     }
@@ -341,28 +342,28 @@
 
 <div class="page-heading">
   <div>
-    <p class="eyebrow">Tag Studio</p>
-    <h1>Tags</h1>
+    <p class="eyebrow">{$t('ui.tags.tagStudio')}</p>
+    <h1>{$t('ui.app.tags')}</h1>
   </div>
 </div>
-<p class="page-intro">Browse the tag hierarchy, inspect direct usage, and reorganize parent relationships.</p>
+<p class="page-intro">{$t('ui.tags.browseTheTagHierarchyInspectDirectUsageAnd')}</p>
 
-{#if error}<p class="error" role="alert">{error}</p>{/if}
+{#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
 
 <div class="tag-manager">
   <aside class="panel hierarchy-browser">
     <div class="browser-toolbar">
-      <TextField bind:value={search} type="search" aria-label="Search tags" placeholder="Search tags" />
+      <TextField bind:value={search} type="search" aria-label={$t('ui.tagPicker.searchTags')} placeholder={$t('ui.tagPicker.searchTags')} />
 
-        <AppButton variant="primary" on:click={startCreate}>New tag</AppButton>
+        <AppButton variant="primary" on:click={startCreate}>{$t('ui.tags.newTag')}</AppButton>
     </div>
 
     {#if !tags.length}
-      <p class="empty">No tags yet.</p>
+      <p class="empty">{$t('ui.tags.noTagsYet')}</p>
     {:else if !visibleRows.length}
-      <p class="empty">No matching tags.</p>
+      <p class="empty">{$t('ui.tags.noMatchingTags')}</p>
     {:else}
-      <div class="tag-tree" role="tree" aria-label="Tag hierarchy">
+      <div class="tag-tree" role="tree" aria-label={$t('ui.tags.tagHierarchy')}>
         {#each visibleRows as row (row.key)}
           <div
             class="tree-row"
@@ -376,7 +377,7 @@
               <button
                 type="button"
                 class="expand-button"
-                aria-label={expandedIds.has(row.tag.id) ? `Collapse ${row.tag.display_name}` : `Expand ${row.tag.display_name}`}
+                aria-label={expandedIds.has(row.tag.id) ? $t('ui.tags.collapse', { value1: row.tag.display_name }) : $t('ui.tags.expand', { value1: row.tag.display_name })}
                 on:click={() => toggleExpanded(row.tag.id)}
               >{expandedIds.has(row.tag.id) || search.trim() ? '▾' : '▸'}</button>
             {:else}
@@ -387,7 +388,7 @@
                 <TagBadge tag={row.tag} selected={row.tag.id === selectedId} />
                 {#if search.trim() || row.tag.parents.length > 1}<small>{row.path}</small>{/if}
               </span>
-              <span class="usage-badge" title="Direct task usage">{row.tag.direct_task_count}</span>
+              <span class="usage-badge" title={$t('ui.tags.directTaskUsage')}>{row.tag.direct_task_count}</span>
             </button>
           </div>
         {/each}
@@ -399,35 +400,35 @@
     {#if creating}
       <header class="details-heading">
         <div>
-          <p class="eyebrow">New tag</p>
-          <h2>Create tag</h2>
+          <p class="eyebrow">{$t('ui.tags.newTag')}</p>
+          <h2>{$t('ui.tagPicker.createTag')}</h2>
         </div>
       </header>
       <form class="detail-form" on:submit|preventDefault={create}>
-        <label>Name<TextField bind:value={createName} maxlength="120" required /></label>
-        <label class="color-field">Color<input type="color" bind:value={createColor} /></label>
-        <label>Value<input type="number" step="any" bind:value={createScoreValue} /></label>
-        <label class="wide">Description<TextArea bind:value={createDescription} rows="4" /></label>
-        <label class="wide">Parent tags
-          <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
+        <label>{$t('ui.accountSettings.name')}<TextField bind:value={createName} maxlength="120" required /></label>
+        <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={createColor} /></label>
+        <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={createScoreValue} /></label>
+        <label class="wide">{$t('ui.markdownEditor.description')}<TextArea bind:value={createDescription} rows="4" /></label>
+        <label class="wide">{$t('ui.tagPicker.parentTags')}
+          <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel={$t('ui.tagPicker.chooseAParentTag')} label={$t('ui.tagPicker.parentTag')} disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
         </label>
         <div class="detail-actions">
-          <AppButton on:click={() => { creating = false; restoreParentDraft(); }}>Cancel</AppButton>
-          <AppButton type="submit" variant="primary" disabled={busy}>Create tag</AppButton>
+          <AppButton on:click={() => { creating = false; restoreParentDraft(); }}>{$t('ui.blockTaskModal.cancel')}</AppButton>
+          <AppButton type="submit" variant="primary" disabled={busy}>{$t('ui.tagPicker.createTag')}</AppButton>
         </div>
       </form>
     {:else if selectedTag}
       <header class="details-heading">
         <div>
-          <p class="eyebrow">Tag details</p>
+          <p class="eyebrow">{$t('ui.tags.tagDetails')}</p>
           <h2><TagBadge tag={selectedTag} /></h2>
         </div>
-        <span class="usage-summary">{selectedTag.direct_task_count} direct {selectedTag.direct_task_count === 1 ? 'task' : 'tasks'}</span>
+        <span class="usage-summary">{$t('ui.tags.direct', { count: selectedTag.direct_task_count })}</span>
       </header>
 
       {#if tagHierarchyPaths(selectedTag, tags).some((path) => path !== selectedTag.name)}
         <div class="path-list">
-          <strong>Hierarchy paths</strong>
+          <strong>{$t('ui.tags.hierarchyPaths')}</strong>
           {#each tagHierarchyPaths(selectedTag, tags) as path}
             <span>{path}</span>
           {/each}
@@ -435,19 +436,19 @@
       {/if}
 
       <form class="detail-form" on:submit|preventDefault={saveEdit}>
-        <label>Name<TextField bind:value={editName} maxlength="120" required  /></label>
-        <label class="color-field">Color<input type="color" bind:value={editColor}  /></label>
-        <label>Value<input type="number" step="any" bind:value={editScoreValue} /></label>
-        <label class="wide">Description<TextArea bind:value={editDescription} rows="4"  /></label>
+        <label>{$t('ui.accountSettings.name')}<TextField bind:value={editName} maxlength="120" required  /></label>
+        <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={editColor}  /></label>
+        <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={editScoreValue} /></label>
+        <label class="wide">{$t('ui.markdownEditor.description')}<TextArea bind:value={editDescription} rows="4"  /></label>
 
           <div class="detail-actions wide">
-            <AppButton type="submit" variant="primary" disabled={busy}>Save details</AppButton>
+            <AppButton type="submit" variant="primary" disabled={busy}>{$t('ui.tags.saveDetails')}</AppButton>
           </div>
       </form>
 
       <div class="relationship-section">
         <div class="relationship-heading">
-          <strong>Parent tags</strong>
+          <strong>{$t('ui.tagPicker.parentTags')}</strong>
           <span>{selectedTag.parents.length}</span>
         </div>
         {#if selectedTag.parents.length}
@@ -456,21 +457,21 @@
               <span>
                 <button type="button" class="relationship-link" on:click={() => selectTagById(parent.id)}><TagBadge tag={parent} /></button>
 
-                  <button type="button" class="remove-relation" aria-label={`Remove parent ${parent.display_name}`} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
+                  <button type="button" class="remove-relation" aria-label={$t('ui.tags.removeParent', { value1: parent.display_name })} disabled={busy} on:click={() => void removeParent(parent.id)}>×</button>
               </span>
             {/each}
           </div>
         {:else}
-          <p class="muted">No parent tags.</p>
+          <p class="muted">{$t('ui.tags.noParentTags')}</p>
         {/if}
 
 
-          <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable emptyLabel="Choose a parent tag..." label="Parent tag" disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
+          <TagSelect bind:value={parentChoice} options={parentOptions} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable emptyLabel={$t('ui.tagPicker.chooseAParentTag')} label={$t('ui.tagPicker.parentTag')} disabled={busy} on:change={(event) => void addParent(Number(event.detail))} on:create={(event) => startCreateParent(event.detail)} />
       </div>
 
       <div class="relationship-section">
         <div class="relationship-heading">
-          <strong>Direct children</strong>
+          <strong>{$t('ui.tags.directChildren')}</strong>
           <span>{selectedTag.children.length}</span>
         </div>
         {#if selectedTag.children.length}
@@ -480,43 +481,43 @@
             {/each}
           </div>
         {:else}
-          <p class="muted">No direct children.</p>
+          <p class="muted">{$t('ui.tags.noDirectChildren')}</p>
         {/if}
       </div>
 
 
         {#if mergeOpen}
-          <section class="merge-panel" aria-label="Merge tag">
+          <section class="merge-panel" aria-label={$t('ui.tags.mergeTag')}>
             <div class="relationship-heading">
-              <strong>Merge into…</strong>
-              <AppButton disabled={busy} on:click={cancelMerge}>Cancel</AppButton>
+              <strong>{$t('ui.tags.mergeInto')}</strong>
+              <AppButton disabled={busy} on:click={cancelMerge}>{$t('ui.blockTaskModal.cancel')}</AppButton>
             </div>
 
             <TagSelect
               bind:value={mergeDestinationId}
               options={mergeOptions.map((tag) => ({ tag }))}
-              emptyLabel="Choose destination tag…"
-              label="Merge destination tag"
+              emptyLabel={$t('ui.tags.chooseDestinationTag')}
+              label={$t('ui.tags.mergeDestinationTag')}
               disabled={busy || mergeLoading}
               on:change={() => void loadMergePreview()}
             />
 
             {#if mergeLoading}
-              <p class="muted">Checking merge…</p>
+              <p class="muted">{$t('ui.tags.checkingMerge')}</p>
             {:else if mergeError}
-              <p class="error merge-error" role="alert">{mergeError}</p>
+              <p class="error merge-error" role="alert">{$text(mergeError)}</p>
             {:else if mergePreview && mergeDestination}
               <div class="merge-summary">
-                <strong>Merge “{selectedTag.display_name}” into “{mergeDestination.display_name}”</strong>
-                <span>{mergePreview.task_assignments} task {mergePreview.task_assignments === 1 ? 'assignment' : 'assignments'} will move</span>
-                <span>{mergePreview.parent_relationships} parent {mergePreview.parent_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
-                <span>{mergePreview.child_relationships} child {mergePreview.child_relationships === 1 ? 'relationship' : 'relationships'} will move</span>
-                <span>“{selectedTag.display_name}” will be deleted</span>
+                <strong>{$t('ui.tags.mergeInto2', { value1: selectedTag.display_name, value2: mergeDestination.display_name })}</strong>
+                <span>{$t('ui.tags.taskWillMove', { count: mergePreview.task_assignments })}</span>
+                <span>{$t('ui.tags.parentWillMove', { count: mergePreview.parent_relationships })}</span>
+                <span>{$t('ui.tags.childWillMove', { count: mergePreview.child_relationships })}</span>
+                <span>{$t('ui.tags.willBeDeleted', { value1: selectedTag.display_name })}</span>
               </div>
               <div class="merge-actions">
-                <AppButton disabled={busy} on:click={cancelMerge}>Cancel</AppButton>
+                <AppButton disabled={busy} on:click={cancelMerge}>{$t('ui.blockTaskModal.cancel')}</AppButton>
                 <AppButton variant="danger" disabled={busy} on:click={() => void confirmMerge()}>
-                  {busy ? 'Merging…' : 'Merge tags'}
+                  {busy ? $t('ui.tags.merging') : $t('ui.tags.mergeTags')}
                 </AppButton>
               </div>
             {/if}
@@ -524,11 +525,11 @@
         {/if}
 
         <div class="danger-zone">
-          <AppButton disabled={busy || mergeOpen} on:click={startMerge}>Merge into…</AppButton>
-          <AppButton variant="danger" disabled={busy || mergeOpen} on:click={() => void remove()}>Delete tag</AppButton>
+          <AppButton disabled={busy || mergeOpen} on:click={startMerge}>{$t('ui.tags.mergeInto')}</AppButton>
+          <AppButton variant="danger" disabled={busy || mergeOpen} on:click={() => void remove()}>{$t('ui.tags.deleteTag')}</AppButton>
         </div>
     {:else}
-      <p class="empty">Select a tag to inspect it.</p>
+      <p class="empty">{$t('ui.tags.selectATagToInspectIt')}</p>
     {/if}
   </section>
 </div>

@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.i18n import localized
 from app.schemas import UtcDateTime
 
 PomodoroAlertMode = Literal["notification", "alarm"]
@@ -34,7 +35,7 @@ class NextScope(BaseModel):
     @model_validator(mode="after")
     def disjoint_tags(self) -> "NextScope":
         if set(self.include_tag_ids).intersection(self.exclude_tag_ids):
-            raise ValueError("A tag cannot be both included and excluded")
+            raise ValueError(localized("api.aTagCannotBeBothIncludedAndExcluded"))
         return self
 
 

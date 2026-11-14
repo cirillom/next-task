@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
+from app.i18n import localized
 from app.models import Tag, Task, User
 from app.pomodoro_models import PomodoroSession, PomodoroSettings
 from app.pomodoro_schemas import (
@@ -119,7 +120,7 @@ def _get_session(db: Session, user_id: int) -> PomodoroSession | None:
 def _require_session(db: Session, user_id: int) -> PomodoroSession:
     session = _get_session(db, user_id)
     if session is None:
-        raise HTTPException(status_code=404, detail="No active Pomodoro session")
+        raise HTTPException(status_code=404, detail=localized("api.noActivePomodoroSession"))
     return session
 
 
@@ -133,19 +134,21 @@ def _validate_scope(
     if tag_id is not None:
         tag = db.scalar(select(Tag).where(Tag.id == tag_id, Tag.user_id == user_id))
         if tag is None:
-            raise HTTPException(status_code=422, detail="Tag must belong to the user")
+            raise HTTPException(status_code=422, detail=localized("api.tagMustBelongToTheUser"))
     if scope:
         scoped_tag_ids = set(scope.include_tag_ids + scope.exclude_tag_ids)
         tags = db.scalars(select(Tag).where(Tag.id.in_(scoped_tag_ids))).all()
         if len(tags) != len(scoped_tag_ids) or any(tag.user_id != user_id for tag in tags):
-            raise HTTPException(status_code=422, detail="Session tags must belong to the user")
+            raise HTTPException(
+                status_code=422, detail=localized("api.sessionTagsMustBelongToTheUser")
+            )
     if task_id is not None:
         task = db.scalar(select(Task).where(Task.id == task_id, Task.user_id == user_id))
         if task is None:
-            raise HTTPException(status_code=422, detail="Task must belong to the user")
+            raise HTTPException(status_code=422, detail=localized("api.taskMustBelongToTheUser"))
         if task.abandoned_by_task_id is not None:
             raise HTTPException(
-                status_code=422, detail="Abandoned tasks cannot be selected for focus"
+                status_code=422, detail=localized("api.abandonedTasksCannotBeSelectedForFocus")
             )
 
 
@@ -248,7 +251,9 @@ def update_pomodoro_session_scope(
 ) -> PomodoroSessionRead:
     session = _require_session(db, user.id)
     if not _same_scope(_session_read(session, datetime.now(UTC)).scope, payload.expected_scope):
-        raise HTTPException(status_code=409, detail="Session scope changed on another device")
+        raise HTTPException(
+            status_code=409, detail=localized("api.sessionScopeChangedOnAnotherDevice")
+        )
     _validate_scope(db, user.id, None, None, payload.scope)
     previous_scope_json = session.scope_json
     scope_condition = (
@@ -263,7 +268,9 @@ def update_pomodoro_session_scope(
     )
     if result.rowcount != 1:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Session scope changed on another device")
+        raise HTTPException(
+            status_code=409, detail=localized("api.sessionScopeChangedOnAnotherDevice")
+        )
     db.commit()
     db.refresh(session)
     return _session_read(session, datetime.now(UTC))
@@ -294,7 +301,9 @@ def skip_pomodoro_period(
 ) -> PomodoroSessionRead:
     session = _require_session(db, user.id)
     if session.state == "ringing":
-        raise HTTPException(status_code=409, detail="Dismiss the alarm before continuing")
+        raise HTTPException(
+            status_code=409, detail=localized("api.dismissTheAlarmBeforeContinuing")
+        )
     _advance(session, _settings(db, user.id))
     db.commit()
     db.refresh(session)

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from './lib/i18n';
   import { onMount } from 'svelte';
   import { ApiError, api } from './lib/api/client';
   import type { NextScope, User } from './lib/api/types';
@@ -15,21 +16,24 @@
   import VerifyEmail from './pages/VerifyEmail.svelte';
   import PasswordRecovery from './pages/PasswordRecovery.svelte';
   import AcceptInvitation from './pages/AcceptInvitation.svelte';
+  import LanguageSelector from './lib/components/LanguageSelector.svelte';
+  import { setLanguage } from './lib/i18n';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
-  const nav: Array<{ id: Exclude<View, 'focus'>; label: string; icon: string }> = [
-    { id: 'next', label: 'Next', icon: '◆' },
-    { id: 'tasks', label: 'Tasks', icon: '☷' },
-    { id: 'drafts', label: 'Drafts', icon: '✎' },
-    { id: 'tags', label: 'Tags', icon: '#' },
-    { id: 'settings', label: 'Settings', icon: '⚙' }
+  let nav: Array<{ id: Exclude<View, 'focus'>; label: string; icon: string }>;
+  $: nav = [
+    { id: 'next', label: $t('ui.app.next'), icon: '◆' },
+    { id: 'tasks', label: $t('ui.app.tasks'), icon: '☷' },
+    { id: 'drafts', label: $t('ui.app.drafts'), icon: '✎' },
+    { id: 'tags', label: $t('ui.app.tags'), icon: '#' },
+    { id: 'settings', label: $t('ui.app.settings'), icon: '⚙' }
   ];
 
   let user: User | null = null;
   let view: View = 'next';
   let loading = true;
-  let error = '';
+  let error: Message = '';
   let editorTaskId: number | null = null;
   let editorBlockerTitle = '';
   let quickCaptureOpen = false;
@@ -51,6 +55,7 @@
   async function initialize() {
     try {
       user = await api.me();
+      setLanguage(user.language, false);
       if (view === 'focus') {
         const activeSession = await api.pomodoroSession();
         if (activeSession) {
@@ -59,7 +64,7 @@
       }
       await loadDraftCount();
     } catch (reason) {
-      if (!(reason instanceof ApiError) || reason.status !== 401) error = reason instanceof Error ? reason.message : 'Could not start Next Task';
+      if (!(reason instanceof ApiError) || reason.status !== 401) error = errorMessage(reason, 'ui.app.couldNotStartNextTask');
       user = null;
     } finally { loading = false; }
   }
@@ -121,7 +126,7 @@
       focusTaskVersion = 0;
       navigate('focus');
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not open the Pomodoro session';
+      error = errorMessage(reason, 'ui.app.couldNotOpenThePomodoroSession');
     }
   }
 
@@ -137,8 +142,9 @@
   });
 </script>
 
+{#if !user}<div class="signed-out-language"><LanguageSelector /></div>{/if}
 {#if loading}
-  <main class="splash"><div class="brand-mark">✓</div><h1>Next Task</h1><p>Opening your tasks…</p></main>
+  <main class="splash"><div class="brand-mark">✓</div><h1>{$t('ui.app.nextTask')}</h1><p>{$t('ui.app.openingYourTasks')}</p></main>
 {:else if accountView}
   {#key `${accountView}:${accountToken}`}
     {#if accountView === 'verify-email'}
@@ -150,7 +156,7 @@
     {/if}
   {/key}
 {:else if !user}
-  <Login on:authenticated={async (event) => { user = event.detail; await loadDraftCount(); }} />
+  <Login on:authenticated={async (event) => { user = event.detail; setLanguage(user.language, false); await loadDraftCount(); }} />
 {:else if view === 'focus'}
   <Focus
     taskVersion={focusTaskVersion}
@@ -162,12 +168,12 @@
 {:else}
   <div class="app-shell">
     <header class="topbar">
-      <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>Next Task</strong></button>
-      <AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>New task</span></AppButton>
-      <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>Sign out</AppButton></div>
+      <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>{$t('ui.app.nextTask')}</strong></button>
+      <AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>{$t('ui.app.newTask')}</span></AppButton>
+      <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>{$t('ui.app.signOut')}</AppButton></div>
     </header>
     <aside class="sidebar">
-      <nav aria-label="Primary navigation">
+      <nav aria-label={$t('ui.app.primaryNavigation')}>
         {#each nav as item}
           <button class:active={view === item.id} on:click={() => navigate(item.id)}>
             <span>{item.icon}</span>{item.label}
@@ -177,7 +183,7 @@
       </nav>
     </aside>
     <main class="content">
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error">{$text(error)}</p>{/if}
         {#key `${view}-${refreshKey}`}
           {#if view === 'next'}<Next userId={user.id} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
           {:else if view === 'tasks'}<Tasks on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} />
@@ -186,7 +192,7 @@
           {:else}<Settings {user} />{/if}
         {/key}
     </main>
-    <nav class="mobile-nav" aria-label="Primary navigation">
+    <nav class="mobile-nav" aria-label={$t('ui.app.primaryNavigation')}>
       {#each nav as item}
         <button class:active={view === item.id} on:click={() => navigate(item.id)}>
           <span class="mobile-nav-icon">{item.icon}{#if item.id === 'drafts' && draftCount > 0}<b>{draftCount}</b>{/if}</span>
@@ -214,6 +220,8 @@
 {/if}
 
 <style>
+  .signed-out-language { display: flex; justify-content: flex-end; padding: 1rem 1rem 0; }
+  .signed-out-language + :global(.login-page) { min-height: calc(100vh - 4rem); }
   :global(.new-task-button) { flex: 0 0 auto; white-space: nowrap; padding: .55rem .75rem; }
   .draft-count { margin-left: auto; min-width: 1.35rem; border-radius: 999px; background: #e9eee9; padding: .08rem .38rem; color: var(--forest-2); font-size: .68rem; font-weight: 800; text-align: center; }
   .mobile-nav-icon { position: relative; }

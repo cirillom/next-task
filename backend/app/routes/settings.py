@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
+from app.i18n import error_detail, localized
 from app.models import Task, User
 from app.schemas import ScoringSettings
 from app.services.scoring import (
@@ -33,7 +34,7 @@ def update_scoring_settings(
     try:
         validate_formula(payload.scoring_formula)
     except FormulaError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail=error_detail(error)) from error
     tasks = db.scalars(
         select(Task).where(
             Task.user_id == user.id,
@@ -50,7 +51,9 @@ def update_scoring_settings(
         except FormulaError as error:
             raise HTTPException(
                 status_code=422,
-                detail=f"Formula cannot score task #{task.id}: {error}",
+                detail=localized(
+                    "api.formulaCannotScoreTask", value1=task.id, value2=error_detail(error)
+                ),
             ) from error
     user.scoring_formula = payload.scoring_formula
     db.commit()

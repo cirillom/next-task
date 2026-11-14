@@ -9,13 +9,15 @@ import type {
   TaskInput,
   User
 } from './types';
+import { get } from 'svelte/store';
+import { locale, LocalizedError, message, type Language, type Message, type Values } from '../i18n';
 
-export class ApiError extends Error {
+export class ApiError extends LocalizedError {
   constructor(
-    message: string,
+    translation: Message,
     public status: number
   ) {
-    super(message);
+    super(translation);
   }
 }
 
@@ -29,20 +31,32 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     }
   });
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let detailMessage: Message = message('api.httpError', { status: response.status });
     try {
       const body = await response.json();
       const detail = body.detail;
-      if (typeof detail === 'string') message = detail;
-      else if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') {
-        message = detail[0].msg.replace(/^Value error, /, '');
-      }
+      const problem = Array.isArray(detail) ? detail[0] : body;
+      if (typeof problem?.code === 'string') detailMessage = message(problem.code, problem.params);
     } catch {
       // Keep the status-based message for non-JSON failures.
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(detailMessage, response.status);
   }
-  return (response.status === 204 ? undefined : await response.json()) as T;
+  const data = response.status === 204 ? undefined : await response.json();
+  return localizeResponse(data) as T;
+}
+
+function localizeResponse(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(localizeResponse);
+  if (!value || typeof value !== 'object') return value;
+  const data = value as Record<string, unknown>;
+  if (typeof data.message === 'string' && typeof data.code === 'string') {
+    data.message = message(data.code, data.params as Values);
+  }
+  if (typeof data.scoring_warning === 'string' && typeof data.scoring_warning_code === 'string') {
+    data.scoring_warning = message(data.scoring_warning_code, data.scoring_warning_params as Values);
+  }
+  return value;
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({
@@ -52,10 +66,11 @@ const json = (method: string, body?: unknown): RequestInit => ({
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
+  updateLanguage: (language: Language) => request<User>('/api/auth/language', json('PUT', { language })),
   login: (email: string, password: string) =>
     request<User>('/api/auth/login', json('POST', { email, password })),
   acceptInvitation: (token: string, display_name: string, password: string) =>
-    request<{ message: string }>('/api/auth/invitations/accept', json('POST', { token, display_name, password })),
+    request<{ message: Message }>('/api/auth/invitations/accept', json('POST', { token, display_name, password, language: get(locale) })),
   logout: () => request('/api/auth/logout', json('POST')),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),
@@ -63,11 +78,11 @@ export const api = {
   requestEmail: (email: string, current_password: string) =>
     request<EmailStatus>('/api/auth/email', json('POST', { email, current_password })),
   verifyEmail: (token: string) =>
-    request<{ message: string }>('/api/auth/email/verify', json('POST', { token })),
+    request<{ message: Message }>('/api/auth/email/verify', json('POST', { token })),
   requestPasswordReset: (email: string) =>
-    request<{ message: string }>('/api/auth/forgot-password', json('POST', { email })),
+    request<{ message: Message }>('/api/auth/forgot-password', json('POST', { email })),
   resetPassword: (token: string, new_password: string) =>
-    request<{ message: string }>('/api/auth/reset-password', json('POST', { token, new_password })),
+    request<{ message: Message }>('/api/auth/reset-password', json('POST', { token, new_password })),
 
   pomodoroSettings: () => request<PomodoroSettings>('/api/pomodoro/settings'),
   updatePomodoroSettings: (body: PomodoroSettings) =>

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
+from app.i18n import localized
 from app.models import Tag, TagRelationship, TaskTag, User
 from app.schemas import (
     TagCreate,
@@ -34,7 +35,7 @@ def lock_tag_writes(db: Session) -> None:
 def get_tag(db: Session, user_id: int, tag_id: int) -> Tag:
     tag = db.get(Tag, tag_id)
     if tag is None or tag.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Tag not found")
+        raise HTTPException(status_code=404, detail=localized("api.tagNotFound"))
     return tag
 
 
@@ -47,16 +48,12 @@ def tag_name_conflicts(
 ) -> bool:
     scope = parent_ids or {None}
     excluded = exclude_ids or set()
-    for tag_id, existing_name in db.execute(
-        select(Tag.id, Tag.name).where(Tag.user_id == user_id)
-    ):
+    for tag_id, existing_name in db.execute(select(Tag.id, Tag.name).where(Tag.user_id == user_id)):
         if tag_id in excluded or existing_name.casefold() != name.casefold():
             continue
         existing_parents = set(
             db.scalars(
-                select(TagRelationship.parent_tag_id).where(
-                    TagRelationship.child_tag_id == tag_id
-                )
+                select(TagRelationship.parent_tag_id).where(TagRelationship.child_tag_id == tag_id)
             ).all()
         )
         if scope.intersection(existing_parents or {None}):
@@ -70,7 +67,7 @@ def merge_plan(
     destination: Tag,
 ) -> tuple[TagMergePreview, set[int], set[tuple[int, int]]]:
     if source.id == destination.id:
-        raise HTTPException(status_code=422, detail="A tag cannot be merged into itself")
+        raise HTTPException(status_code=422, detail=localized("api.aTagCannotBeMergedIntoItself"))
 
     user_tag_ids = set(db.scalars(select(Tag.id).where(Tag.user_id == source.user_id)).all())
     relationships = {
@@ -108,7 +105,7 @@ def merge_plan(
         if tag_id in visiting:
             raise HTTPException(
                 status_code=422,
-                detail="Merge would create a tag hierarchy cycle",
+                detail=localized("api.mergeWouldCreateATagHierarchyCycle"),
             )
         if tag_id in visited:
             return
@@ -121,9 +118,7 @@ def merge_plan(
     for tag_id in user_tag_ids - {source.id}:
         visit(tag_id)
 
-    names = dict(
-        db.execute(select(Tag.id, Tag.name).where(Tag.user_id == source.user_id)).all()
-    )
+    names = dict(db.execute(select(Tag.id, Tag.name).where(Tag.user_id == source.user_id)).all())
     occupied: set[tuple[int | None, str]] = set()
     for tag_id in user_tag_ids - {source.id}:
         scopes = parents_by_child.get(tag_id) or {None}
@@ -131,7 +126,7 @@ def merge_plan(
             key = (parent_id, names[tag_id].casefold())
             if key in occupied:
                 raise HTTPException(
-                    status_code=422, detail="Merge would duplicate a sibling tag name"
+                    status_code=422, detail=localized("api.mergeWouldDuplicateASiblingTagName")
                 )
             occupied.add(key)
 
@@ -205,7 +200,9 @@ def create_tag(
         get_tag(db, user.id, payload.parent_tag_id) if payload.parent_tag_id is not None else None
     )
     if tag_name_conflicts(db, user.id, payload.name, {parent.id} if parent else set()):
-        raise HTTPException(status_code=409, detail="Tag name already exists under this parent")
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagNameAlreadyExistsUnderThisParent")
+        )
     tag = Tag(
         user_id=user.id,
         **payload.model_dump(exclude={"parent_tag_id"}),
@@ -219,7 +216,9 @@ def create_tag(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Tag could not be created") from error
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagCouldNotBeCreated")
+        ) from error
     db.refresh(tag)
     return tag_read(db, tag)
 
@@ -241,14 +240,18 @@ def update_tag(
     if payload.name is not None and tag_name_conflicts(
         db, user.id, payload.name, parent_ids, {tag_id}
     ):
-        raise HTTPException(status_code=409, detail="Tag name already exists under this parent")
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagNameAlreadyExistsUnderThisParent")
+        )
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(tag, key, value)
     try:
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Tag could not be updated") from error
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagCouldNotBeUpdated")
+        ) from error
     return tag_read(db, tag)
 
 
@@ -297,7 +300,9 @@ def merge_tag(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Tag merge could not be completed") from error
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagMergeCouldNotBeCompleted")
+        ) from error
 
     db.refresh(destination)
     return tag_read(db, destination)
@@ -324,12 +329,14 @@ def delete_tag(
             )
         )
         child = db.get(Tag, child_id)
-        if other_parent is None and child is not None and tag_name_conflicts(
-            db, user.id, child.name, set(), {tag_id, child_id}
+        if (
+            other_parent is None
+            and child is not None
+            and tag_name_conflicts(db, user.id, child.name, set(), {tag_id, child_id})
         ):
             raise HTTPException(
                 status_code=409,
-                detail="Deleting this tag would duplicate a root tag name",
+                detail=localized("api.deletingThisTagWouldDuplicateARootTagName"),
             )
     db.delete(tag)
     db.commit()
@@ -348,13 +355,17 @@ def add_parent(
     parent = get_tag(db, user.id, payload.parent_tag_id)
     validate_relationship(db, child, parent)
     if tag_name_conflicts(db, user.id, child.name, {parent.id}, {child.id}):
-        raise HTTPException(status_code=409, detail="Tag name already exists under this parent")
+        raise HTTPException(
+            status_code=409, detail=localized("api.tagNameAlreadyExistsUnderThisParent")
+        )
     db.add(TagRelationship(child_tag_id=child.id, parent_tag_id=parent.id))
     try:
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Relationship already exists") from error
+        raise HTTPException(
+            status_code=409, detail=localized("api.relationshipAlreadyExists")
+        ) from error
     return tag_read(db, child)
 
 
@@ -369,7 +380,7 @@ def remove_parent(
     child = get_tag(db, user.id, tag_id)
     relationship = db.get(TagRelationship, (tag_id, parent_tag_id))
     if relationship is None:
-        raise HTTPException(status_code=404, detail="Relationship not found")
+        raise HTTPException(status_code=404, detail=localized("api.relationshipNotFound"))
     other_parent = db.scalar(
         select(TagRelationship.parent_tag_id).where(
             TagRelationship.child_tag_id == tag_id,
@@ -379,7 +390,7 @@ def remove_parent(
     if other_parent is None and tag_name_conflicts(db, user.id, child.name, set(), {tag_id}):
         raise HTTPException(
             status_code=409,
-            detail="Removing this parent would duplicate a root tag name",
+            detail=localized("api.removingThisParentWouldDuplicateARootTagName"),
         )
     db.delete(relationship)
     db.commit()

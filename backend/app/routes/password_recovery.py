@@ -15,6 +15,7 @@ from app.auth.rate_limit import ip_key, purge_expired_attempts, reserve_window_a
 from app.auth.security import hash_token, normalize_email, replace_password
 from app.config import get_settings
 from app.database import SessionLocal, get_db
+from app.i18n import DEFAULT_LANGUAGE, Language, localized, translate
 from app.models import PasswordReset, User
 from app.schemas import Message, PasswordResetConfirm, PasswordResetRequest
 from app.services.mail import MailDeliveryError, public_app_url, send_email
@@ -26,10 +27,8 @@ RESET_WINDOW = timedelta(minutes=15)
 RESET_IP_LIMIT = 10
 RESET_EMAIL_LIMIT = 3
 RESET_TOKEN_LIMIT = 10
-RESET_REQUESTED = (
-    "If this address belongs to a verified account, you'll receive a password reset link."
-)
-INVALID_RESET = "This reset link is invalid or expired. Request a new link."
+RESET_REQUESTED = localized("api.ifThisAddressBelongsToAVerifiedAccountYou")
+INVALID_RESET = localized("api.thisResetLinkIsInvalidOrExpiredRequestA")
 
 
 def credential_hash(user: User) -> str:
@@ -47,13 +46,11 @@ def send_reset_link(email: str) -> None:
                 return
             token = secrets.token_urlsafe(32)
             fingerprint = credential_hash(user)
-            link = f"{public_app_url()}/#/reset-password?token={token}"
+            link = f"{public_app_url()}/#/reset-password?token={token}&lang={user.language}"
             send_email(
                 email,
-                "Reset your Next Task password",
-                "Use this link to choose a new password. It expires in 30 minutes and works once. "
-                "If you did not request this, ignore this email.\n\n"
-                f"{link}\n",
+                translate("mail.resetSubject", user.language),
+                translate("mail.resetBody", user.language, link=link),
             )
             # Persist only after SMTP accepts the message. Failed delivery keeps the old link.
             insert = postgres_insert if db.bind.dialect.name == "postgresql" else sqlite_insert
@@ -78,13 +75,12 @@ def send_reset_link(email: str) -> None:
         logger.error("Password reset delivery failed (%s)", type(error).__name__)
 
 
-def notify_password_reset(email: str) -> None:
+def notify_password_reset(email: str, language: Language = DEFAULT_LANGUAGE) -> None:
     try:
         send_email(
             email,
-            "Your Next Task password was changed",
-            "Your password was reset and all devices were signed out. "
-            "If you did not make this change, contact your Next Task administrator.\n",
+            translate("mail.changedSubject", language),
+            translate("mail.changedBody", language),
         )
     except (ValueError, MailDeliveryError) as error:
         logger.error("Password reset notification failed (%s)", type(error).__name__)
@@ -99,7 +95,9 @@ def limit_ip(db: Session, request: Request, action: str, now: datetime, limit: i
         )
         is None
     ):
-        raise HTTPException(status_code=429, detail="Too many recovery attempts. Try again later.")
+        raise HTTPException(
+            status_code=429, detail=localized("api.tooManyRecoveryAttemptsTryAgainLater")
+        )
 
 
 @router.post("/forgot-password", response_model=Message, status_code=202)
@@ -157,5 +155,5 @@ def reset_password(
     replace_password(db, user, payload.new_password)
     db.commit()
     response.delete_cookie(get_settings().session_cookie_name, path="/")
-    background.add_task(notify_password_reset, user.email)
-    return Message(message="Password changed. Sign in with your new password.")
+    background.add_task(notify_password_reset, user.email, user.language)
+    return Message(message=localized("api.passwordChangedSignInWithYourNewPassword"))

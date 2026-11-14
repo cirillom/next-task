@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
+from app.i18n import localized
 from app.models import Task, User
 from app.routes.tasks import apply_task_relations, task_read
 from app.schemas import TaskRead, TaskUpdate
@@ -22,7 +23,7 @@ class DraftCreate(TaskUpdate):
     def clean_title(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Value cannot be blank")
+            raise ValueError(localized("api.valueCannotBeBlank"))
         return cleaned
 
 

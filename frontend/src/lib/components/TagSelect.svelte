@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { TagSummary } from '../api/types';
   import TagBadge from './TagBadge.svelte';
@@ -7,9 +8,9 @@
   export let options: { tag: TagSummary; depth?: number; context?: string }[] = [];
   export let value: number | '' = 0;
   export let emptyValue: number | '' = 0;
-  export let emptyLabel = 'Choose a tag';
+  export let emptyLabel = 'ui.tagSelect.chooseATag';
   export let disabled = false;
-  export let label = 'Tag';
+  export let label = 'ui.tagSelect.tag';
   export let searchable = false;
   export let allowCreate = true;
   export let existingNames: string[] | null = null;
@@ -85,10 +86,10 @@
   {#if searchable}
     <TextField
       value={dirty ? search : (selectedOption?.tag.display_name || '')}
-      placeholder={emptyLabel}
+      placeholder={$text(emptyLabel)}
       autocomplete="off"
       role="combobox"
-      aria-label={label}
+      aria-label={$text(label)}
       aria-autocomplete="list"
       aria-expanded={open}
       {disabled}
@@ -99,15 +100,15 @@
       on:keydown={(event) => { if (event.key === 'Escape') closeSearch(); if (event.key === 'Enter') event.preventDefault(); }}
     />
   {:else}
-    <button type="button" class="tag-select-trigger" {disabled} aria-label={label} aria-expanded={open} aria-haspopup="listbox" on:click={() => (open = !open)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>
-      {#if selectedOption}<span class="option-copy"><TagBadge tag={selectedOption.tag} />{#if selectedOption.context && selectedOption.context !== selectedOption.tag.name}<small>{selectedOption.context}</small>{/if}</span>{:else}<span>{emptyLabel}</span>{/if}
+    <button type="button" class="tag-select-trigger" {disabled} aria-label={$text(label)} aria-expanded={open} aria-haspopup="listbox" on:click={() => (open = !open)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>
+      {#if selectedOption}<span class="option-copy"><TagBadge tag={selectedOption.tag} />{#if selectedOption.context && selectedOption.context !== selectedOption.tag.name}<small>{selectedOption.context}</small>{/if}</span>{:else}<span>{$text(emptyLabel)}</span>{/if}
       <span aria-hidden="true">⌄</span>
     </button>
   {/if}
   {#if open && !disabled}
-    <div class="tag-select-options" class:search-options={searchable} role="listbox" aria-label={label}>
+    <div class="tag-select-options" class:search-options={searchable} role="listbox" aria-label={$text(label)}>
       {#if !searchable}
-        <button type="button" role="option" aria-selected={value === emptyValue} class:chosen={value === emptyValue} on:click={() => choose(emptyValue)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>{emptyLabel}</button>
+        <button type="button" role="option" aria-selected={value === emptyValue} class:chosen={value === emptyValue} on:click={() => choose(emptyValue)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>{$text(emptyLabel)}</button>
       {/if}
       {#each filteredOptions as option}
         <button type="button" role="option" aria-selected={value === option.tag.id} class:chosen={value === option.tag.id} style:--depth={`${option.depth || 0}rem`} on:mousedown={keepSearchFocus} on:click={() => choose(option.tag.id)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>
@@ -115,9 +116,9 @@
         </button>
       {/each}
       {#if canCreate}
-        <button type="button" on:mousedown={keepSearchFocus} on:click={create}>+ Create “{search.trim()}”</button>
+        <button type="button" on:mousedown={keepSearchFocus} on:click={create}>{$t('ui.tagSelect.create', { value1: search.trim() })}</button>
       {:else if searchable && !filteredOptions.length}
-        <span class="tag-select-empty">No matching tags</span>
+        <span class="tag-select-empty">{$t('ui.tagPicker.noMatchingTags')}</span>
       {/if}
     </div>
   {/if}

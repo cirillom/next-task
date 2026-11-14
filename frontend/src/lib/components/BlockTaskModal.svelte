@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { api } from '../api/client';
   import type { Block, TaskSummary } from '../api/types';
@@ -152,25 +153,25 @@
   <section class="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title">
     <header class="block-modal__header">
       <div>
-        <p class="eyebrow">Task blocking</p>
-        <h1 id="block-modal-title">{reblockMode ? 'Reblock task' : 'Block task'}</h1>
+        <p class="eyebrow">{$t('ui.blockTaskModal.taskBlocking')}</p>
+        <h1 id="block-modal-title">{reblockMode ? $t('ui.blockTaskModal.reblockTask') : $t('ui.blockTaskModal.blockTask')}</h1>
         <p class="task-title">{taskTitle}</p>
       </div>
-      <button type="button" class="icon-button" aria-label="Close" disabled={busy} on:click={close}>×</button>
+      <button type="button" class="icon-button" aria-label={$t('ui.blockTaskModal.close')} disabled={busy} on:click={close}>×</button>
     </header>
 
     <form on:submit|preventDefault={submit}>
       <div class="block-modal__body">
       {#if blocker}
-        <div class="selected-blocker"><strong>{blocker.title} #{blocker.id}</strong><AppButton disabled={busy} on:click={() => (blocker = null)}>Remove</AppButton></div>
+        <div class="selected-blocker"><strong>{blocker.title} #{blocker.id}</strong><AppButton disabled={busy} on:click={() => (blocker = null)}>{$t('ui.blockTaskModal.remove')}</AppButton></div>
       {:else}
         <div class="reason-field">
-          <label for="blocking-reason">Blocking reason</label>
+          <label for="blocking-reason">{$t('ui.blockTaskModal.blockingReason')}</label>
           <TextArea
             id="blocking-reason"
             bind:value={reason}
             rows="4"
-            placeholder="What is preventing this task from moving forward? Type # to find a task."
+            placeholder={$t('ui.blockTaskModal.whatIsPreventingThisTaskFromMovingForward')}
             disabled={busy}
             readonly={reblockMode}
             required
@@ -189,24 +190,24 @@
             />
           {/if}
         </div>
-        <p class="help">This reason stays in the task's blocking history after the task is unblocked.</p>
+        <p class="help">{$t('ui.blockTaskModal.thisReasonStaysInTheTaskSBlocking')}</p>
 
-      <section class="auto-unblock-section" aria-label="Auto-unblock">
+      <section class="auto-unblock-section" aria-label={$t('ui.blockTaskModal.autoUnblock')}>
         <div class="auto-unblock-heading">
-          <strong>Auto-unblock</strong>
-          <span>Optional</span>
+          <strong>{$t('ui.blockTaskModal.autoUnblock')}</strong>
+          <span>{$t('ui.blockTaskModal.optional')}</span>
         </div>
         <div class="preset-row">
-          <button type="button" class:active={autoUnblockChoice === 'tomorrow'} disabled={busy} on:click={() => chooseAutoUnblock('tomorrow')}>Tomorrow</button>
-          <button type="button" class:active={autoUnblockChoice === 'three-days'} disabled={busy} on:click={() => chooseAutoUnblock('three-days')}>In 3 days</button>
-          <button type="button" class:active={autoUnblockChoice === 'week'} disabled={busy} on:click={() => chooseAutoUnblock('week')}>Next week</button>
-          <button type="button" class:active={autoUnblockChoice === 'custom'} disabled={busy} on:click={() => chooseAutoUnblock('custom')}>Pick date</button>
-          <button type="button" class:active={autoUnblockChoice === 'none'} disabled={busy} on:click={() => chooseAutoUnblock('none')}>No auto-unblock</button>
+          <button type="button" class:active={autoUnblockChoice === 'tomorrow'} disabled={busy} on:click={() => chooseAutoUnblock('tomorrow')}>{$t('ui.blockTaskModal.tomorrow')}</button>
+          <button type="button" class:active={autoUnblockChoice === 'three-days'} disabled={busy} on:click={() => chooseAutoUnblock('three-days')}>{$t('ui.blockTaskModal.in3Days')}</button>
+          <button type="button" class:active={autoUnblockChoice === 'week'} disabled={busy} on:click={() => chooseAutoUnblock('week')}>{$t('ui.blockTaskModal.nextWeek')}</button>
+          <button type="button" class:active={autoUnblockChoice === 'custom'} disabled={busy} on:click={() => chooseAutoUnblock('custom')}>{$t('ui.blockTaskModal.pickDate')}</button>
+          <button type="button" class:active={autoUnblockChoice === 'none'} disabled={busy} on:click={() => chooseAutoUnblock('none')}>{$t('ui.blockTaskModal.noAutoUnblock')}</button>
         </div>
 
         {#if autoUnblockChoice === 'custom'}
           <label class="auto-unblock-field">
-            <span>Auto-unblock at</span>
+            <span>{$t('ui.blockTaskModal.autoUnblockAt')}</span>
             <DateTimeInput
               bind:this={autoUnblockInput}
               includeTime
@@ -217,14 +218,14 @@
             />
           </label>
         {:else if autoUnblockAt}
-          <p class="selected-auto-unblock">Auto-unblocks {formatDateTime(new Date(autoUnblockAt).toISOString())}</p>
+          <p class="selected-auto-unblock">{$t('ui.blockTaskModal.autoUnblocks', { value1: formatDateTime(new Date(autoUnblockAt).toISOString()) })}</p>
         {/if}
       </section>
 
       <section class="history-section" aria-labelledby="blocking-history-title">
         <div class="history-heading">
-          <h2 id="blocking-history-title">Blocking history</h2>
-          <span>{history.length} {history.length === 1 ? 'entry' : 'entries'}</span>
+          <h2 id="blocking-history-title">{$t('ui.blockTaskModal.blockingHistory')}</h2>
+          <span>{$t('ui.blockTaskModal.historyCount', {count: history.length})}</span>
         </div>
 
         {#if history.length}
@@ -241,17 +242,17 @@
                         disabled={busy}
                         on:click={() => prepareReblock(block)}
                       >
-                        Reblock with this reason
+                        {$t('ui.blockTaskModal.reblockWithThisReason')}
                       </button>
                     {/if}
                     {#if isActive(block)}
-                      <AppButton disabled={busy} on:click={() => dispatch('unblock', block.id)}>Unblock</AppButton>
+                      <AppButton disabled={busy} on:click={() => dispatch('unblock', block.id)}>{$t('ui.blockTaskModal.unblock')}</AppButton>
                     {:else}
                       <button
                         type="button"
                         class="trash-button"
-                        aria-label="Delete blocking reason"
-                        title="Delete blocking reason"
+                        aria-label={$t('ui.blockTaskModal.deleteBlockingReason')}
+                        title={$t('ui.blockTaskModal.deleteBlockingReason')}
                         disabled={busy}
                         on:click={() => deleteBlock(block.id)}
                       >
@@ -262,33 +263,33 @@
                     {/if}
                   </div>
                 </div>
-                <span>Blocked {formatDateTime(block.blocked_at)}</span>
+                <span>{$t('ui.blockTaskModal.blocked', { value1: formatDateTime(block.blocked_at) })}</span>
                 <span>
                   {#if !block.unblocked_at}
-                    Currently active
+                    {$t('ui.blockTaskModal.currentlyActive')}
                   {:else if isActive(block)}
-                    Auto-unblocks {formatDateTime(block.unblocked_at)}
+                    {$t('ui.blockTaskModal.autoUnblocks', { value1: formatDateTime(block.unblocked_at) })}
                   {:else}
-                    Unblocked {formatDateTime(block.unblocked_at)}
+                    {$t('ui.blockTaskModal.unblocked', { value1: formatDateTime(block.unblocked_at) })}
                   {/if}
                 </span>
               </li>
             {/each}
           </ol>
         {:else}
-          <p class="history-empty">This task has not been blocked before.</p>
+          <p class="history-empty">{$t('ui.blockTaskModal.thisTaskHasNotBeenBlockedBefore')}</p>
         {/if}
       </section>
       {/if}
       </div>
 
       <footer class="block-modal__actions">
-        <AppButton disabled={busy} on:click={close}>Cancel</AppButton>
+        <AppButton disabled={busy} on:click={close}>{$t('ui.blockTaskModal.cancel')}</AppButton>
         <AppButton type="submit" variant="primary" disabled={busy || (!reason.trim() && !blocker)}>
           {#if busy}
-            {reblockMode ? 'Reblocking…' : 'Blocking…'}
+            {reblockMode ? $t('ui.blockTaskModal.reblocking') : $t('ui.blockTaskModal.blocking')}
           {:else}
-            {reblockMode ? 'Reblock task' : 'Block task'}
+            {reblockMode ? $t('ui.blockTaskModal.reblockTask') : $t('ui.blockTaskModal.blockTask')}
           {/if}
         </AppButton>
       </footer>

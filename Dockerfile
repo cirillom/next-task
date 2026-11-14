@@ -4,6 +4,7 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ ./
+COPY backend/app/locales/ /build/backend/app/locales/
 RUN npm run check && npm run build
 
 FROM python:3.12-slim AS runtime

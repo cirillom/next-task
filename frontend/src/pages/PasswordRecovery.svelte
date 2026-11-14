@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, message, errorMessage, type Message } from '../lib/i18n';
   import { ApiError, api } from '../lib/api/client';
   import AppButton from '../lib/components/AppButton.svelte';
   import PasswordField from '../lib/components/PasswordField.svelte';
@@ -14,13 +15,13 @@
   let busy = false;
   let complete = false;
   let invalidLink = false;
-  let error = '';
-  let notice = '';
+  let error: Message = '';
+  let notice: Message = '';
 
   async function submit() {
     error = notice = '';
     if (reset && password !== confirmation) {
-      error = 'New passwords do not match.';
+      error = message('ui.passwordRecovery.newPasswordsDoNotMatch');
       return;
     }
     busy = true;
@@ -35,7 +36,7 @@
         history.replaceState(null, '', '#/');
       }
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not reset password';
+      error = errorMessage(reason, 'ui.passwordRecovery.couldNotResetPassword');
       invalidLink = reset && reason instanceof ApiError && reason.status === 400;
     } finally {
       busy = false;
@@ -48,33 +49,33 @@
 <main class="login-page">
   <section class="login-card">
     <div class="brand-mark">✓</div>
-    <h1>{reset ? 'Choose a new password' : 'Forgot your password?'}</h1>
+    <h1>{reset ? $t('ui.passwordRecovery.chooseANewPassword') : $t('ui.passwordRecovery.forgotYourPassword')}</h1>
     {#if complete}
-      <p class="notice" role="status">{notice}</p>
+      <p class="notice" role="status">{$text(notice)}</p>
     {:else if reset && (!token || invalidLink)}
-      <p class="error" role="alert">{error || 'This reset link is invalid. Request a new link.'}</p>
-      <p><a href="#/forgot-password">Request a new reset link</a></p>
+      <p class="error" role="alert">{$text(error) || $t('ui.passwordRecovery.thisResetLinkIsInvalidRequestANew')}</p>
+      <p><a href="#/forgot-password">{$t('ui.passwordRecovery.requestANewResetLink')}</a></p>
     {:else}
       <p class="muted">
         {reset
-          ? 'Use at least 10 characters. All devices will be signed out after the reset.'
-          : 'Enter the verified email for your account to request a reset link.'}
+          ? $t('ui.passwordRecovery.useAtLeast10CharactersAllDevicesWill')
+          : $t('ui.passwordRecovery.enterTheVerifiedEmailForYourAccountTo')}
       </p>
       <form on:submit|preventDefault={submit}>
         {#if reset}
-          <PasswordField id="reset-password" label="New password" bind:value={password} minlength={10} maxlength={1024} autocomplete="new-password" required />
-          <PasswordField id="reset-confirmation" label="Confirm new password" bind:value={confirmation} minlength={10} maxlength={1024} autocomplete="new-password" required />
+          <PasswordField id="reset-password" label={$t('ui.passwordRecovery.newPassword')} bind:value={password} minlength={10} maxlength={1024} autocomplete="new-password" required />
+          <PasswordField id="reset-confirmation" label={$t('ui.passwordRecovery.confirmNewPassword')} bind:value={confirmation} minlength={10} maxlength={1024} autocomplete="new-password" required />
         {:else}
-          <label>Email address<TextField type="email" bind:value={email} maxlength={320} autocomplete="email" required /></label>
+          <label>{$t('ui.accountSettings.emailAddress')}<TextField type="email" bind:value={email} maxlength={320} autocomplete="email" required /></label>
         {/if}
-        {#if error}<p class="error" role="alert">{error}</p>{/if}
-        {#if notice}<p class="notice" role="status">{notice}</p>{/if}
+        {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
+        {#if notice}<p class="notice" role="status">{$text(notice)}</p>{/if}
         <AppButton type="submit" variant="primary" disabled={busy}>
-          {busy ? (reset ? 'Saving…' : 'Sending…') : (reset ? 'Reset password' : 'Send reset link')}
+          {busy ? (reset ? $t('ui.geminiSettings.saving') : $t('ui.accountSettings.sending')) : (reset ? $t('ui.passwordRecovery.resetPassword') : $t('ui.passwordRecovery.sendResetLink'))}
         </AppButton>
       </form>
     {/if}
-    <p class="back-link"><a href="/#/" on:click|preventDefault={() => reloadApp()}>Back to sign in</a></p>
+    <p class="back-link"><a href="/#/" on:click|preventDefault={() => reloadApp()}>{$t('ui.acceptInvitation.backToSignIn')}</a></p>
   </section>
 </main>
 

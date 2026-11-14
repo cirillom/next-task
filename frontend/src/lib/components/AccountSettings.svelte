@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../i18n';
   import { onMount } from 'svelte';
   import { api } from '../api/client';
   import type { EmailStatus, User } from '../api/types';
@@ -10,7 +11,7 @@
   let status: EmailStatus | null = null;
   let email = user.email;
   let password = '';
-  let error = '';
+  let error: Message = '';
   let busy = false;
   $: emailChanged = email.trim().toLowerCase() !== user.email.toLowerCase();
   $: emailVerified = status?.verified ?? false;
@@ -20,7 +21,7 @@
       status = await api.emailStatus();
       email = status.pending_email ?? user.email;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load email status';
+      error = errorMessage(reason, 'ui.accountSettings.couldNotLoadEmailStatus');
     }
   });
 
@@ -31,7 +32,7 @@
       status = await api.requestEmail(email, password);
       password = '';
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not send the verification email';
+      error = errorMessage(reason, 'ui.accountSettings.couldNotSendTheVerificationEmail');
     } finally {
       busy = false;
     }
@@ -40,34 +41,34 @@
 
 <section class="panel account-panel">
   <div class="account-heading">
-    <div><p class="eyebrow">Your account</p><h2>Profile and email</h2></div>
+    <div><p class="eyebrow">{$t('ui.accountSettings.yourAccount')}</p><h2>{$t('ui.accountSettings.profileAndEmail')}</h2></div>
     {#if status}
       <span class:verified={emailVerified} class="email-status">
-        {emailVerified ? 'Email verified' : 'Email not verified'}
+        {emailVerified ? $t('ui.accountSettings.emailVerified') : $t('ui.accountSettings.emailNotVerified')}
       </span>
     {/if}
   </div>
-  <div class="profile-name"><span>Name</span><strong>{user.display_name}</strong></div>
+  <div class="profile-name"><span>{$t('ui.accountSettings.name')}</span><strong>{user.display_name}</strong></div>
   {#if status?.pending_email}
     <div class="pending-email" role="status">
-      <strong>Check your inbox</strong>
-      <span>A verification link was sent to {status.pending_email}. It expires in 24 hours.{status.pending_email !== user.email ? ' Your current email stays active until you confirm the new one.' : ''}</span>
+      <strong>{$t('ui.accountSettings.checkYourInbox')}</strong>
+      <span>{$t('ui.accountSettings.verificationPending', {email: status.pending_email, changed: status.pending_email !== user.email ? "yes" : "no"})}</span>
     </div>
   {/if}
   <form novalidate on:submit|preventDefault={sendVerification}>
-    <label>Email address<TextField type="email" inputmode="email" bind:value={email} autocomplete="email" required /></label>
+    <label>{$t('ui.accountSettings.emailAddress')}<TextField type="email" inputmode="email" bind:value={email} autocomplete="email" required /></label>
     <p class="email-help">
       {#if emailChanged}
-        We’ll send a link to this address. It becomes your sign-in email after verification.
+        {$t('ui.accountSettings.weLlSendALinkToThisAddress')}
       {:else if emailVerified}
-        This is your verified sign-in email. Enter a new address above to change it.
+        {$t('ui.accountSettings.thisIsYourVerifiedSignInEmailEnter')}
       {:else}
-        Verify this address to use it for future account recovery.
+        {$t('ui.accountSettings.verifyThisAddressToUseItForFuture')}
       {/if}
     </p>
-    <PasswordField id="email-current-password" label="Current password" bind:value={password} autocomplete="current-password" required />
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <AppButton type="submit" variant="primary" disabled={busy || (!emailChanged && emailVerified)}>{busy ? 'Sending…' : emailChanged ? 'Send change link' : 'Verify email'}</AppButton>
+    <PasswordField id="email-current-password" label={$t('ui.accountSettings.currentPassword')} bind:value={password} autocomplete="current-password" required />
+    {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
+    <AppButton type="submit" variant="primary" disabled={busy || (!emailChanged && emailVerified)}>{busy ? $t('ui.accountSettings.sending') : emailChanged ? $t('ui.accountSettings.sendChangeLink') : $t('ui.accountSettings.verifyEmail')}</AppButton>
   </form>
 </section>
 

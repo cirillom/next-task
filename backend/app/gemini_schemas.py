@@ -2,6 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.i18n import localized
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -39,7 +41,7 @@ class TextToTaskRequest(StrictModel):
     def clean_text(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Text cannot be blank")
+            raise ValueError(localized("api.textCannotBeBlank"))
         return cleaned
 
 
@@ -55,7 +57,7 @@ class GeneratedTask(StrictModel):
     def clean_required(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Value cannot be blank")
+            raise ValueError(localized("api.valueCannotBeBlank"))
         return cleaned
 
 

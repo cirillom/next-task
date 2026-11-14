@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import { localDateTime } from '../lib/format';
@@ -25,7 +26,7 @@
   let busy = false;
   let blockModalOpen = false;
   let completionTarget: TaskSummary | null = null;
-  let error = '';
+  let error: Message = '';
   let form: TaskForm;
   let nestedIntent: 'parent' | 'child' | 'blocks' | 'blocker' | null = null;
   let nestedTitle = '';
@@ -52,7 +53,7 @@
     try {
       task = await api.task(taskId);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotLoadTask');
     } finally {
       loading = false;
       if (initialBlockerTitle && task) {
@@ -71,7 +72,7 @@
         : await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not save task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotSaveTask');
     } finally {
       busy = false;
     }
@@ -86,20 +87,20 @@
       const saved = await api.updateTask(taskId, draftInput);
       dispatch('saved', saved);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not save draft';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotSaveDraft');
     } finally {
       busy = false;
     }
   }
 
   async function remove() {
-    if (!task || !window.confirm(`Delete “${task.title}”? This cannot be undone.`)) return;
+    if (!task || !window.confirm($t('ui.taskEditor.deleteThisCannotBeUndone', { value1: task.title }))) return;
     busy = true;
     try {
       await api.deleteTask(task.id);
       dispatch('deleted', task.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not delete task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotDeleteTask');
       busy = false;
     }
   }
@@ -112,7 +113,7 @@
       task = updated;
       dispatch('changed', updated);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : fallbackMessage;
+      error = errorMessage(reason, fallbackMessage);
     } finally {
       busy = false;
     }
@@ -127,7 +128,7 @@
       dispatch('changed', updated);
       blockModalOpen = false;
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : fallbackMessage;
+      error = errorMessage(reason, fallbackMessage);
     } finally {
       busy = false;
     }
@@ -147,7 +148,7 @@
       completionTarget = null;
       dispatch('changed', task);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not finish task';
+      error = errorMessage(reason, 'ui.nextTaskCard.couldNotFinishTask');
     } finally {
       busy = false;
     }
@@ -156,7 +157,7 @@
   function toggleFinished() {
     if (!task) return;
     if (task.finished_at) {
-      void runTaskAction(() => api.reopenTask(task!.id), 'Could not reopen task');
+      void runTaskAction(() => api.reopenTask(task!.id), 'ui.taskEditor.couldNotReopenTask');
       return;
     }
 
@@ -183,7 +184,7 @@
       task = await api.task(task.id);
       dispatch('changed', task);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not reopen subtask';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotReopenSubtask');
     } finally {
       busy = false;
     }
@@ -193,13 +194,13 @@
     if (!task) return;
     void runBlockingAction(
       () => api.blockTask(task!.id, request),
-      'Could not block task'
+      'ui.nextTaskCard.couldNotBlockTask'
     );
   }
 
   function unblock(blockId: number) {
     if (!task) return;
-    void runBlockingAction(() => api.unblockOne(task!.id, blockId), 'Could not unblock task');
+    void runBlockingAction(() => api.unblockOne(task!.id, blockId), 'ui.focus.couldNotUnblockTask');
   }
 
   async function refreshTask() {
@@ -215,10 +216,10 @@
     try {
       const existing = await api.task(child.id);
       if (existing.parent_task_id && existing.parent_task_id !== task.id &&
-        !window.confirm(`Move “${child.title}” from its current parent to “${task.title}”?`)) return;
+        !window.confirm($t('ui.taskEditor.moveFromItsCurrentParentTo', { value1: child.title, value2: task.title }))) return;
       await setChildParent(child, task.id);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not attach child task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotAttachChildTask');
     }
   }
 
@@ -229,7 +230,7 @@
       await api.updateTask(child.id, { parent_task_id: parentId });
       await refreshTask();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not update child task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotUpdateChildTask');
     } finally {
       busy = false;
     }
@@ -241,7 +242,7 @@
       await api.blockTask(target.id, { blocking_task_id: task.id });
       await refreshTask();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not block task';
+      error = errorMessage(reason, 'ui.nextTaskCard.couldNotBlockTask');
     }
   }
 
@@ -260,7 +261,7 @@
       }
       await refreshTask();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not connect task';
+      error = errorMessage(reason, 'ui.taskEditor.couldNotConnectTask');
     }
   }
 
@@ -268,7 +269,7 @@
     if (!task) return;
     void runBlockingAction(
       () => api.reblockTask(task!.id, request.unblocked_at),
-      'Could not reblock task'
+      'ui.nextTaskCard.couldNotReblockTask'
     );
   }
 
@@ -281,7 +282,7 @@
       task = updated;
       dispatch('changed', updated);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not delete blocking reason';
+      error = errorMessage(reason, 'ui.nextTaskCard.couldNotDeleteBlockingReason');
     } finally {
       busy = false;
     }
@@ -292,10 +293,10 @@
   <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
-        <p class="eyebrow">{isDraft ? 'Edit draft' : taskId ? 'Task details' : 'Create task'}</p>
+        <p class="eyebrow">{isDraft ? $t('ui.drafts.editDraft') : taskId ? $t('ui.quickCapture.taskDetails') : $t('ui.quickCapture.createTask')}</p>
         <h1 id="task-editor-title" class="editor-title">
           {#if taskId}<span class="header-task-id">#{taskId}</span>{/if}
-          <span>{taskId ? task?.title || 'Task' : 'New task'}</span>
+          <span>{taskId ? task?.title || $t('ui.taskEditor.task') : $t('ui.app.newTask')}</span>
         </h1>
       </div>
       <div class="editor-header-actions">
@@ -310,13 +311,13 @@
             >
               {#if task.finished_at}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>
-                <span>Reopen</span>
+                <span>{$t('ui.taskCard.reopen')}</span>
               {:else}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-                <span>Finish</span>
+                <span>{$t('ui.nextTaskCard.finish')}</span>
               {/if}
             </button>
-            <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'Could not abandon task')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'Could not restore task')} on:open={(event) => dispatch('openTask', event.detail)} />
+            <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'ui.taskAbandonment.couldNotAbandonTask')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'ui.taskAbandonment.couldNotRestoreTask')} on:open={(event) => dispatch('openTask', event.detail)} />
             <button
               type="button"
               class="quick-action block-action"
@@ -325,34 +326,34 @@
               on:click={() => (blockModalOpen = true)}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-              <span>{task.current_block ? 'Manage blocks' : 'Block'}</span>
+              <span>{task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')}</span>
             </button>
           {/if}
           <button
             type="button"
             class="header-icon delete-icon"
-            aria-label="Delete task"
-            title="Delete task"
+            aria-label={$t('ui.taskEditor.deleteTask')}
+            title={$t('ui.taskEditor.deleteTask')}
             disabled={busy}
             on:click={remove}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></svg>
           </button>
         {/if}
-        <button class="header-icon close-icon" aria-label="Close" title="Close" on:click={() => dispatch('close')}>×</button>
+        <button class="header-icon close-icon" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => dispatch('close')}>×</button>
       </div>
     </header>
 
     {#if loading}
-      <p class="empty">Loading editor…</p>
+      <p class="empty">{$t('ui.taskEditor.loadingEditor')}</p>
     {:else if taskId && !task}
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
+      {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
     {:else}
       {#if isDraft}
-        <p class="notice draft-notice">You can keep editing this draft, or save it as a task when it is ready for active work.</p>
+        <p class="notice draft-notice">{$t('ui.taskEditor.youCanKeepEditingThisDraftOrSave')}</p>
       {/if}
       {#if task?.abandoned_by_task_id}
-        <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'Could not abandon task')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'Could not restore task')} on:open={(event) => dispatch('openTask', event.detail)} />
+        <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'ui.taskAbandonment.couldNotAbandonTask')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'ui.taskAbandonment.couldNotRestoreTask')} on:open={(event) => dispatch('openTask', event.detail)} />
       {/if}
       <TaskForm
         bind:this={form}
@@ -367,9 +368,9 @@
         taskDetails={task}
         {busy}
         {error}
-        submitLabel={isDraft ? 'Save as task' : taskId ? 'Save task' : 'Create task'}
-        busyLabel={isDraft ? 'Saving…' : taskId ? 'Saving…' : 'Creating…'}
-        draftSubmitLabel={isDraft ? 'Save draft' : ''}
+        submitLabel={isDraft ? $t('ui.taskEditor.saveAsTask') : taskId ? $t('ui.taskForm.saveTask') : $t('ui.quickCapture.createTask')}
+        busyLabel={isDraft ? $t('ui.geminiSettings.saving') : taskId ? $t('ui.geminiSettings.saving') : $t('ui.quickCapture.creating')}
+        draftSubmitLabel={isDraft ? $t('ui.quickCapture.saveDraft') : ''}
         on:cancel={() => dispatch('close')}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}

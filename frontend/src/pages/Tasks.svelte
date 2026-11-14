@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { NextScope, Tag, Task } from '../lib/api/types';
@@ -27,7 +28,7 @@
   let sortDirection: SortDirection = 'desc';
   let filtersOpen = false;
   let sortOpen = false;
-  let error = '';
+  let error: Message = '';
   let loading = true;
   let searchTimer: number;
   let taskRequest = 0;
@@ -170,7 +171,7 @@
       tags = loadedTags;
       if (request === taskRequest) tasks = loadedTasks;
     } catch (reason) {
-      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not load tasks';
+      if (request === taskRequest) error = errorMessage(reason, 'ui.next.couldNotLoadTasks');
     } finally {
       if (request === taskRequest) loading = false;
     }
@@ -183,7 +184,7 @@
       const refreshed = await loadTasks();
       if (request === taskRequest) tasks = refreshed;
     } catch (reason) {
-      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not refresh tasks';
+      if (request === taskRequest) error = errorMessage(reason, 'ui.tasks.couldNotRefreshTasks');
     } finally {
       if (request === taskRequest) loading = false;
     }
@@ -230,14 +231,14 @@
 </script>
 
 <div class="page-heading">
-  <div><p class="eyebrow">Browse and search</p><h1>Tasks</h1></div>
-  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
+  <div><p class="eyebrow">{$t('ui.tasks.browseAndSearch')}</p><h1>{$t('ui.app.tasks')}</h1></div>
+  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>{$t('ui.focus.newTask')}</AppButton>
 </div>
 
 <section class="filter-bar tasks-toolbar">
   <label class="search-field">
-    Search
-    <TextField type="search" bind:value={search} on:input={searchSoon} placeholder="Title or description" />
+    {$t('ui.tasks.search')}
+    <TextField type="search" bind:value={search} on:input={searchSoon} placeholder={$t('ui.tasks.titleOrDescription')} />
   </label>
 
   <div class="popover-control">
@@ -245,9 +246,9 @@
       type="button"
       class="toolbar-icon"
       class:active={filtersOpen || activeFilterCount > 0}
-      aria-label="Filter tasks"
+      aria-label={$t('ui.tasks.filterTasks')}
       aria-expanded={filtersOpen}
-      title="Filter tasks"
+      title={$t('ui.tasks.filterTasks')}
       on:click={toggleFilters}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
@@ -255,36 +256,36 @@
     </button>
 
     {#if filtersOpen}
-      <div class="toolbar-popover filter-popover" role="dialog" aria-label="Task filters">
+      <div class="toolbar-popover filter-popover" role="dialog" aria-label={$t('ui.tasks.taskFilters')}>
         <div class="popover-header">
-          <strong>Filters</strong>
-          {#if activeFilterCount > 0}<button type="button" class="clear-button" on:click={clearFilters}>Clear</button>{/if}
+          <strong>{$t('ui.tasks.filters')}</strong>
+          {#if activeFilterCount > 0}<button type="button" class="clear-button" on:click={clearFilters}>{$t('ui.tasks.clear')}</button>{/if}
         </div>
 
         <div class="filter-grid">
           <label>
-            Abandonment
+            {$t('ui.tasks.abandonment')}
             <select bind:value={abandonmentFilter} on:change={refreshTasks}>
-              <option value="exclude">Not abandoned</option>
-              <option value="only">Abandoned</option>
-              <option value="include">All</option>
+              <option value="exclude">{$t('ui.tasks.notAbandoned')}</option>
+              <option value="only">{$t('ui.taskAbandonment.abandoned')}</option>
+              <option value="include">{$t('ui.tagScopeFilters.all')}</option>
             </select>
           </label>
           <label>
-            Completion
+            {$t('ui.tasks.completion')}
             <select bind:value={finishedFilter} on:change={refreshTasks}>
-              <option value="all">All</option>
-              <option value="unfinished">Unfinished</option>
-              <option value="finished">Finished</option>
+              <option value="all">{$t('ui.tagScopeFilters.all')}</option>
+              <option value="unfinished">{$t('ui.tasks.unfinished')}</option>
+              <option value="finished">{$t('ui.taskForm.finished')}</option>
             </select>
           </label>
 
           <label>
-            Blocked
+            {$t('ui.focus.blocked')}
             <select bind:value={blockedFilter} on:change={refreshTasks}>
-              <option value="all">All</option>
-              <option value="blocked">Blocked</option>
-              <option value="unblocked">Not blocked</option>
+              <option value="all">{$t('ui.tagScopeFilters.all')}</option>
+              <option value="blocked">{$t('ui.focus.blocked')}</option>
+              <option value="unblocked">{$t('ui.focus.notBlocked')}</option>
             </select>
           </label>
 
@@ -302,39 +303,39 @@
       type="button"
       class="toolbar-icon"
       class:active={sortOpen || sortField !== 'score' || sortDirection !== 'desc'}
-      aria-label="Sort tasks"
+      aria-label={$t('ui.tasks.sortTasks')}
       aria-expanded={sortOpen}
-      title="Sort tasks"
+      title={$t('ui.tasks.sortTasks')}
       on:click={toggleSort}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h9M8 18h6" /><path d="m4 5-2 2 2 2M2 7h4" /></svg>
     </button>
 
     {#if sortOpen}
-      <div class="toolbar-popover sort-popover" role="dialog" aria-label="Task sorting">
-        <div class="popover-header"><strong>Sort</strong></div>
+      <div class="toolbar-popover sort-popover" role="dialog" aria-label={$t('ui.tasks.taskSorting')}>
+        <div class="popover-header"><strong>{$t('ui.tasks.sort')}</strong></div>
         <label>
-          Order by
+          {$t('ui.tasks.orderBy')}
           <select bind:value={sortField}>
-            <option value="score">Score</option>
-            <option value="finished_at">Done date</option>
-            <option value="last_worked_at">Last worked</option>
-            <option value="due_date">Due date</option>
-            <option value="created_at">Creation date</option>
+            <option value="score">{$t('ui.tasks.score')}</option>
+            <option value="finished_at">{$t('ui.tasks.doneDate')}</option>
+            <option value="last_worked_at">{$t('ui.taskForm.lastWorked')}</option>
+            <option value="due_date">{$t('ui.taskCard.dueDate')}</option>
+            <option value="created_at">{$t('ui.tasks.creationDate')}</option>
           </select>
         </label>
 
-        <div class="direction-options" aria-label="Sort direction">
+        <div class="direction-options" aria-label={$t('ui.tasks.sortDirection')}>
           <button
             type="button"
             class:active={sortDirection === 'asc'}
             on:click={() => setSortDirection('asc')}
-          >↑ Ascending</button>
+          >{$t('ui.tasks.ascending')}</button>
           <button
             type="button"
             class:active={sortDirection === 'desc'}
             on:click={() => setSortDirection('desc')}
-          >↓ Descending</button>
+          >{$t('ui.tasks.descending')}</button>
         </div>
       </div>
     {/if}
@@ -342,12 +343,12 @@
 </section>
 
 {#if filtersOpen || sortOpen}
-  <button class="popover-backdrop" aria-label="Close task options" on:click={closePopovers}></button>
+  <button class="popover-backdrop" aria-label={$t('ui.tasks.closeTaskOptions')} on:click={closePopovers}></button>
 {/if}
 
-{#if error}<p class="error">{error}</p>{/if}
+{#if error}<p class="error">{$text(error)}</p>{/if}
 <ScoringWarning message={tasks.find((task) => task.scoring_warning)?.scoring_warning ?? null} />
-{#if loading}<p class="empty">Loading tasks…</p>{:else if !orderedTasks.length}<p class="empty">No matching tasks.</p>{/if}
+{#if loading}<p class="empty">{$t('ui.focus.loadingTasks')}</p>{:else if !orderedTasks.length}<p class="empty">{$t('ui.tasks.noMatchingTasks')}</p>{/if}
 <div class="task-list">
   {#each orderedTasks as task (task.id)}
     <TaskCard

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
@@ -13,9 +14,9 @@
   const dispatch = createEventDispatcher<{ close: void; confirm: void }>();
   let rows: TreeRow[] = [];
   let loading = true;
-  let error = '';
+  let error: Message = '';
 
-  $: unfinishedCount = rows.filter((row) => !row.task.finished_at).length;
+  $: unfinishedCount = rows.filter((row) => !row.task.finished_at && row.task.abandoned_by_task_id === null).length;
 
   function flattenDescendants(tasks: Task[]): TreeRow[] {
     const children = new Map<number, Task[]>();
@@ -45,7 +46,7 @@
       ]);
       rows = flattenDescendants([...unfinished, ...finished]);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load child tasks';
+      error = errorMessage(reason, 'ui.taskCompletionDialog.couldNotLoadChildTasks');
     } finally {
       loading = false;
     }
@@ -62,43 +63,43 @@
   >
     <header class="completion-header">
       <div>
-        <p class="eyebrow">Task hierarchy</p>
-        <h2 id="completion-dialog-title">Finish this task tree?</h2>
+        <p class="eyebrow">{$t('ui.taskCompletionDialog.taskHierarchy')}</p>
+        <h2 id="completion-dialog-title">{$t('ui.taskCompletionDialog.finishThisTaskTree')}</h2>
       </div>
-      <button type="button" class="icon-button" aria-label="Close" on:click={() => dispatch('close')}>×</button>
+      <button type="button" class="icon-button" aria-label={$t('ui.blockTaskModal.close')} on:click={() => dispatch('close')}>×</button>
     </header>
 
     <div class="completion-summary">
       <strong>{taskTitle}</strong>
       <p id="completion-dialog-description">
-        Finishing this task also finishes every unfinished task below it, so completed parents never leave unfinished work behind.
+        {$t('ui.taskCompletionDialog.finishingThisTaskAlsoFinishesEveryUnfinishedTask')}
       </p>
     </div>
 
     <div class="tree-panel">
       <div class="tree-heading">
-        <strong>Child tasks</strong>
-        {#if !loading && !error}<span>{unfinishedCount} will be finished</span>{/if}
+        <strong>{$t('ui.taskCompletionDialog.childTasks')}</strong>
+        {#if !loading && !error}<span>{$t('ui.taskCompletionDialog.willBeFinished', { value1: unfinishedCount })}</span>{/if}
       </div>
 
       {#if loading}
-        <p class="tree-state">Loading task tree…</p>
+        <p class="tree-state">{$t('ui.taskCompletionDialog.loadingTaskTree')}</p>
       {:else if error}
-        <p class="error" role="alert">{error}</p>
+        <p class="error" role="alert">{$text(error)}</p>
       {:else if rows.length === 0}
-        <p class="tree-state">No child tasks found.</p>
+        <p class="tree-state">{$t('ui.taskCompletionDialog.noChildTasksFound')}</p>
       {:else}
         <ul class="completion-tree">
           {#each rows as row (row.task.id)}
             <li class:already-finished={!!row.task.finished_at} style={`--depth: ${row.depth}`}>
               <span class="branch" aria-hidden="true">•</span>
               {#if row.task.finished_at}
-                <span class="state-icon finished" title="Already finished">✓</span>
+                <span class="state-icon finished" title={$t('ui.taskCompletionDialog.alreadyFinished')}>✓</span>
               {:else}
-                <span class="state-icon will-finish" title="Unfinished task that will be finished">○→✓</span>
+                <span class="state-icon will-finish" title={$t('ui.taskCompletionDialog.unfinishedTaskThatWillBeFinished')}>○→✓</span>
               {/if}
               <span class="tree-title">{row.task.title} <small>#{row.task.id}</small></span>
-              {#if !row.task.finished_at}<span class="will-finish-chip">Will finish</span>{/if}
+              {#if !row.task.finished_at}<span class="will-finish-chip">{$t('ui.taskCompletionDialog.willFinish')}</span>{/if}
             </li>
           {/each}
         </ul>
@@ -106,13 +107,13 @@
     </div>
 
     <footer class="completion-actions">
-      <AppButton disabled={busy} on:click={() => dispatch('close')}>Cancel</AppButton>
+      <AppButton disabled={busy} on:click={() => dispatch('close')}>{$t('ui.blockTaskModal.cancel')}</AppButton>
       <AppButton
         variant="primary"
         disabled={busy || loading || !!error}
         on:click={() => dispatch('confirm')}
       >
-        {busy ? 'Finishing…' : `Finish task${unfinishedCount ? ` + ${unfinishedCount} child${unfinishedCount === 1 ? '' : ' tasks'}` : ''}`}
+        {busy ? $t('ui.taskCompletionDialog.finishing') : $t('ui.taskCompletionDialog.finishTask', { count: unfinishedCount })}
       </AppButton>
     </footer>
   </section>

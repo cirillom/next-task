@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.config import get_settings
 from app.gemini_schemas import GeminiModelRead, GeneratedTask
+from app.i18n import localized
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -38,11 +39,13 @@ def list_gemini_models(
                 params=params,
             )
             if response.status_code in {400, 401, 403}:
-                raise GeminiServiceError("Google could not list models for this API key", 400)
+                raise GeminiServiceError(
+                    localized("api.geminiModelsRejected"), 400
+                )
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict) or not isinstance(payload.get("models", []), list):
-                raise GeminiServiceError("Google returned an invalid model list")
+                raise GeminiServiceError(localized("api.geminiInvalidModels"))
             for item in payload.get("models", []):
                 if not isinstance(item, dict):
                     continue
@@ -71,15 +74,15 @@ def list_gemini_models(
             if not next_token:
                 break
             if not isinstance(next_token, str) or next_token in seen_tokens:
-                raise GeminiServiceError("Google returned an invalid model list")
+                raise GeminiServiceError(localized("api.geminiInvalidModels"))
             seen_tokens.add(next_token)
             page_token = next_token
     except httpx.TimeoutException as error:
-        raise GeminiServiceError("Google took too long to list models", 504) from error
+        raise GeminiServiceError(localized("api.geminiModelsTimeout"), 504) from error
     except httpx.HTTPError as error:
-        raise GeminiServiceError("Could not load models from Google") from error
+        raise GeminiServiceError(localized("api.geminiModelsUnavailable")) from error
     except (json.JSONDecodeError, ValueError) as error:
-        raise GeminiServiceError("Google returned an invalid model list") from error
+        raise GeminiServiceError(localized("api.geminiInvalidModels")) from error
     finally:
         if owns_client:
             client.close()
@@ -143,7 +146,7 @@ def _interaction_text(payload: dict[str, Any]) -> str:
         ]
         if texts:
             return "".join(texts)
-    raise GeminiServiceError("Gemini returned no task draft")
+    raise GeminiServiceError(localized("api.geminiEmptyDraft"))
 
 
 def _error_detail(response: httpx.Response, api_key: str) -> str | None:
@@ -203,31 +206,31 @@ def generate_task_draft(
             json=request_payload,
         )
     except httpx.TimeoutException as error:
-        raise GeminiServiceError("Gemini took too long to respond", 504) from error
+        raise GeminiServiceError(localized("api.geminiTimeout"), 504) from error
     except httpx.HTTPError as error:
-        raise GeminiServiceError("Could not reach Gemini") from error
+        raise GeminiServiceError(localized("api.geminiUnreachable")) from error
     finally:
         if owns_client:
             client.close()
 
     detail = _error_detail(response, api_key)
     if response.status_code in {400, 401, 403}:
-        message = "Gemini rejected the request"
+        message = localized("api.geminiRejected")
         if detail:
-            message = f"{message}: {detail}"
+            message = localized("api.providerDetail", summary=message, detail=detail)
         raise GeminiServiceError(message, 400)
     if response.status_code == 429:
-        raise GeminiServiceError("Gemini rate limit reached. Try again shortly.", 429)
+        raise GeminiServiceError(localized("api.geminiRateLimited"), 429)
     if response.status_code >= 400:
-        message = "Gemini could not generate a task draft"
+        message = localized("api.geminiGenerationFailed")
         if detail:
-            message = f"{message}: {detail}"
+            message = localized("api.providerDetail", summary=message, detail=detail)
         raise GeminiServiceError(message)
 
     try:
         body = response.json()
         if body.get("status") not in {None, "completed"}:
-            raise GeminiServiceError("Gemini did not complete the task draft")
+            raise GeminiServiceError(localized("api.geminiIncompleteDraft"))
         return GeneratedTask.model_validate_json(_interaction_text(body))
     except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as error:
-        raise GeminiServiceError("Gemini returned an invalid task draft") from error
+        raise GeminiServiceError(localized("api.geminiInvalidDraft")) from error

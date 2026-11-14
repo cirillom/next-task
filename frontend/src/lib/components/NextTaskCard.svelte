@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, localized, numeric, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
   import type { Task } from '../api/types';
@@ -15,7 +16,7 @@
   export let task: Task;
   export let readOnly = false;
 
-  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: string; createBlocker: { taskId: number; title: string } }>();
+  const dispatch = createEventDispatcher<{ changed: Task; open: number; error: Message; createBlocker: { taskId: number; title: string } }>();
   let busy = false;
   let descriptionExpanded = false;
   let blockModalOpen = false;
@@ -27,7 +28,7 @@
 
   function idleLabel(): string {
     const days = daysSince(idleAnchor());
-    return `Idle ${days} ${days === 1 ? 'day' : 'days'} (${formatDate(idleAnchor())})`;
+    return $t('ui.nextTaskCard.idle', { count: days, date: formatDate(idleAnchor()) });
   }
 
   async function act(action: () => Promise<Task>) {
@@ -35,7 +36,7 @@
     try {
       dispatch('changed', await action());
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Action failed');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.actionFailed'));
     } finally {
       busy = false;
     }
@@ -47,7 +48,7 @@
       dispatch('changed', await action());
       blockModalOpen = false;
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : fallbackMessage);
+      dispatch('error', errorMessage(error, fallbackMessage));
     } finally {
       busy = false;
     }
@@ -56,14 +57,14 @@
   function block(request: { reason?: string; blocking_task_id?: number; unblocked_at?: string | null }) {
     void runBlockingAction(
       () => api.blockTask(task.id, request),
-      'Could not block task'
+      'ui.nextTaskCard.couldNotBlockTask'
     );
   }
 
   function reblock(request: { unblocked_at: string | null }) {
     void runBlockingAction(
       () => api.reblockTask(task.id, request.unblocked_at),
-      'Could not reblock task'
+      'ui.nextTaskCard.couldNotReblockTask'
     );
   }
 
@@ -72,7 +73,7 @@
     try {
       dispatch('changed', await api.deleteBlock(task.id, blockId));
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Could not delete blocking reason');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.couldNotDeleteBlockingReason'));
     } finally {
       busy = false;
     }
@@ -97,7 +98,7 @@
       completionOpen = false;
       dispatch('changed', updated);
     } catch (error) {
-      dispatch('error', error instanceof Error ? error.message : 'Could not finish task');
+      dispatch('error', errorMessage(error, 'ui.nextTaskCard.couldNotFinishTask'));
     } finally {
       busy = false;
     }
@@ -107,7 +108,7 @@
 <article class="recommended-card">
   <div class="recommended-card__top">
     <div>
-      <p class="eyebrow">Recommended next</p>
+      <p class="eyebrow">{$t('ui.nextTaskCard.recommendedNext')}</p>
       <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
     </div>
     <div class="recommended-card__header-actions">
@@ -115,8 +116,8 @@
         <button
           type="button"
           class="edit-button"
-          aria-label="Edit task"
-          title="Edit task"
+          aria-label={$t('ui.nextTaskCard.editTask')}
+          title={$t('ui.nextTaskCard.editTask')}
           disabled={busy}
           on:click={() => dispatch('open', task.id)}
         >
@@ -126,7 +127,7 @@
           </svg>
         </button>
       {/if}
-      <span class="score" title="Calculated score">{task.score.toFixed(1)}</span>
+      <span class="score" title={$t('ui.nextTaskCard.calculatedScore')}>{$numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
       <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   </div>
@@ -143,18 +144,18 @@
       aria-expanded={descriptionExpanded}
       on:click={() => (descriptionExpanded = !descriptionExpanded)}
     >
-      {descriptionExpanded ? 'Collapse description' : 'Expand description'}
+      {descriptionExpanded ? $t('ui.nextTaskCard.collapseDescription') : $t('ui.nextTaskCard.expandDescription')}
     </button>
   {/if}
 
   <div class="meta-row">
-    <span class="priority">Priority {task.priority}</span>
-    <span class="date-meta" title={formatDateTime(task.created_at)}>Created {formatDate(task.created_at)}</span>
+    <span class="priority">{$t('ui.nextTaskCard.priority', { value1: task.priority })}</span>
+    <span class="date-meta" title={formatDateTime(task.created_at)}>{$t('ui.nextTaskCard.created', { value1: formatDate(task.created_at) })}</span>
     <span
       class="date-meta"
       class:overdue={!!task.due_date && task.due_date < localDate()}
-    >Due {task.due_date ? formatDate(task.due_date) : '—'}</span>
-    <span class="date-meta" title={formatDateTime(idleAnchor())}>{idleLabel()}</span>
+    >{$t('ui.nextTaskCard.due', { value1: task.due_date ? formatDate(task.due_date) : '—' })}</span>
+    <span class="date-meta" title={formatDateTime(idleAnchor())}>{$localized(idleLabel())}</span>
   </div>
 
   {#if task.direct_tags.length}
@@ -172,15 +173,15 @@
       {#if !readOnly && !task.abandoned_by_task_id}
         <button type="button" class="action-button finish-action" disabled={busy} on:click={finish}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-          <span>Finish</span>
+          <span>{$t('ui.nextTaskCard.finish')}</span>
         </button>
         <button type="button" class="action-button worked-action" disabled={busy} on:click={markWorkedNow}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>
-          <span>Worked now</span>
+          <span>{$t('ui.nextTaskCard.workedNow')}</span>
         </button>
         <button type="button" class="action-button block-action" disabled={busy} on:click={() => (blockModalOpen = true)}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-          <span>Block</span>
+          <span>{$t('ui.nextTaskCard.block')}</span>
         </button>
       {/if}
       <TaskAbandonment {task} {readOnly} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
@@ -196,7 +197,7 @@
     {busy}
     on:close={() => (blockModalOpen = false)}
     on:block={(event) => block(event.detail)}
-    on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'Could not unblock task')}
+    on:unblock={(event) => void runBlockingAction(() => api.unblockOne(task.id, event.detail), 'ui.blockTaskModal.couldNotUnblockTask')}
     on:createTask={(event) => { blockModalOpen = false; dispatch('createBlocker', { taskId: task.id, title: event.detail }); }}
     on:openTask={(event) => dispatch('open', event.detail)}
     on:reblock={(event) => reblock(event.detail)}

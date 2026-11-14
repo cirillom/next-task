@@ -3,13 +3,14 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.i18n import Language, LocalizedText, localized, parameters
 from app.services.mail import normalize_email_address
 
 
 def clean_required(value: str, tag: bool = False) -> str:
     cleaned = value.strip().removeprefix("#") if tag else value.strip()
     if not cleaned:
-        raise ValueError("Value cannot be blank")
+        raise ValueError(localized("api.valueCannotBeBlank"))
     return cleaned
 
 
@@ -32,6 +33,16 @@ class ApiModel(BaseModel):
 
 class Message(ApiModel):
     message: str
+    code: str | None = None
+    params: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def include_translation(cls, value: dict) -> dict:
+        text = value.get("message")
+        if isinstance(text, LocalizedText):
+            value = {**value, "code": text.key, "params": parameters(text.values)}
+        return value
 
 
 class UserRead(ApiModel):
@@ -39,6 +50,11 @@ class UserRead(ApiModel):
     email: str
     display_name: str
     created_at: UtcDateTime
+    language: Language
+
+
+class LanguageUpdate(ApiModel):
+    language: Language
 
 
 class LoginRequest(ApiModel):
@@ -66,6 +82,7 @@ class TokenRequest(ApiModel):
 
 
 class InvitationAccept(TokenRequest):
+    language: Language | None = None
     display_name: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=10, max_length=1024)
 
@@ -161,6 +178,8 @@ class TaskRead(ApiModel):
     updated_at: UtcDateTime
     score: float
     scoring_warning: str | None
+    scoring_warning_code: str | None = None
+    scoring_warning_params: dict[str, object] = Field(default_factory=dict)
     ranking_score: float
     ranking_source_task_id: int | None
     ranking_source_score: float | None
@@ -186,9 +205,9 @@ class BlockCreate(ApiModel):
     @model_validator(mode="after")
     def validate_kind(self) -> "BlockCreate":
         if (self.reason is None) == (self.blocking_task_id is None):
-            raise ValueError("Choose either a blocking task or a manual reason")
+            raise ValueError(localized("api.chooseEitherABlockingTaskOrAManualReason"))
         if self.blocking_task_id is not None and self.unblocked_at is not None:
-            raise ValueError("Task blockers cannot auto-unblock")
+            raise ValueError(localized("api.taskBlockersCannotAutoUnblock"))
         return self
 
 
@@ -223,7 +242,7 @@ class TagUpdate(ApiModel):
     @model_validator(mode="after")
     def require_score_value_when_supplied(self) -> "TagUpdate":
         if "score_value" in self.model_fields_set and self.score_value is None:
-            raise ValueError("Tag value cannot be null")
+            raise ValueError(localized("api.tagValueCannotBeNull"))
         return self
 
 

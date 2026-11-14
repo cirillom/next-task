@@ -61,6 +61,11 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Test language flows in Chrome
+        env:
+          NEXT_TASK_BROWSER_TESTS: "1"
+        run: uv run pytest backend/tests/test_browser_i18n.py
+
       - name: Build production image
         run: docker build --tag next-task:ci .
 

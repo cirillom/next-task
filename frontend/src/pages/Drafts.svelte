@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { Task } from '../lib/api/types';
@@ -10,7 +11,7 @@
 
   let drafts: Task[] = [];
   let loading = true;
-  let error = '';
+  let error: Message = '';
 
   async function load() {
     loading = true;
@@ -18,7 +19,7 @@
     try {
       drafts = await api.drafts();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load drafts';
+      error = errorMessage(reason, 'ui.drafts.couldNotLoadDrafts');
     } finally {
       loading = false;
     }
@@ -29,19 +30,19 @@
 
 <div class="page-heading">
   <div>
-    <p class="eyebrow">Needs your input</p>
-    <h1>Drafts</h1>
-    <p class="draft-intro">Prepare tasks here without making them active until they are ready.</p>
+    <p class="eyebrow">{$t('ui.drafts.needsYourInput')}</p>
+    <h1>{$t('ui.app.drafts')}</h1>
+    <p class="draft-intro">{$t('ui.drafts.prepareTasksHereWithoutMakingThemActiveUntil')}</p>
   </div>
 </div>
 
-{#if error}<p class="error" role="alert">{error}</p>{/if}
+{#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
 {#if loading}
-  <p class="empty">Loading drafts…</p>
+  <p class="empty">{$t('ui.drafts.loadingDrafts')}</p>
 {:else if !drafts.length}
   <section class="empty draft-empty">
-    <strong>No drafts waiting.</strong>
-    <span>Use + New task and choose Draft task when you want to capture something without deciding the details yet.</span>
+    <strong>{$t('ui.drafts.noDraftsWaiting')}</strong>
+    <span>{$t('ui.drafts.useNewTaskAndChooseDraftTaskWhen')}</span>
   </section>
 {:else}
   <div class="draft-list">
@@ -55,12 +56,12 @@
           {#if draft.description}
             <div class="draft-description"><Markdown source={draft.description} /></div>
           {/if}
-          <div class="draft-meta">Captured {formatDateTime(draft.created_at)}</div>
+          <div class="draft-meta">{$t('ui.drafts.captured', { value1: formatDateTime(draft.created_at) })}</div>
         </div>
 
           <AppButton variant="primary" className="edit-draft-button" on:click={() => dispatch('openTask', draft.id)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>
-            Edit draft
+            {$t('ui.drafts.editDraft')}
           </AppButton>
       </article>
     {/each}

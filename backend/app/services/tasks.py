@@ -2,13 +2,14 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.i18n import localized
 from app.models import Tag, Task, User
 
 
 def get_task_for_user(db: Session, task_id: int, user: User) -> Task:
     task = db.get(Task, task_id)
     if task is None or task.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail=localized("api.taskNotFound"))
     return task
 
 
@@ -20,7 +21,7 @@ def validate_tags(db: Session, user_id: int, tag_ids: list[int]) -> list[Tag]:
         db.scalars(select(Tag).where(Tag.id.in_(unique_ids)).order_by(Tag.name, Tag.id)).all()
     )
     if len(tags) != len(unique_ids) or any(tag.user_id != user_id for tag in tags):
-        raise HTTPException(status_code=422, detail="Every tag must belong to the user")
+        raise HTTPException(status_code=422, detail=localized("api.everyTagMustBelongToTheUser"))
     return tags
 
 
@@ -30,10 +31,10 @@ def validate_parent(
     if parent_id is None:
         return None
     if task_id is not None and parent_id == task_id:
-        raise HTTPException(status_code=422, detail="A task cannot parent itself")
+        raise HTTPException(status_code=422, detail=localized("api.aTaskCannotParentItself"))
     parent = db.get(Task, parent_id)
     if parent is None or parent.user_id != user_id:
-        raise HTTPException(status_code=422, detail="Parent task must belong to the user")
+        raise HTTPException(status_code=422, detail=localized("api.parentTaskMustBelongToTheUser"))
     if task_id is None:
         return parent
 
@@ -48,5 +49,5 @@ def validate_parent(
         .where(Task.parent_task_id.is_not(None))
     )
     if task_id in set(db.scalars(select(ancestors.c.task_id)).all()):
-        raise HTTPException(status_code=422, detail="Task hierarchy would create a cycle")
+        raise HTTPException(status_code=422, detail=localized("api.taskHierarchyWouldCreateACycle"))
     return parent

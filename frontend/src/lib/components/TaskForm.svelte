@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, localized, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { ApiError, api } from '../api/client';
   import type { Tag, Task, TaskInput, TaskSummary } from '../api/types';
@@ -24,12 +25,12 @@
   export let initialNewTags = '';
   export let taskDetails: Task | null = null;
   export let busy = false;
-  export let error = '';
-  export let submitLabel = 'Save task';
-  export let busyLabel = 'Saving…';
+  export let error: Message = '';
+  export let submitLabel = 'ui.taskForm.saveTask';
+  export let busyLabel = 'ui.geminiSettings.saving';
   export let draftSubmitLabel = '';
-  export let draftBusyLabel = 'Saving…';
-  export let cancelLabel = 'Cancel';
+  export let draftBusyLabel = 'ui.geminiSettings.saving';
+  export let cancelLabel = 'ui.blockTaskModal.cancel';
 
   const dispatch = createEventDispatcher<{
     submit: TaskInput;
@@ -57,7 +58,7 @@
   let loading = true;
   let creatingTag = false;
   let createdParentId = 0;
-  let localError = '';
+  let localError: Message = '';
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedParent = parentTasks.find((item) => item.id === parentTaskId)
@@ -80,7 +81,7 @@
       ]);
 
     } catch (reason) {
-      localError = reason instanceof Error ? reason.message : 'Could not load task options';
+      localError = errorMessage(reason, 'ui.taskForm.couldNotLoadTaskOptions');
     } finally {
       loading = false;
     }
@@ -134,7 +135,7 @@
       else if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
       suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion.toLowerCase() !== name.toLowerCase());
     } catch (reason) {
-      localError = reason instanceof Error ? reason.message : 'Could not create tag';
+      localError = errorMessage(reason, 'ui.taskForm.couldNotCreateTag');
     } finally {
       creatingTag = false;
     }
@@ -164,24 +165,24 @@
 </script>
 
 {#if loading}
-  <p class="empty">Loading task editor…</p>
+  <p class="empty">{$t('ui.taskForm.loadingTaskEditor')}</p>
 {:else}
   <form class="shared-task-form" on:submit|preventDefault={submit}>
     {#if taskDetails?.active_blocks.length}
       <BlockSummary blocks={taskDetails.active_blocks} on:openTask={(event) => dispatch('openTask', event.detail)} />
     {/if}
     <div class="title-row">
-      <label>Title<TextField bind:value={title} maxlength="500" required /></label>
+      <label>{$t('ui.taskForm.title')}<TextField bind:value={title} maxlength="500" required /></label>
     </div>
 
     <div class="metadata-row">
-      <label>Priority<NumberField bind:value={priority} min="1" /></label>
-      <label>Due date<DateTimeInput bind:value={dueDate} /></label>
-      <label>Last worked<DateTimeInput includeTime bind:value={lastWorked} /></label>
+      <label>{$t('ui.taskCard.priority')}<NumberField bind:value={priority} min="1" /></label>
+      <label>{$t('ui.taskCard.dueDate')}<DateTimeInput bind:value={dueDate} /></label>
+      <label>{$t('ui.taskForm.lastWorked')}<DateTimeInput includeTime bind:value={lastWorked} /></label>
     </div>
 
     <section class="tags-section">
-      <span class="field-label">Direct tags</span>
+      <span class="field-label">{$t('ui.taskForm.directTags')}</span>
       <TagPicker
         {tags}
         selectedIds={tagIds}
@@ -193,7 +194,7 @@
       />
       {#if taskDetails?.inherited_tags.length}
         <details class="inherited-tags" open>
-          <summary>{taskDetails.inherited_tags.length} inherited {taskDetails.inherited_tags.length === 1 ? 'tag' : 'tags'}</summary>
+          <summary>{$t('ui.taskForm.inherited', { count: taskDetails.inherited_tags.length })}</summary>
           <div class="inherited-tag-list">
             {#each taskDetails.inherited_tags as tag}
               <TagBadge {tag} inherited />
@@ -206,21 +207,21 @@
     <MarkdownEditor bind:value={description} compact />
 
 
-    <section class="hierarchy-panel" aria-label="Relations">
-      <span class="field-label">Relations</span>
+    <section class="hierarchy-panel" aria-label={$t('ui.taskForm.relations')}>
+      <span class="field-label">{$t('ui.taskForm.relations')}</span>
 
       <div class="relation-group">
-        <strong>Parent</strong>
+        <strong>{$t('ui.taskForm.parent')}</strong>
         {#if parentTaskId}
           <div class="relation-row">
-            <button type="button" class="relation-link" on:click={() => dispatch('openTask', parentTaskId)}>{selectedParent?.title || 'Parent task'} #{parentTaskId}</button>
-            <AppButton disabled={busy} on:click={() => (parentTaskId = 0)}>Remove parent</AppButton>
+            <button type="button" class="relation-link" on:click={() => dispatch('openTask', parentTaskId)}>{selectedParent?.title || $t('ui.taskForm.parentTask')} #{parentTaskId}</button>
+            <AppButton disabled={busy} on:click={() => (parentTaskId = 0)}>{$t('ui.taskForm.removeParent')}</AppButton>
           </div>
         {:else}
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
-            placeholder="Search task to add as parent..."
+            placeholder={$t('ui.taskForm.searchTaskToAddAsParent')}
             disabled={busy}
             on:select={(event) => (parentTaskId = event.detail.id)}
             on:create={(event) => dispatch('createRelated', { kind: 'parent', title: event.detail })}
@@ -229,20 +230,20 @@
       </div>
 
       <div class="relation-group">
-        <strong>Children {#if taskDetails?.subtasks.length}<small>{completedSubtasks} / {taskDetails.subtasks.length} complete</small>{/if}</strong>
+        <strong>{$t('ui.taskForm.children')} {#if taskDetails?.subtasks.length}<small>{$t('ui.taskForm.complete', { value1: completedSubtasks, value2: taskDetails.subtasks.length })}</small>{/if}</strong>
         {#each taskDetails?.subtasks || [] as subtask (subtask.id)}
           <div class:finished={!!subtask.finished_at} class="subtask-row">
-            <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag || !!subtask.abandoned_by_task_id} aria-label={subtask.finished_at ? `Reopen ${subtask.title}` : `Finish ${subtask.title}`} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
+            <button type="button" class="subtask-toggle" class:finished={!!subtask.finished_at} disabled={busy || creatingTag || !!subtask.abandoned_by_task_id} aria-label={subtask.finished_at ? $t('ui.taskForm.reopen', { value1: subtask.title }) : $t('ui.taskForm.finish', { value1: subtask.title })} on:click={() => dispatch('toggleSubtask', subtask)}>{subtask.finished_at ? '✓' : '○'}</button>
             <button type="button" class="subtask-open" on:click={() => dispatch('openTask', subtask.id)}>{subtask.title}{subtask.abandoned_by_task_id ? ' (abandoned)' : ''}</button>
             <small>#{subtask.id}</small>
-            <AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>Remove</AppButton>
+            <AppButton className="relation-remove" disabled={busy} on:click={() => dispatch('detachChild', subtask)}>{$t('ui.blockTaskModal.remove')}</AppButton>
           </div>
         {/each}
         {#if taskId}
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.subtasks.map((child) => child.id) || [])]}
-            placeholder="Search task to add as child..."
+            placeholder={$t('ui.taskForm.searchTaskToAddAsChild')}
             disabled={busy}
             on:select={(event) => dispatch('attachChild', event.detail)}
             on:create={(event) => dispatch('createRelated', { kind: 'child', title: event.detail })}
@@ -251,7 +252,7 @@
       </div>
 
       <div class="relation-group">
-        <strong>Blocks</strong>
+        <strong>{$t('ui.taskForm.blocks')}</strong>
         {#each taskDetails?.blocks_tasks || [] as blocked (blocked.id)}
           <div class="block-row"><span aria-hidden="true">→</span><button type="button" class="relation-link" on:click={() => dispatch('openTask', blocked.id)}>{blocked.title} #{blocked.id}</button></div>
         {/each}
@@ -259,33 +260,33 @@
           <TaskSearchSelect
             tasks={parentTasks}
             excludeIds={[taskId, ...(taskDetails?.blocks_tasks.map((blocked) => blocked.id) || [])]}
-            placeholder="Search task to block..."
+            placeholder={$t('ui.taskForm.searchTaskToBlock')}
             disabled={busy}
             on:select={(event) => dispatch('blockTarget', event.detail)}
             on:create={(event) => dispatch('createRelated', { kind: 'blocks', title: event.detail })}
           />
         {/if}
       </div>
-      {#if !taskId}<small class="relation-hint">Save this task to add children or task blockers.</small>{/if}
+      {#if !taskId}<small class="relation-hint">{$t('ui.taskForm.saveThisTaskToAddChildrenOrTask')}</small>{/if}
     </section>
 
     {#if taskDetails}
       <section class="detail-panel compact-details">
         <dl>
-          <div><dt>Created</dt><dd>{formatDateTime(taskDetails.created_at)}</dd></div>
-          {#if taskDetails.finished_at}<div><dt>Finished</dt><dd>{formatDateTime(taskDetails.finished_at)}</dd></div>{/if}
+          <div><dt>{$t('ui.taskForm.created')}</dt><dd>{$localized(formatDateTime(taskDetails.created_at))}</dd></div>
+          {#if taskDetails.finished_at}<div><dt>{$t('ui.taskForm.finished')}</dt><dd>{$localized(formatDateTime(taskDetails.finished_at))}</dd></div>{/if}
         </dl>
       </section>
     {/if}
 
-    {#if localError || error}<p class="error" role="alert">{localError || error}</p>{/if}
+    {#if localError || error}<p class="error" role="alert">{$text(localError || error)}</p>{/if}
     <footer class="editor-actions">
       <span></span>
-      <AppButton disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{cancelLabel}</AppButton>
+      <AppButton disabled={busy || creatingTag} on:click={() => dispatch('cancel')}>{$text(cancelLabel)}</AppButton>
       {#if draftSubmitLabel}
-        <AppButton disabled={busy || creatingTag || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? draftBusyLabel : draftSubmitLabel}</AppButton>
+        <AppButton disabled={busy || creatingTag || !title.trim()} on:click={saveDraft}>{busy || creatingTag ? $text(draftBusyLabel) : $text(draftSubmitLabel)}</AppButton>
       {/if}
-      <AppButton type="submit" variant="primary" disabled={busy || creatingTag || !title.trim()}>{busy || creatingTag ? busyLabel : submitLabel}</AppButton>
+      <AppButton type="submit" variant="primary" disabled={busy || creatingTag || !title.trim()}>{busy || creatingTag ? $text(busyLabel) : $text(submitLabel)}</AppButton>
     </footer>
   </form>
 {/if}
