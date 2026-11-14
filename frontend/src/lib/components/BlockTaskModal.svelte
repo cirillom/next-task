@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog, pickerEscape, confirmClose } from '../keyboard';
   import { t } from '../i18n';
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { api } from '../api/client';
@@ -32,7 +33,6 @@
   let mentionQuery: string | null = null;
   let mentionStart = 0;
   let mentionCursor = 0;
-  let results: TaskSearchResults;
   let autoUnblockAt = '';
   let autoUnblockChoice: AutoUnblockChoice = 'none';
   let autoUnblockChoiceSelected = false;
@@ -81,20 +81,8 @@
     mentionQuery = null;
   }
 
-  function reasonKeydown(event: KeyboardEvent) {
-    if (mentionQuery === null) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      mentionQuery = null;
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      results?.selectFirst();
-    }
-  }
-
   function close() {
-    if (!busy) dispatch('close');
+    confirmClose(!!reason.trim() || !!blocker || autoUnblockChoiceSelected, () => dispatch('close'), busy);
   }
 
   async function chooseAutoUnblock(choice: AutoUnblockChoice) {
@@ -142,15 +130,12 @@
     if (!busy) dispatch('deleteBlock', blockId);
   }
 
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') close();
-  }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+
 
 <div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <section class="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title">
+  <section use:dialog={{close, busy}} class="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title">
     <header class="block-modal__header">
       <div>
         <p class="eyebrow">{$t('ui.blockTaskModal.taskBlocking')}</p>
@@ -165,7 +150,7 @@
       {#if blocker}
         <div class="selected-blocker"><strong>{blocker.title} #{blocker.id}</strong><AppButton disabled={busy} on:click={() => (blocker = null)}>{$t('ui.blockTaskModal.remove')}</AppButton></div>
       {:else}
-        <div class="reason-field">
+        <div use:pickerEscape={{open: () => mentionQuery !== null, close: () => {mentionQuery = null;}}} class="reason-field">
           <label for="blocking-reason">{$t('ui.blockTaskModal.blockingReason')}</label>
           <TextArea
             id="blocking-reason"
@@ -177,12 +162,10 @@
             required
             on:input={updateMention}
             on:blur={() => (mentionQuery = null)}
-            on:keydown={reasonKeydown}
           />
           {#if mentionQuery !== null && !reblockMode}
             <TaskSearchResults
-              bind:this={results}
-              {tasks}
+                {tasks}
               query={mentionQuery}
               excludeIds={[taskId, ...history.filter(isActive).map((block) => block.blocking_task_id || 0)]}
               on:select={(event) => chooseBlocker(event.detail)}

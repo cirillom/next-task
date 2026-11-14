@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pickerEscape } from '../keyboard';
   import { t, text, localized } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Tag } from '../api/types';
@@ -112,7 +113,7 @@
   }
 </script>
 
-<div class="tag-picker">
+<div use:pickerEscape={{open: () => open, close: () => {open = false;}}} class="tag-picker">
   {#if suggestedNames.length && !disabled}
     <div class="tag-suggestions">
       <small>{$t('ui.tagPicker.suggestedNewTags')}</small>
@@ -144,17 +145,21 @@
       disabled={disabled}
       on:focus={() => (open = true)}
       on:blur={() => (open = false)}
-      on:keydown={(event) => event.key === 'Enter' && event.preventDefault()}
+      role="combobox"
+      aria-expanded={open}
+      aria-autocomplete="list"
     />
 
     {#if open && !disabled}
-      <div class="tag-options" role="listbox" aria-label={$t('ui.tagPicker.tagOptions')}>
+      <div class="tag-options" role="listbox" aria-multiselectable="true" aria-label={$t('ui.tagPicker.tagOptions')}>
         {#each filteredTags as result (`${result.tag.id}-${result.depth}`)}
           <button
             type="button"
+            role="option"
+            aria-selected={selectedIds.includes(result.tag.id)}
             class:selected={selectedIds.includes(result.tag.id)}
             style:--tag-indent={`${result.depth}rem`}
-            on:mousedown|preventDefault={() => toggle(result.tag.id)}
+            on:mousedown|preventDefault on:click={() => toggle(result.tag.id)}
           >
             <span class="option-check" aria-hidden="true">{selectedIds.includes(result.tag.id) ? '✓' : ''}</span>
             <span class="option-copy">
@@ -169,9 +174,11 @@
         {#if allowCreate && normalizedSearch}
           <button
             type="button"
+            role="option"
+            aria-selected="false"
             class="create-tag"
             disabled={creating}
-            on:mousedown|preventDefault={requestCreate}
+            on:mousedown|preventDefault on:click={requestCreate}
           >
             <span class="option-check" aria-hidden="true">+</span>
             <span class="option-copy"><strong>{creating ? $t('ui.quickCapture.creating') : $t('ui.tagPicker.create', { value1: search.trim() })}</strong></span>

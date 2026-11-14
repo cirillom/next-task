@@ -53,7 +53,7 @@ function walk(node, visit) {
 test('every frontend message reference exists in each catalog', () => {
   for (const file of frontendFiles.filter(file => /\.(svelte|ts)$/.test(file.pathname))) {
     const source = readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/['"]((?:ui|api|format|language|common|password|markdown|validation)\.[A-Za-z0-9.]+)['"]/g)) {
+    for (const match of source.matchAll(/['"]((?:ui|api|format|language|common|password|markdown|validation|keyboard)\.[A-Za-z0-9.]+)['"]/g)) {
       for (const [language, catalog] of Object.entries(catalogs)) {
         assert.ok(Object.hasOwn(catalog, match[1]), `${file.pathname}: ${language}: ${match[1]}`);
       }

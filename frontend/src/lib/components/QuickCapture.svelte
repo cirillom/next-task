@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t, text, rich, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
+  import { dialog, confirmClose } from '../keyboard';
   import { api } from '../api/client';
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
   import type { Task, TaskInput } from '../api/types';
@@ -13,6 +14,10 @@
   type Stage = 'capture' | 'review';
   type ReviewSource = 'expand' | 'gemini';
 
+  let form: TaskForm;
+  function close() { confirmClose(!!captureText.trim() || !!form?.isDirty(), () => dispatch('close'), busy); }
+  function primaryAction() { if (!busy) { if (stage === 'capture') expand(); else form?.requestSubmit(); } }
+  function saveShortcut() { if (!busy) { if (stage === 'capture') void createDraft(); else form?.requestSubmit(); } }
   let stage: Stage = 'capture';
   let reviewSource: ReviewSource = 'expand';
   let captureText = '';
@@ -126,14 +131,14 @@
   }
 </script>
 
-<div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
-  <div class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
+<div class="modal-backdrop" role="presentation" on:click|self={close}>
+  <div use:dialog={{close, submit: primaryAction, save: saveShortcut, busy}} class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
     <header class="editor-header">
       <div>
         <p class="eyebrow">{stage === 'capture' ? $t('ui.quickCapture.quickCapture') : reviewSource === 'gemini' ? $t('ui.quickCapture.reviewGeminiSuggestion') : $t('ui.quickCapture.taskDetails')}</p>
         <h1 id="quick-capture-title">{$t('ui.app.newTask')}</h1>
       </div>
-      <button class="icon-button" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => dispatch('close')}>×</button>
+      <button class="icon-button" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={close}>×</button>
     </header>
 
     {#if stage === 'capture'}
@@ -169,6 +174,7 @@
         <p class="notice">{@html $rich('ui.quickCapture.geminiReview', {model: proposal.model})}</p>
       {/if}
       <TaskForm
+        bind:this={form}
         initialTitle={proposal.title}
         initialDescription={proposal.description || ''}
         initialPriority={proposal.priority}

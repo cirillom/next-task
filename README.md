@@ -18,6 +18,25 @@ or ending a period on one signed-in device is reflected on the others. The timer
 a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
 be a one-time notification or a repeating alarm that must be dismissed on any device.
 
+## Desktop keyboard shortcuts
+
+Shortcuts are always enabled. **N** opens New task, **/** focuses Tasks/Tags search, and **?** opens keyboard help. These
+single-key actions stay inactive in text fields, editable content, and dialogs.
+The help button is available only in Settings; **?** opens it elsewhere.
+
+**Ctrl/Cmd+Enter** opens Add task details in Quick Capture and creates/saves from
+the task editor. **Ctrl/Cmd+S** saves a draft from Quick Capture, saves the active task/tag editor, or immediately
+flushes Focus working notes. Both keep native validation and disabled/busy guards.
+Plain **Enter** continues to insert newlines in descriptions and Quick Capture;
+in a single-line task field it submits the form.
+
+**Escape** closes the
+innermost picker, popover, or dialog first; closing an editor with unsaved changes
+asks for confirmation. Tab and arrow keys use normal browser behavior.
+Text composition and browser shortcuts
+remain available; there are no global shortcuts for destructive task actions or
+changing Pomodoro periods.
+
 ## Languages
 
 The interface supports English (`en`) and Brazilian Portuguese (`pt-BR`). Choose a

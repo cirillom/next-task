@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog, dismissible, editorKeys } from '../lib/keyboard';
   import { t, text, rich, localized, message, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api, ApiError } from '../lib/api/client';
@@ -431,6 +432,13 @@
     }, 650);
   }
 
+  function flushDescriptionSave() {
+    if (!currentTask) return;
+    window.clearTimeout(descriptionSaveTimer);
+    pendingDescriptionSave = {taskId: currentTask.id, value: descriptionDraft};
+    void drainDescriptionSave();
+  }
+
   async function drainDescriptionSave() {
     if (descriptionSaveInFlight || !pendingDescriptionSave) return;
     const request = pendingDescriptionSave;
@@ -712,7 +720,7 @@
       <p class="scope-match">{$t('ui.focus.matchIncludedTags')} <strong>{activeScope.tag_match === 'all' ? $t('ui.tagScopeFilters.all') : $t('ui.tagScopeFilters.any')}</strong></p>
 
       {#if editingScope}
-        <div class="scope-editor">
+        <div use:dismissible={closeScopeEditor} class="scope-editor">
           <TagScopeFilters {tags} scope={scopeDraft} matchName="session-tag-match" disabled={scopeSaving || scopeConflict} on:change={(event) => (scopeDraft = event.detail)} />
           {#if scopeConflict}<p class="error" role="alert">{$t('ui.focus.thisScopeChangedOnAnotherDeviceCloseAnd')}</p>{/if}
           <div class="scope-editor-actions">
@@ -758,7 +766,7 @@
             on:error={(event) => (error = event.detail)}
           />
 
-          <section class="focus-description-editor" aria-label={$t('ui.focus.taskWorkingNotes')}>
+          <section use:editorKeys={flushDescriptionSave} class="focus-description-editor" aria-label={$t('ui.focus.taskWorkingNotes')}>
             <div class="description-heading">
               <strong>{$t('ui.focus.workingNotes')}</strong>
               {#if descriptionSaveState !== 'idle'}
@@ -852,7 +860,7 @@
 
   {#if breakPrompt}
     <div class="break-prompt-backdrop" role="presentation">
-      <section class="break-prompt" role="dialog" aria-modal="true" aria-labelledby="break-prompt-title" aria-describedby="break-prompt-description">
+      <section use:dialog={{close: () => { breakPrompt = null; }}} class="break-prompt" role="dialog" aria-modal="true" aria-labelledby="break-prompt-title" aria-describedby="break-prompt-description">
         <p class="eyebrow">{breakPrompt === 'finished' ? $t('ui.focus.taskCompleted') : $t('ui.focus.taskBlocked')}</p>
         <h2 id="break-prompt-title">{$t('ui.focus.startABreak')}</h2>
         <p id="break-prompt-description">{$t('ui.focus.takeABreakNowOrKeepTheCurrent')}</p>

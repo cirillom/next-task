@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t, text, localized, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
+  import { submitEditor } from '../keyboard';
   import { ApiError, api } from '../api/client';
   import type { Tag, Task, TaskInput, TaskSummary } from '../api/types';
   import { formatDateTime } from '../format';
@@ -59,6 +60,11 @@
   let creatingTag = false;
   let createdParentId = 0;
   let localError: Message = '';
+  let formElement: HTMLFormElement;
+  const initialState = signature();
+  function signature() { return JSON.stringify({...taskInput(), tag_ids: [...tagIds].sort((a,b) => a-b)}); }
+  export function isDirty() { return signature() !== initialState || Array.from(formElement?.querySelectorAll<HTMLInputElement>('input:invalid') || []).some(input => !!input.value); }
+  export function requestSubmit() { if (!busy && !creatingTag) submitEditor(formElement); }
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedParent = parentTasks.find((item) => item.id === parentTaskId)
@@ -167,12 +173,12 @@
 {#if loading}
   <p class="empty">{$t('ui.taskForm.loadingTaskEditor')}</p>
 {:else}
-  <form class="shared-task-form" on:submit|preventDefault={submit}>
+  <form bind:this={formElement} class="shared-task-form" on:submit|preventDefault={submit}>
     {#if taskDetails?.active_blocks.length}
       <BlockSummary blocks={taskDetails.active_blocks} on:openTask={(event) => dispatch('openTask', event.detail)} />
     {/if}
     <div class="title-row">
-      <label>{$t('ui.taskForm.title')}<TextField bind:value={title} maxlength="500" required /></label>
+      <label>{$t('ui.taskForm.title')}<TextField bind:value={title} maxlength="500" autofocus required /></label>
     </div>
 
     <div class="metadata-row">

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t, text, errorMessage, type Message } from './lib/i18n';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { hasDialog, isSaveKey, isTyping, isModified, submitEditor } from './lib/keyboard';
+  import KeyboardHelp from './lib/components/KeyboardHelp.svelte';
   import { ApiError, api } from './lib/api/client';
   import type { NextScope, User } from './lib/api/types';
   import AppButton from './lib/components/AppButton.svelte';
@@ -29,6 +31,26 @@
     { id: 'tags', label: $t('ui.app.tags'), icon: '#' },
     { id: 'settings', label: $t('ui.app.settings'), icon: '⚙' }
   ];
+
+  let shortcutHelpOpen = false;
+  async function keydown(event: KeyboardEvent) {
+    if (!user || accountView || event.defaultPrevented || event.isComposing || hasDialog()) return;
+    if (isSaveKey(event)) {
+      const form = document.querySelector<HTMLFormElement>('form[data-shortcut-save]');
+      if (form) {event.preventDefault(); if (!event.repeat) submitEditor(form);}
+      return;
+    }
+    if (event.repeat || isModified(event) || isTyping(event.target)) return;
+    if (event.key.toLowerCase() === 'n') {event.preventDefault(); openTask(0);}
+    else if (event.key === '?') {event.preventDefault(); shortcutHelpOpen = true;}
+    else if (event.key === '/') {
+      if (view !== 'tasks' && view !== 'tags') return;
+      event.preventDefault();
+      await tick();
+      const search = document.querySelector<HTMLInputElement>('.content input[type="search"]');
+      search?.focus(); search?.select();
+    }
+  }
 
   let user: User | null = null;
   let view: View = 'next';
@@ -137,8 +159,8 @@
   }
 
   onMount(() => {
-    readHash(); window.addEventListener('hashchange', readHash); void initialize();
-    return () => window.removeEventListener('hashchange', readHash);
+    readHash(); window.addEventListener('hashchange', readHash); document.addEventListener('keydown', keydown); void initialize();
+    return () => {window.removeEventListener('hashchange', readHash); document.removeEventListener('keydown', keydown);};
   });
 </script>
 
@@ -189,7 +211,7 @@
           {:else if view === 'tasks'}<Tasks on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} />
           {:else if view === 'drafts'}<Drafts on:openTask={(event) => openTask(event.detail)} />
           {:else if view === 'tags'}<Tags />
-          {:else}<Settings {user} />{/if}
+          {:else}<Settings {user} on:shortcuts={() => (shortcutHelpOpen = true)} />{/if}
         {/key}
     </main>
     <nav class="mobile-nav" aria-label={$t('ui.app.primaryNavigation')}>
@@ -218,6 +240,8 @@
     />
   {/key}
 {/if}
+
+{#if shortcutHelpOpen}<KeyboardHelp on:close={() => (shortcutHelpOpen = false)} />{/if}
 
 <style>
   .signed-out-language { display: flex; justify-content: flex-end; padding: 1rem 1rem 0; }

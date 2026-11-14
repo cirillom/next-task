@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissible } from '../lib/keyboard';
   import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
@@ -256,7 +257,7 @@
     </button>
 
     {#if filtersOpen}
-      <div class="toolbar-popover filter-popover" role="dialog" aria-label={$t('ui.tasks.taskFilters')}>
+      <div use:dismissible={closePopovers} class="toolbar-popover filter-popover" role="dialog" aria-label={$t('ui.tasks.taskFilters')}>
         <div class="popover-header">
           <strong>{$t('ui.tasks.filters')}</strong>
           {#if activeFilterCount > 0}<button type="button" class="clear-button" on:click={clearFilters}>{$t('ui.tasks.clear')}</button>{/if}
@@ -312,7 +313,7 @@
     </button>
 
     {#if sortOpen}
-      <div class="toolbar-popover sort-popover" role="dialog" aria-label={$t('ui.tasks.taskSorting')}>
+      <div use:dismissible={closePopovers} class="toolbar-popover sort-popover" role="dialog" aria-label={$t('ui.tasks.taskSorting')}>
         <div class="popover-header"><strong>{$t('ui.tasks.sort')}</strong></div>
         <label>
           {$t('ui.tasks.orderBy')}

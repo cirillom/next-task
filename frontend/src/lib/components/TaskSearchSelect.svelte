@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pickerEscape } from '../keyboard';
   import { text } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { TaskSummary } from '../api/types';
@@ -14,7 +15,6 @@
   const dispatch = createEventDispatcher<{ select: TaskSummary; create: string }>();
   let search = '';
   let open = false;
-  let results: TaskSearchResults;
 
   function select(task: TaskSummary) {
     dispatch('select', task);
@@ -28,15 +28,9 @@
     open = false;
   }
 
-  function keydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') open = false;
-    if (event.key !== 'Enter' || !open) return;
-    event.preventDefault();
-    results?.selectFirst();
-  }
 </script>
 
-<div class="task-search">
+<div class="task-search" use:pickerEscape={{open: () => open, close: () => {open = false;}}}>
   <TextField
     bind:value={search}
     placeholder={$text(placeholder)}
@@ -49,10 +43,9 @@
     on:focus={() => (open = true)}
     on:input={() => (open = true)}
     on:blur={() => (open = false)}
-    on:keydown={keydown}
   />
   {#if open && !disabled}
-    <TaskSearchResults bind:this={results} {tasks} query={search} {excludeIds} {allowCreate} on:select={(event) => select(event.detail)} on:create={(event) => create(event.detail)} />
+    <TaskSearchResults {tasks} query={search} {excludeIds} {allowCreate} on:select={(event) => select(event.detail)} on:create={(event) => create(event.detail)} />
   {/if}
 </div>
 

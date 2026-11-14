@@ -404,7 +404,7 @@
           <h2>{$t('ui.tagPicker.createTag')}</h2>
         </div>
       </header>
-      <form class="detail-form" on:submit|preventDefault={create}>
+      <form data-shortcut-save class="detail-form" on:submit|preventDefault={create}>
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={createColor} /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={createScoreValue} /></label>
@@ -435,7 +435,7 @@
         </div>
       {/if}
 
-      <form class="detail-form" on:submit|preventDefault={saveEdit}>
+      <form data-shortcut-save class="detail-form" on:submit|preventDefault={saveEdit}>
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={editName} maxlength="120" required  /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={editColor}  /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={editScoreValue} /></label>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ignoreKey, isModified } from '../keyboard';
   import { t, text, localized } from '../i18n';
   import { createEventDispatcher, tick } from 'svelte';
   import DOMPurify from 'dompurify';
@@ -185,6 +186,7 @@
   }
 
   async function handleLineKeydown(index: number, event: KeyboardEvent) {
+    if (ignoreKey(event) || isModified(event)) return;
     const textarea = event.currentTarget as HTMLTextAreaElement;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
@@ -219,17 +221,6 @@
       emitLines(next);
       await activateLine(index, start);
       return;
-    }
-
-    if (event.key === 'ArrowUp' && !event.shiftKey && index > 0) {
-      event.preventDefault();
-      await activateLine(index - 1, start);
-      return;
-    }
-
-    if (event.key === 'ArrowDown' && !event.shiftKey && index < lines.length - 1) {
-      event.preventDefault();
-      await activateLine(index + 1, start);
     }
   }
 
@@ -268,6 +259,7 @@
   }
 
   function handleRenderedKeydown(index: number, event: KeyboardEvent) {
+    if (ignoreKey(event) || isModified(event)) return;
     if (event.target instanceof HTMLInputElement) return;
     if (renderedLink(event.target)) return;
     if (!disabled && (event.key === 'Enter' || event.key === ' ')) {

@@ -31,6 +31,8 @@ try {
   await new Promise((resolve, reject) => {socket.onopen = resolve; socket.onerror = reject;});
   let nextId = 0;
   const pending = new Map();
+  const confirmations = [];
+  let acceptConfirmation = true;
   socket.onmessage = event => {
     const item = JSON.parse(event.data);
     if (item.id) {
@@ -39,6 +41,11 @@ try {
       if (item.error) call.reject(new Error(JSON.stringify(item.error)));
       else call.resolve(item.result);
     } else if (item.method === 'Runtime.exceptionThrown') errors.push(item.params.exceptionDetails.text);
+    else if (item.method === 'Page.javascriptDialogOpening') {
+      confirmations.push(item.params.message);
+      void send('Page.handleJavaScriptDialog', {accept: acceptConfirmation}, item.sessionId);
+      acceptConfirmation = true;
+    }
   };
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = ++nextId;
@@ -48,6 +55,7 @@ try {
   const {targetId} = await send('Target.createTarget', {url: 'about:blank'});
   const {sessionId} = await send('Target.attachToTarget', {targetId, flatten: true});
   await send('Runtime.enable', {}, sessionId);
+  await send('Page.enable', {}, sessionId);
   const evaluate = async expression => {
     const result = await send('Runtime.evaluate', {expression, awaitPromise: true, returnByValue: true, userGesture: true}, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
@@ -60,7 +68,16 @@ try {
     }
     throw new Error(`Timed out: ${expression}; page: ${await evaluate('document.body.innerText')}`);
   };
-  const fill = (selector, value) => evaluate(`{const input = document.querySelector(${JSON.stringify(selector)}); if (!input) throw new Error('Missing input'); const prototype = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', {bubbles:true}));}`);
+  const fill = (selector, value) => evaluate(`{const input = document.querySelector(${JSON.stringify(selector)}); if (!input) throw new Error('Missing input'); input.focus(); const prototype = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', {bubbles:true}));}`);
+  const press = async (key, modifiers = 0) => {
+    const codes = {Escape:27, Enter:13, Tab:9, ArrowDown:40, ArrowUp:38, ArrowLeft:37, ArrowRight:39, '/':191, '?':191};
+    const code = key.length === 1 && /[a-z]/i.test(key) ? `Key${key.toUpperCase()}` : key === '/' || key === '?' ? 'Slash' : key;
+    const params = {key, code, modifiers, windowsVirtualKeyCode: codes[key] || key.toUpperCase().charCodeAt(0)};
+    if (!(modifiers & 7) && (key.length === 1 || key === 'Enter')) params.text = key === 'Enter' ? '\r' : key;
+    await send('Input.dispatchKeyEvent', {type:'keyDown', ...params}, sessionId);
+    await send('Input.dispatchKeyEvent', {type:'keyUp', ...params}, sessionId);
+  };
+  const blur = () => evaluate(`document.activeElement?.blur()`);
   const changeLanguage = value => evaluate(`{const select = document.querySelector('.language-selector select'); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', {bubbles:true}));}`);
   const navigate = async hash => {await evaluate(`location.hash=${JSON.stringify(hash)}`); await delay(150);};
   await send('Page.navigate', {url: address}, sessionId);
@@ -93,6 +110,142 @@ try {
   await wait(`document.documentElement.lang === 'en'`);
   assert.equal(await evaluate(`document.querySelector('.capture-field textarea').value`), 'User title stays mine');
   await evaluate(`document.querySelector('.quick-capture-modal .icon-button').click()`);
+
+  await wait(`document.querySelector('.quick-capture-modal') === null`);
+  assert.equal(await evaluate(`document.querySelector('.sidebar > button') === null`), true);
+  await evaluate(`Array.from(document.querySelectorAll('.content .app-button')).find(button=>button.textContent.includes('Show keyboard shortcuts')).click()`);
+  await wait(`document.querySelector('.shortcut-dialog') !== null`);
+  assert.ok(await evaluate(`!!document.querySelector('.shortcut-dialog .app-button')`));
+  await press('Escape');
+  await wait(`document.querySelector('.shortcut-dialog') === null`);
+  // Always-on shortcuts, context priority, dirty dialogs, native newlines, and save validation.
+  await blur(); await press('n');
+  await wait(`document.querySelector('.capture-field textarea') === document.activeElement`);
+  await press('Escape');
+  await wait(`document.querySelector('.quick-capture-modal') === null`);
+  await blur(); await press('n');
+  await wait(`document.querySelector('.capture-field textarea') !== null`);
+  await fill('.capture-field textarea', 'Keyboard draft');
+  await press('s',2);
+  await wait(`document.querySelector('.quick-capture-modal') === null`);
+  assert.ok(await evaluate(`fetch('/api/drafts').then(r=>r.json()).then(drafts=>drafts.some(d=>d.title==='Keyboard draft'))`));
+  await blur(); await press('?', 8);
+  await wait(`document.querySelector('.shortcut-dialog') !== null`);
+  await wait(`document.activeElement === document.querySelector('.shortcut-dialog .app-button')`);
+  assert.doesNotMatch(await evaluate(`document.querySelector('.shortcut-dialog').textContent`), /[\u2190-\u2193]|Shift\+Tab/);
+  assert.equal(await evaluate(`{const event = new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});document.querySelector('.shortcut-dialog .app-button').dispatchEvent(event);event.defaultPrevented;}`), false);
+  await evaluate(`document.querySelector('.brand').focus()`);
+  assert.ok(await evaluate(`document.activeElement === document.querySelector('.brand')`));
+  await press('Escape');
+  await wait(`document.querySelector('.shortcut-dialog') === null`);
+  await navigate('/tasks');
+  await wait(`document.querySelector('.task-card') !== null`);
+  // Tab and page arrows retain browser behavior; no custom focus navigation remains.
+  await evaluate(`document.querySelector('.brand').focus()`); await press('Tab');
+  assert.ok(await evaluate(`document.activeElement === document.querySelector('.new-task-button')`));
+  for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
+    assert.equal(await evaluate(`{const event = new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true});document.activeElement.dispatchEvent(event);event.defaultPrevented;}`), false);
+    await press(key);
+    assert.ok(await evaluate(`document.activeElement === document.querySelector('.new-task-button')`));
+  }
+  await blur(); await press('/');
+  await wait(`document.activeElement?.matches('.content input[type="search"]')`);
+  await press('n');
+  assert.equal(await evaluate(`document.querySelector('.quick-capture-modal') === null`), true);
+  assert.match(await evaluate(`document.activeElement.value`), /n/);
+  await fill('.content input[type="search"]', '');
+  await send('Input.insertText', {text:'test'}, sessionId);
+  await press('ArrowLeft');
+  assert.equal(await evaluate(`document.activeElement.selectionStart`), 3);
+  await fill('.content input[type="search"]', '');
+  await blur();
+  assert.equal(await evaluate(`{const e = new KeyboardEvent('keydown',{key:'n',ctrlKey:true,bubbles:true,cancelable:true});document.body.dispatchEvent(e);e.defaultPrevented;}`), false);
+  await evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'n',isComposing:true,bubbles:true}));document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'n',repeat:true,bubbles:true}));`);
+  assert.equal(await evaluate(`document.querySelector('.quick-capture-modal') === null`), true);
+  await press('n');
+  await wait(`document.querySelector('.capture-field textarea') !== null`);
+  await fill('.capture-field textarea', 'Keyboard task');
+  await press('Enter');
+  assert.equal(await evaluate(`document.querySelector('.capture-field textarea').value`), 'Keyboard task\n');
+  await send('Input.insertText', {text:'Keyboard notes'}, sessionId);
+  const beforeCancel = confirmations.length;
+  acceptConfirmation = false;
+  await press('Escape');
+  assert.equal(confirmations.length, beforeCancel + 1);
+  assert.ok(await evaluate(`document.querySelector('.capture-field textarea').value.includes('Keyboard notes')`));
+  await press('Enter', 2);
+  await wait(`document.querySelector('.quick-capture-modal .shared-task-form') !== null`);
+  const tagInput = '.quick-capture-modal .tag-picker input[role="combobox"]';
+  await evaluate(`document.querySelector(${JSON.stringify(tagInput)}).focus()`);
+  await wait(`document.querySelector('.tag-options button') !== null`);
+  for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Tab']) {
+    assert.equal(await evaluate(`{const event = new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true});document.querySelector(${JSON.stringify(tagInput)}).dispatchEvent(event);event.defaultPrevented;}`), false);
+  }
+  // Removing navigation leaves the existing click selection available.
+  await evaluate(`document.querySelector('.tag-options button').click()`);
+  await wait(`document.querySelector('.selected-tags .tag-badge') !== null`);
+  await evaluate(`document.querySelector(${JSON.stringify(tagInput)}).focus()`);
+  await press('Escape');
+  assert.equal(await evaluate(`document.querySelector('.tag-options') === null && !!document.querySelector('.quick-capture-modal')`), true);
+  await press('ArrowDown');
+  assert.equal(await evaluate(`document.querySelector('.tag-options') === null`), true);
+  await fill('.quick-capture-modal .title-row input', '');
+  await press('Enter', 2);
+  assert.ok(await evaluate(`document.querySelector('.quick-capture-modal .title-row input').validationMessage.length > 0`));
+  await fill('.quick-capture-modal .title-row input', 'Keyboard task');
+  await press('Enter', 2);
+  await wait(`document.querySelector('.quick-capture-modal') === null`);
+  await navigate('/tasks');
+  await wait(`Array.from(document.querySelectorAll('.title-button')).some(b=>b.textContent.includes('Keyboard task'))`);
+  await evaluate(`Array.from(document.querySelectorAll('.title-button')).find(b=>b.textContent.includes('Keyboard task')).click()`);
+  await wait(`document.querySelector('.shared-task-form') !== null`);
+  await fill('.shared-task-form .title-row input', 'Keyboard task renamed');
+  await press('Enter');
+  await wait(`document.querySelector('.task-editor') === null`);
+  await wait(`Array.from(document.querySelectorAll('.title-button')).some(b=>b.textContent.includes('Keyboard task renamed'))`);
+  await evaluate(`Array.from(document.querySelectorAll('.title-button')).find(b=>b.textContent.includes('Keyboard task renamed')).click()`);
+  await wait(`document.querySelector('.shared-task-form') !== null`);
+  await fill('.shared-task-form .title-row input', 'Keyboard task updated');
+  await press('s', 2);
+  await wait(`document.querySelector('.task-editor') === null`);
+  await wait(`Array.from(document.querySelectorAll('.title-button')).some(b=>b.textContent.includes('Keyboard task updated'))`);
+  await evaluate(`Array.from(document.querySelectorAll('.title-button')).find(b=>b.textContent.includes('Keyboard task updated')).click()`);
+  await wait(`document.querySelector('.editor-header-actions .block-action') !== null`);
+  await evaluate(`document.querySelector('.editor-header-actions .block-action').click()`);
+  await wait(`document.querySelector('#blocking-reason') !== null`);
+  await fill('#blocking-reason', '#');
+  await wait(`document.querySelector('.block-modal .task-options') !== null`);
+  await press('Escape');
+  assert.ok(await evaluate(`!document.querySelector('.block-modal .task-options') && !!document.querySelector('.block-modal')`));
+  await press('Escape');
+  await wait(`document.querySelector('.block-modal') === null`);
+  assert.ok(await evaluate(`!!document.querySelector('.task-editor')`));
+  await press('Escape');
+  await wait(`document.querySelector('.task-editor') === null`);
+  await evaluate(`document.querySelector('[aria-label="Filter tasks"]').click()`);
+  await press('Escape');
+  await wait(`document.querySelector('.filter-popover') === null`);
+  // Preserve wide Markdown/code inside cards rather than allowing grid tracks to overflow the page.
+  const stressPatch = {title: 'Keyboard task updated ' + 'x'.repeat(350), description: ['```text', 'x'.repeat(4000), '```'].join('\n')};
+  await evaluate(`(async()=>{const tasks=await fetch('/api/tasks').then(r=>r.json());const task=tasks.find(t=>t.title==='Keyboard task updated');await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify(stressPatch)})});})()`);
+  await navigate('/settings'); await navigate('/tasks');
+  await wait(`document.querySelector('.task-card') !== null`);
+  for (const width of [390, 760, 1024, 1640]) {
+    await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<600},sessionId);
+    await delay(50);
+    assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth + 1`), `Tasks overflow at ${width}px`);
+    assert.ok(await evaluate(`Array.from(document.querySelectorAll('.task-card')).every(card=>card.getBoundingClientRect().right <= document.querySelector('.content').getBoundingClientRect().right + 1)`), `Card escapes its column at ${width}px`);
+  }
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false},sessionId);
+  await navigate('/tags');
+  await wait(`document.querySelector('.tag-tree .tag-select') !== null`);
+  await evaluate(`document.querySelector('.tag-tree .tag-select').click()`);
+  await wait(`document.querySelector('.tag-details form[data-shortcut-save] textarea') !== null`);
+  await fill('.tag-details form[data-shortcut-save] textarea', 'Keyboard tag notes');
+  await press('s',4);
+  await wait(`fetch('/api/tags').then(r=>r.json()).then(tags=>tags.some(t=>t.description==='Keyboard tag notes'))`);
+  await navigate('/settings');
+  await wait(`document.querySelector('.language-selector select') !== null`);
   // Task and tag editing plus fixed date formats remain usable in both languages.
   for (const language of ['en', 'pt-BR']) {
     await changeLanguage(language);
@@ -109,14 +262,26 @@ try {
     await navigate('/settings');
     await wait(`document.querySelector('.language-selector select') !== null`);
   }
+  await blur(); await press('?',8);
+  await wait(`document.querySelector('.shortcut-dialog') !== null`);
+  assert.match(await evaluate(`document.querySelector('.shortcut-dialog').textContent`), /Atalhos de teclado/);
+  await press('Escape');
   await navigate('/next');
-  await wait(`document.querySelector('.pomodoro-launcher .start-button') !== null`);
+  await wait(`document.querySelector('.pomodoro-launcher .start-button:not(:disabled)') !== null`);
   await evaluate(`document.querySelector('.pomodoro-launcher .start-button').click()`);
   await wait(`document.querySelector('.focus-screen .period-button:not(:disabled)') !== null`);
   await evaluate(`document.querySelector('.focus-screen .period-button').click()`);
   await wait(`document.querySelector('.running-label') !== null`);
   const active = await evaluate(`fetch('/api/pomodoro/session').then(r=>r.json())`);
   assert.equal(active.state, 'running');
+  await evaluate(`document.querySelector('.focus-description-editor .source-toggle').click()`);
+  await fill('.focus-description-editor textarea.full-source', 'Saved with keyboard');
+  await press('s',2);
+  await wait(`fetch('/api/tasks/${taskId}').then(r=>r.json()).then(t=>t.description==='Saved with keyboard')`);
+  await evaluate(`document.querySelector('.session-scope-heading button').click()`);
+  await wait(`document.querySelector('.scope-editor') !== null`);
+  await press('Escape');
+  await wait(`document.querySelector('.scope-editor') === null`);
   await navigate('/settings');
   await wait(`document.querySelector('.language-selector select') !== null`);
   await changeLanguage('pt-BR');
