@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { NextScope, Tag } from '../api/types';
   import { emptyTagScope, withExcludedTags, withIncludedTags } from '../tagScope';
@@ -18,24 +19,24 @@
 
 <div class="tag-scope-filters">
   <div class="tag-filter-heading">
-    <strong>Tag filters</strong>
-    <button type="button" disabled={disabled || (!scope.include_tag_ids.length && !scope.exclude_tag_ids.length && scope.tag_match === 'all')} on:click={() => change(emptyTagScope())}>Clear filters</button>
+    <strong>{$t('ui.tagScopeFilters.tagFilters')}</strong>
+    <button type="button" disabled={disabled || (!scope.include_tag_ids.length && !scope.exclude_tag_ids.length && scope.tag_match === 'all')} on:click={() => change(emptyTagScope())}>{$t('ui.tagScopeFilters.clearFilters')}</button>
   </div>
 
   <div class="tag-filter-field">
-    <span class="field-label">Include tags</span>
-    <TagPicker {tags} selectedIds={scope.include_tag_ids} selectedLabel="Included tags" searchLabel="Search included tags" allowCreate={false} {disabled} on:change={(event) => change(withIncludedTags(scope, event.detail))} />
+    <span class="field-label">{$t('ui.tagScopeFilters.includeTags')}</span>
+    <TagPicker {tags} selectedIds={scope.include_tag_ids} selectedLabel={$t('ui.tagScopeFilters.includedTags')} searchLabel={$t('ui.tagScopeFilters.searchIncludedTags')} allowCreate={false} {disabled} on:change={(event) => change(withIncludedTags(scope, event.detail))} />
   </div>
 
   <fieldset class="tag-match" {disabled}>
-    <legend>Match included tags</legend>
-    <label><input type="radio" name={matchName} value="all" checked={scope.tag_match === 'all'} on:change={() => change({ ...scope, tag_match: 'all' })} /> All</label>
-    <label><input type="radio" name={matchName} value="any" checked={scope.tag_match === 'any'} on:change={() => change({ ...scope, tag_match: 'any' })} /> Any</label>
+    <legend>{$t('ui.tagScopeFilters.matchIncludedTags')}</legend>
+    <label><input type="radio" name={matchName} value="all" checked={scope.tag_match === 'all'} on:change={() => change({ ...scope, tag_match: 'all' })} /> {$t('ui.tagScopeFilters.all')}</label>
+    <label><input type="radio" name={matchName} value="any" checked={scope.tag_match === 'any'} on:change={() => change({ ...scope, tag_match: 'any' })} /> {$t('ui.tagScopeFilters.any')}</label>
   </fieldset>
 
   <div class="tag-filter-field">
-    <span class="field-label">Exclude tags</span>
-    <TagPicker {tags} selectedIds={scope.exclude_tag_ids} selectedLabel="Excluded tags" searchLabel="Search excluded tags" allowCreate={false} {disabled} on:change={(event) => change(withExcludedTags(scope, event.detail))} />
+    <span class="field-label">{$t('ui.tagScopeFilters.excludeTags')}</span>
+    <TagPicker {tags} selectedIds={scope.exclude_tag_ids} selectedLabel={$t('ui.tagScopeFilters.excludedTags')} searchLabel={$t('ui.tagScopeFilters.searchExcludedTags')} allowCreate={false} {disabled} on:change={(event) => change(withExcludedTags(scope, event.detail))} />
   </div>
 </div>
 

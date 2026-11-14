@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.i18n import localized
 from app.models import Tag, TagRelationship
 from app.schemas import TagSummary
 
@@ -99,11 +100,13 @@ def descendant_ids(db: Session, tag_id: int) -> set[int]:
 
 def validate_relationship(db: Session, child: Tag, parent: Tag) -> None:
     if child.id == parent.id:
-        raise HTTPException(status_code=422, detail="A tag cannot be its own parent")
+        raise HTTPException(status_code=422, detail=localized("api.aTagCannotBeItsOwnParent"))
     if child.user_id != parent.user_id:
-        raise HTTPException(status_code=422, detail="Tags must belong to the same user")
+        raise HTTPException(status_code=422, detail=localized("api.tagsMustBelongToTheSameUser"))
     if child.id in ancestor_ids(db, [parent.id]):
-        raise HTTPException(status_code=422, detail="Tag relationship would create a cycle")
+        raise HTTPException(
+            status_code=422, detail=localized("api.tagRelationshipWouldCreateACycle")
+        )
 
 
 def tags_by_ids(db: Session, tag_ids: set[int]) -> list[Tag]:

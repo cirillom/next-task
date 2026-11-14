@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, rich, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import { geminiApi, type TextToTaskDraft } from '../api/gemini';
@@ -17,7 +18,7 @@
   let captureText = '';
   let proposal: TextToTaskDraft | null = null;
   let busy = false;
-  let error = '';
+  let error: Message = '';
   let geminiConfigured = false;
 
   onMount(async () => {
@@ -63,7 +64,7 @@
       });
       dispatch('saved', saved);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not create draft';
+      error = errorMessage(reason, 'ui.quickCapture.couldNotCreateDraft');
     } finally {
       busy = false;
     }
@@ -78,7 +79,7 @@
       reviewSource = 'gemini';
       stage = 'review';
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not turn this text into a task';
+      error = errorMessage(reason, 'ui.quickCapture.couldNotTurnThisTextIntoATask');
     } finally {
       busy = false;
     }
@@ -99,7 +100,7 @@
       const saved = await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not create task';
+      error = errorMessage(reason, 'ui.quickCapture.couldNotCreateTask');
     } finally {
       busy = false;
     }
@@ -113,7 +114,7 @@
       const saved = await api.createDraft(draftInput);
       dispatch('saved', saved);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not create draft';
+      error = errorMessage(reason, 'ui.quickCapture.couldNotCreateDraft');
     } finally {
       busy = false;
     }
@@ -129,43 +130,43 @@
   <div class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
     <header class="editor-header">
       <div>
-        <p class="eyebrow">{stage === 'capture' ? 'Quick capture' : reviewSource === 'gemini' ? 'Review Gemini suggestion' : 'Task details'}</p>
-        <h1 id="quick-capture-title">New task</h1>
+        <p class="eyebrow">{stage === 'capture' ? $t('ui.quickCapture.quickCapture') : reviewSource === 'gemini' ? $t('ui.quickCapture.reviewGeminiSuggestion') : $t('ui.quickCapture.taskDetails')}</p>
+        <h1 id="quick-capture-title">{$t('ui.app.newTask')}</h1>
       </div>
-      <button class="icon-button" aria-label="Close" title="Close" on:click={() => dispatch('close')}>×</button>
+      <button class="icon-button" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => dispatch('close')}>×</button>
     </header>
 
     {#if stage === 'capture'}
       <div class="capture-body">
         <label class="capture-field">
-          <span>What do you need to do?</span>
+          <span>{$t('ui.quickCapture.whatDoYouNeedToDo')}</span>
           <TextArea
             bind:value={captureText}
             rows="7"
             maxlength="12000"
             autofocus
-            placeholder="Write a task, thought, or a few lines of context…"
+            placeholder={$t('ui.quickCapture.writeATaskThoughtOrAFewLines')}
           />
         </label>
-        <p class="capture-hint">The first non-empty line becomes the title. Any lines after it become the description.</p>
-        {#if error}<p class="error" role="alert">{error}</p>{/if}
+        <p class="capture-hint">{$t('ui.quickCapture.theFirstNonEmptyLineBecomesTheTitle')}</p>
+        {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
         <footer class="capture-actions">
           <AppButton disabled={busy || !captureText.trim()} on:click={createDraft}>
-            <span aria-hidden="true">✎</span> {busy ? 'Saving…' : 'Draft task'}
+            <span aria-hidden="true">✎</span> {busy ? $t('ui.geminiSettings.saving') : $t('ui.quickCapture.draftTask')}
           </AppButton>
           {#if geminiConfigured}
             <AppButton disabled={busy || !captureText.trim()} on:click={generate}>
-              <span aria-hidden="true">✨</span> {busy ? 'Drafting…' : 'Text to task'}
+              <span aria-hidden="true">✨</span> {busy ? $t('ui.quickCapture.drafting') : $t('ui.quickCapture.textToTask')}
             </AppButton>
           {/if}
           <AppButton variant="primary" disabled={busy || !captureText.trim()} on:click={expand}>
-            <span aria-hidden="true">↗</span> Add task details
+            <span aria-hidden="true">↗</span> {$t('ui.quickCapture.addTaskDetails')}
           </AppButton>
         </footer>
       </div>
     {:else if proposal}
       {#if reviewSource === 'gemini'}
-        <p class="notice">Gemini filled the task using <code>{proposal.model}</code>. Review anything you want before creating it.</p>
+        <p class="notice">{@html $rich('ui.quickCapture.geminiReview', {model: proposal.model})}</p>
       {/if}
       <TaskForm
         initialTitle={proposal.title}
@@ -176,10 +177,10 @@
         initialNewTags={proposal.new_tag_names.join(', ')}
         {busy}
         {error}
-        submitLabel="Create task"
-        busyLabel="Creating…"
-        draftSubmitLabel="Save draft"
-        cancelLabel="Back"
+        submitLabel={$t('ui.quickCapture.createTask')}
+        busyLabel={$t('ui.quickCapture.creating')}
+        draftSubmitLabel={$t('ui.quickCapture.saveDraft')}
+        cancelLabel={$t('ui.quickCapture.back')}
         on:cancel={backToCapture}
         on:draft={(event) => saveDraft(event.detail)}
         on:submit={(event) => save(event.detail)}
@@ -218,7 +219,7 @@
     background: var(--paper);
   }
 
-  code { overflow-wrap: anywhere; }
+  .notice :global(code) { overflow-wrap: anywhere; }
 
   @media (max-width: 640px) {
     .quick-capture-modal { padding: .8rem; }

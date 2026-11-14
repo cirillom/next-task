@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_user
 from app.database import get_db
+from app.i18n import LocalizedText, localized, parameters, translate
 from app.models import Tag, Task, TaskBlock, User
 from app.pomodoro_models import PomodoroSession
 from app.schemas import (
@@ -145,6 +146,12 @@ def task_read(
         updated_at=task.updated_at,
         score=own_score,
         scoring_warning=scoring.warning,
+        scoring_warning_code=scoring.warning.key
+        if isinstance(scoring.warning, LocalizedText)
+        else None,
+        scoring_warning_params=parameters(scoring.warning.values)
+        if isinstance(scoring.warning, LocalizedText)
+        else {},
         ranking_score=own_score if ranking_score is None else round(ranking_score, 2),
         ranking_source_task_id=ranking_source_task_id,
         ranking_source_score=(
@@ -367,7 +374,7 @@ def delete_task(
     task = get_task_for_user(db, task_id, user)
     now = datetime.now(UTC)
     for block in db.scalars(select(TaskBlock).where(TaskBlock.blocking_task_id == task.id)):
-        block.reason = f"Deleted task: {task.title}"
+        block.reason = translate("system.deletedTask", user.language, title=task.title)
         block.blocking_task_id = None
         if block.unblocked_at is None:
             block.unblocked_at = now
@@ -385,10 +392,13 @@ def finish_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     if task.priority == 0:
-        raise HTTPException(status_code=409, detail="Finalize this draft before finishing it")
+        raise HTTPException(
+            status_code=409, detail=localized("api.finalizeThisDraftBeforeFinishingIt")
+        )
     if task.abandoned_by_task_id is not None:
         raise HTTPException(
-            status_code=409, detail="Restore this task's abandoned branch before finishing it"
+            status_code=409,
+            detail=localized("api.restoreThisTaskSAbandonedBranchBeforeFinishingIt"),
         )
     now = datetime.now(UTC)
     changed = False
@@ -435,7 +445,9 @@ def abandon_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     if task.priority == 0 or task.finished_at is not None:
-        raise HTTPException(status_code=409, detail="Only unfinished tasks can be abandoned")
+        raise HTTPException(
+            status_code=409, detail=localized("api.onlyUnfinishedTasksCanBeAbandoned")
+        )
     now = datetime.now(UTC)
     if task.abandoned_at is None:
         task.abandoned_at = now
@@ -487,20 +499,30 @@ def block_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     if task.priority == 0:
-        raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
+        raise HTTPException(
+            status_code=409, detail=localized("api.finalizeThisDraftBeforeBlockingIt")
+        )
     now = datetime.now(UTC)
     if payload.unblocked_at is not None and payload.unblocked_at <= now:
-        raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
+        raise HTTPException(
+            status_code=422, detail=localized("api.autoUnblockTimeMustBeInTheFuture")
+        )
     if payload.blocking_task_id is not None:
         blocker = db.get(Task, payload.blocking_task_id)
         if blocker is None or blocker.user_id != task.user_id:
-            raise HTTPException(status_code=422, detail="Blocking task must belong to the user")
+            raise HTTPException(
+                status_code=422, detail=localized("api.blockingTaskMustBelongToTheUser")
+            )
         if blocker.id == task.id:
-            raise HTTPException(status_code=422, detail="A task cannot block itself")
+            raise HTTPException(status_code=422, detail=localized("api.aTaskCannotBlockItself"))
         if blocker.finished_at is not None:
-            raise HTTPException(status_code=422, detail="Blocking task must be unfinished")
+            raise HTTPException(
+                status_code=422, detail=localized("api.blockingTaskMustBeUnfinished")
+            )
         if blocker.abandoned_by_task_id is not None:
-            raise HTTPException(status_code=422, detail="Abandoned tasks cannot block other tasks")
+            raise HTTPException(
+                status_code=422, detail=localized("api.abandonedTasksCannotBlockOtherTasks")
+            )
         reachable = (
             select(TaskBlock.task_id.label("task_id"))
             .where(
@@ -515,7 +537,7 @@ def block_task(
             .where(TaskBlock.unblocked_at.is_(None))
         )
         if db.scalar(select(reachable.c.task_id).where(reachable.c.task_id == blocker.id)):
-            raise HTTPException(status_code=422, detail="Task block would create a cycle")
+            raise HTTPException(status_code=422, detail=localized("api.taskBlockWouldCreateACycle"))
         if db.scalar(
             select(TaskBlock.id).where(
                 TaskBlock.task_id == task.id,
@@ -523,7 +545,9 @@ def block_task(
                 TaskBlock.unblocked_at.is_(None),
             )
         ):
-            raise HTTPException(status_code=409, detail="Task is already blocked by this task")
+            raise HTTPException(
+                status_code=409, detail=localized("api.taskIsAlreadyBlockedByThisTask")
+            )
 
     task.last_worked_at = now
     db.add(
@@ -538,7 +562,7 @@ def block_task(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Block already exists") from error
+        raise HTTPException(status_code=409, detail=localized("api.blockAlreadyExists")) from error
     db.refresh(task)
     return task_read(db, task)
 
@@ -558,9 +582,9 @@ def unblock_task(
         )
     ).all()
     if not active:
-        raise HTTPException(status_code=409, detail="Task is not blocked")
+        raise HTTPException(status_code=409, detail=localized("api.taskIsNotBlocked"))
     if len(active) > 1:
-        raise HTTPException(status_code=409, detail="Choose which blocker to remove")
+        raise HTTPException(status_code=409, detail=localized("api.chooseWhichBlockerToRemove"))
     active[0].unblocked_at = now
     db.commit()
     db.refresh(task)
@@ -579,9 +603,9 @@ def unblock_one(
         select(TaskBlock).where(TaskBlock.id == block_id, TaskBlock.task_id == task.id)
     )
     if block is None:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(status_code=404, detail=localized("api.blockNotFound"))
     if not block_is_active(block):
-        raise HTTPException(status_code=409, detail="Block is already resolved")
+        raise HTTPException(status_code=409, detail=localized("api.blockIsAlreadyResolved"))
     block.unblocked_at = datetime.now(UTC)
     db.commit()
     db.refresh(task)
@@ -597,11 +621,15 @@ def reblock_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     if task.priority == 0:
-        raise HTTPException(status_code=409, detail="Finalize this draft before blocking it")
+        raise HTTPException(
+            status_code=409, detail=localized("api.finalizeThisDraftBeforeBlockingIt")
+        )
     now = datetime.now(UTC)
     unblocked_at = payload.unblocked_at if payload is not None else None
     if unblocked_at is not None and unblocked_at <= now:
-        raise HTTPException(status_code=422, detail="Auto-unblock time must be in the future")
+        raise HTTPException(
+            status_code=422, detail=localized("api.autoUnblockTimeMustBeInTheFuture")
+        )
 
     active = db.scalar(
         select(TaskBlock).where(
@@ -611,7 +639,7 @@ def reblock_task(
         )
     )
     if active is not None:
-        raise HTTPException(status_code=409, detail="Task is already blocked")
+        raise HTTPException(status_code=409, detail=localized("api.taskIsAlreadyBlocked"))
 
     previous = db.scalar(
         select(TaskBlock)
@@ -620,7 +648,9 @@ def reblock_task(
         .limit(1)
     )
     if previous is None:
-        raise HTTPException(status_code=409, detail="Task has no previous block to restore")
+        raise HTTPException(
+            status_code=409, detail=localized("api.taskHasNoPreviousBlockToRestore")
+        )
 
     previous.unblocked_at = unblocked_at
     task.last_worked_at = now
@@ -628,7 +658,9 @@ def reblock_task(
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Task is already blocked") from error
+        raise HTTPException(
+            status_code=409, detail=localized("api.taskIsAlreadyBlocked")
+        ) from error
     db.refresh(task)
     return task_read(db, task)
 
@@ -645,9 +677,9 @@ def delete_block_history_entry(
         select(TaskBlock).where(TaskBlock.id == block_id, TaskBlock.task_id == task.id)
     )
     if block is None:
-        raise HTTPException(status_code=404, detail="Blocking history entry not found")
+        raise HTTPException(status_code=404, detail=localized("api.blockingHistoryEntryNotFound"))
     if block_is_active(block):
-        raise HTTPException(status_code=409, detail="Active blocks cannot be deleted")
+        raise HTTPException(status_code=409, detail=localized("api.activeBlocksCannotBeDeleted"))
 
     db.delete(block)
     db.commit()

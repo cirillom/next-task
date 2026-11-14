@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
   import type { NextScope, Tag, Task } from '../lib/api/types';
@@ -18,7 +19,7 @@
   let tagsLoaded = false;
   let scope: NextScope = emptyTagScope();
   let filtersOpen = false;
-  let error = '';
+  let error: Message = '';
   let loading = true;
   let refreshTimer: number;
   let taskRequest = 0;
@@ -38,7 +39,7 @@
       });
       if (request === taskRequest) tasks = ranked;
     } catch (reason) {
-      if (request === taskRequest) error = reason instanceof Error ? reason.message : 'Could not load tasks';
+      if (request === taskRequest) error = errorMessage(reason, 'ui.next.couldNotLoadTasks');
     } finally {
       if (request === taskRequest) loading = false;
     }
@@ -69,7 +70,7 @@
         scope = cleanTagScope(saved, valid);
         await loadTasks();
       } catch (reason) {
-        error = reason instanceof Error ? reason.message : 'Could not load tasks';
+        error = errorMessage(reason, 'ui.next.couldNotLoadTasks');
         loading = false;
       }
     })();
@@ -88,34 +89,34 @@
 </script>
 
 <div class="page-heading">
-  <div><p class="eyebrow">Ranked for you</p><h1>Next task</h1></div>
-  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>+ New task</AppButton>
+  <div><p class="eyebrow">{$t('ui.next.rankedForYou')}</p><h1>{$t('ui.next.nextTask')}</h1></div>
+  <AppButton variant="primary" on:click={() => dispatch('openTask', 0)}>{$t('ui.focus.newTask')}</AppButton>
 </div>
 
 <div class="next-filters">
-  <button type="button" disabled={!tagsLoaded} aria-expanded={filtersOpen} on:click={() => (filtersOpen = !filtersOpen)}>Tag filters {scope.include_tag_ids.length + scope.exclude_tag_ids.length ? `(${scope.include_tag_ids.length + scope.exclude_tag_ids.length} active)` : ''}</button>
+  <button type="button" disabled={!tagsLoaded} aria-expanded={filtersOpen} on:click={() => (filtersOpen = !filtersOpen)}>{$t('ui.next.tagFilters', { value1: scope.include_tag_ids.length + scope.exclude_tag_ids.length ? $t('ui.next.active', { value1: scope.include_tag_ids.length + scope.exclude_tag_ids.length }) : '' })}</button>
   {#if filtersOpen}
-    <div class="filter-panel" aria-label="Tag filters">
+    <div class="filter-panel" aria-label={$t('ui.tagScopeFilters.tagFilters')}>
       <TagScopeFilters {tags} {scope} matchName="next-tag-match" on:change={(event) => updateScope(event.detail)} />
     </div>
   {/if}
 </div>
 
-{#if error}<p class="error" role="alert">{error}</p>{/if}
+{#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
 <ScoringWarning message={tasks[0]?.scoring_warning ?? null} />
 
 {#if loading}
-  <p class="empty">Ranking your tasks…</p>
+  <p class="empty">{$t('ui.focus.rankingYourTasks')}</p>
 {/if}
 
-<section class:has-recommendation={!loading && tasks.length > 0} class="next-focus-block" aria-label="Pomodoro and recommended task">
+<section class:has-recommendation={!loading && tasks.length > 0} class="next-focus-block" aria-label={$t('ui.next.pomodoroAndRecommendedTask')}>
   <PomodoroLauncher
     recommendedTaskTitle={tasks[0]?.title || ''}
     on:start={() => dispatch('startFocus', scope)}
   />
 
   {#if !loading && tasks.length === 0}
-    <section class="empty"><strong>Nothing actionable right now.</strong><span>Try another tag filter, add a task, or check Tasks for blocked work.</span></section>
+    <section class="empty"><strong>{$t('ui.next.nothingActionableRightNow')}</strong><span>{$t('ui.next.tryAnotherTagFilterAddATaskOr')}</span></section>
   {:else if !loading}
     <NextTaskCard
       task={tasks[0]}
@@ -129,10 +130,10 @@
 </section>
 
 {#if !loading && tasks.length > 1}
-  <section class="queue" aria-label="Task queue">
+  <section class="queue" aria-label={$t('ui.next.taskQueue')}>
     <div class="queue__heading">
-      <h2>Queue</h2>
-      <span>{tasks.length - 1} more</span>
+      <h2>{$t('ui.focus.queue')}</h2>
+      <span>{$t('ui.next.more', { value1: tasks.length - 1 })}</span>
     </div>
 
     <TaskQueue

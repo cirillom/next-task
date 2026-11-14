@@ -18,17 +18,73 @@ or ending a period on one signed-in device is reflected on the others. The timer
 a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
 be a one-time notification or a repeating alarm that must be dismissed on any device.
 
+## Languages
+
+The interface supports English (`en`) and Brazilian Portuguese (`pt-BR`). Choose a
+language on signed-out account pages or in Settings. Signed-in accounts use their
+saved preference across devices; existing accounts default to English without
+changing their data. Before sign-in, precedence is an explicit browser-stored
+choice, the language hint in an account email link, supported browser languages,
+then English. Regional English variants such as `en-US` resolve to `en`;
+`pt-PT` and generic `pt` do not silently become Brazilian Portuguese.
+
+Language changes update system copy and the document language without reloading
+forms or resetting the timer. Number and relative-time displays follow the
+language; the date/time contract above stays fixed. The install description and
+cached offline page use the same catalogs. Offline copy uses the last displayed
+language on that device, then the saved signed-out choice or browser language.
+
+Emails use the recipient's saved language. Operators choose an invitation's
+language before the account exists; the recipient can change it on the invitation
+page. CLI account creation, invitations, and test emails default to English:
+
+```bash
+docker compose exec next-task uv run python -m app.cli invite-user friend@example.com --language pt-BR
+docker compose exec next-task uv run python -m app.cli create-user --language pt-BR
+docker compose exec next-task uv run python -m app.cli test-email friend@example.com --language pt-BR
+```
+
+Examples are translated once, when the account is created. They then belong to the
+user. Switching languages never renames tags, translates notes, rewrites tasks,
+recreates deleted examples, or changes manually written blocking reasons.
+
+### Translation maintenance
+
+System copy lives in `backend/app/locales/en.json` and `pt-BR.json`; both the
+frontend and backend consume these packaged JSON catalogs. `languages.json`
+registers language codes and their native names. Frontend messages use ICU syntax
+through `intl-messageformat`: use complete sentences, named parameters, and
+`{count, plural, one {...} other {...}}` rather than concatenating word fragments.
+Backend emails and onboarding use simple named placeholders such as `{link}` and
+`{formula}`; keep these messages free of ICU plural/select syntax. Formula variable
+names, API fields, URLs, developer logs, and operator CLI output remain stable.
+
+Use `t` for rendered system copy and `message` descriptors for stored errors and
+notices so they translate again when the locale changes. `rich` sanitizes trusted
+catalog markup and escapes interpolated values; ordinary Svelte rendering escapes
+text. API failures carry stable `code`/`params` alongside their English `detail`;
+unrecognized failures show a safe localized fallback. Recovery responses stay
+identical regardless of account existence.
+
+To add a language, register it, add its complete JSON catalog, import it into the
+frontend dictionary map, and define regional aliases deliberately in
+`supportedLanguage`. Run `npm --prefix frontend test` for catalog key/parameter
+parity, ICU syntax, referenced keys, and untranslated frontend text checks. Include
+new system-authored email/onboarding keys in both catalogs. Browser checks run
+with `NEXT_TASK_BROWSER_TESTS=1` and a local Chrome/Chromium binary.
+
 ## New-account examples
 
-New accounts receive seven editable tags and four Portuguese example tasks when
+New accounts receive seven editable tags and four example tasks in their selected language when
 an invitation is redeemed or an operator runs `create-user`. Account creation and
 its examples share one transaction. Existing accounts and later sign-ins are
 unaffected; no migration or shared demo account is needed.
 
-The root tags are Pessoal (green, value 0), Trabalho (blue, value 0), and Urgente
-(red, value 5). Pessoal contains Rotina (0) and Aprendizado (1); Trabalho contains
-Projetos (1) and Administrativo (0). With the default formula, Urgente adds 100
-points. Each tag has a short explanation.
+The root tags are Personal/Pessoal (green, value 0), Work/Trabalho (blue, value 0),
+and Urgent/Urgente (red, value 5). Personal contains Routine/Rotina (0) and
+Learning/Aprendizado (1); Work contains Projects/Projetos (1) and
+Administrative/Administrativo (0). With the default formula, Urgent adds 100 points.
+Each tag has a short explanation.
 
 The four tasks introduce ranking and the full default formula, hierarchical tags
 and their values, deadlines, and creating real work/starting Focus. They form a

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import object_session
 
+from app.i18n import error_detail, localized
 from app.models import Tag, Task
 from app.services.tags import ancestor_ids
 
@@ -69,7 +70,7 @@ def _evaluate(node: ast.AST, values: dict[str, float]) -> float | bool:
         try:
             return BIN_OPS[type(node.op)](left, right)
         except (ArithmeticError, OverflowError) as error:
-            raise FormulaError("Formula arithmetic failed") from error
+            raise FormulaError(localized("api.formulaArithmeticFailed")) from error
     if isinstance(node, ast.UnaryOp) and type(node.op) in UNARY_OPS:
         return UNARY_OPS[type(node.op)](float(_evaluate(node.operand, values)))
     if isinstance(node, ast.Compare) and len(node.ops) == len(node.comparators) == 1:
@@ -95,22 +96,22 @@ def _evaluate(node: ast.AST, values: dict[str, float]) -> float | bool:
         try:
             return FUNCTIONS[node.func.id](argument)
         except (ArithmeticError, OverflowError, ValueError) as error:
-            raise FormulaError("Formula function failed") from error
-    raise FormulaError("Formula contains an unsupported expression")
+            raise FormulaError(localized("api.formulaFunctionFailed")) from error
+    raise FormulaError(localized("api.formulaContainsAnUnsupportedExpression"))
 
 
 def evaluate_formula(formula: str, values: dict[str, float]) -> float:
     if not formula.strip() or len(formula) > 4000:
-        raise FormulaError("Formula must contain between 1 and 4000 characters")
+        raise FormulaError(localized("api.formulaMustContainBetween1And4000Characters"))
     try:
         tree = ast.parse(formula, mode="eval")
     except SyntaxError as error:
-        raise FormulaError("Formula syntax is invalid") from error
+        raise FormulaError(localized("api.formulaSyntaxIsInvalid")) from error
     if sum(1 for _node in ast.walk(tree)) > 100:
-        raise FormulaError("Formula is too complex")
+        raise FormulaError(localized("api.formulaIsTooComplex"))
     result = float(_evaluate(tree, values))
     if not math.isfinite(result):
-        raise FormulaError("Formula must return a finite number")
+        raise FormulaError(localized("api.formulaMustReturnAFiniteNumber"))
     return result
 
 
@@ -195,7 +196,6 @@ def plan_scoring(tasks: Iterable[Task], now: datetime | None = None) -> ScoringP
         return ScoringPlan(
             DEFAULT_SCORING_FORMULA,
             current_time,
-            f"Your scoring formula failed ({error}). "
-            "All scores shown here use the default formula.",
+            localized("api.scoringFallback", reason=error_detail(error)),
         )
     return ScoringPlan(custom_formula, current_time)

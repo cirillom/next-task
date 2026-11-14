@@ -1,10 +1,11 @@
 <script lang="ts">
-  export let message: string | null = null;
+  import { t, text, type Message } from '../i18n';
+  export let message: Message | null = null;
 </script>
 
 {#if message}
   <p class="scoring-warning" role="alert">
-    {message} <a href="#/settings">Edit scoring formula</a>
+    {$text(message)} <a href="#/settings">{$t('ui.scoringWarning.editScoringFormula')}</a>
   </p>
 {/if}
 

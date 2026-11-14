@@ -40,10 +40,12 @@ from app.auth.security import (
 )
 from app.config import get_settings
 from app.database import get_db
+from app.i18n import error_detail, localized, translate
 from app.models import EmailVerification, PasswordReset, User, UserSession
 from app.schemas import (
     EmailRequest,
     EmailStatus,
+    LanguageUpdate,
     LoginRequest,
     Message,
     PasswordChange,
@@ -61,7 +63,7 @@ from app.services.mail import (
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
 DUMMY_PASSWORD_HASH = hash_password("this is a dummy password used for unknown accounts")
-INVALID_LOGIN = "Invalid email or password"
+INVALID_LOGIN = localized("api.invalidEmailOrPassword")
 VERIFICATION_LIFETIME = timedelta(hours=24)
 VERIFICATION_RESEND_WAIT = timedelta(seconds=60)
 
@@ -119,7 +121,7 @@ def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many authentication attempts. Try again later.",
+            detail=localized("api.tooManyAuthenticationAttemptsTryAgainLater"),
         )
     ip_failure_attempt = reserve_window_attempt(
         db, ip_key(client_ip), now, window=IP_FAILURE_WINDOW, limit=IP_FAILURE_LIMIT
@@ -127,7 +129,7 @@ def login(
     if ip_failure_attempt is None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many authentication attempts. Try again later.",
+            detail=localized("api.tooManyAuthenticationAttemptsTryAgainLater"),
         )
 
     user = db.scalar(select(User).where(User.email == normalize_email(payload.email)))
@@ -164,11 +166,22 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
         db.execute(delete(UserSession).where(UserSession.token_hash == hash_token(token)))
         db.commit()
     response.delete_cookie(get_settings().session_cookie_name, path="/")
-    return Message(message="Logged out")
+    return Message(message=localized("api.loggedOut"))
 
 
 @router.get("/me", response_model=UserRead)
 def me(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.put("/language", response_model=UserRead)
+def change_language(
+    payload: LanguageUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> User:
+    user.language = payload.language
+    db.commit()
     return user
 
 
@@ -182,12 +195,17 @@ def change_password(
     now = datetime.now(UTC)
     key = password_change_key(user.id)
     require_current_password(
-        db, user, payload.current_password, key, now, "Could not change password"
+        db,
+        user,
+        payload.current_password,
+        key,
+        now,
+        localized("ui.settings.couldNotChangePassword"),
     )
     session = current_session(request, db)
     replace_password(db, user, payload.new_password, session.token_hash if session else None)
     db.commit()
-    return Message(message="Password changed")
+    return Message(message=localized("api.passwordChanged"))
 
 
 @router.get("/email", response_model=EmailStatus)
@@ -203,12 +221,14 @@ def request_email(
 ) -> EmailStatus:
     now = datetime.now(UTC)
     key = f"email-update:{user.id}"
-    require_current_password(db, user, payload.current_password, key, now, "Could not update email")
+    require_current_password(
+        db, user, payload.current_password, key, now, localized("api.couldNotUpdateEmail")
+    )
     db.commit()
 
     email = payload.email
     if db.scalar(select(User.id).where(User.id != user.id, User.email == email)) is not None:
-        raise HTTPException(status_code=409, detail="That email is already in use")
+        raise HTTPException(status_code=409, detail=localized("api.thatEmailIsAlreadyInUse"))
 
     pending = user.email_verification
     if email == user.email and user.email_verified_at:
@@ -224,7 +244,9 @@ def request_email(
         limit=1,
     )
     if send_attempt is None:
-        raise HTTPException(status_code=429, detail="Wait one minute before sending another email")
+        raise HTTPException(
+            status_code=429, detail=localized("api.waitOneMinuteBeforeSendingAnotherEmail")
+        )
 
     token = secrets.token_urlsafe(32)
     if pending is None:
@@ -235,13 +257,11 @@ def request_email(
     pending.expires_at = now + VERIFICATION_LIFETIME
     try:
         url = public_app_url()
-        link = f"{url}/#/verify-email?token={token}"
+        link = f"{url}/#/verify-email?token={token}&lang={user.language}"
         send_email(
             email,
-            "Verify your Next Task email",
-            "Open this link to verify your Next Task email. "
-            "It expires in 24 hours. If you did not request this, ignore this email.\n\n"
-            f"{link}\n",
+            translate("mail.verifySubject", user.language),
+            translate("mail.verifyBody", user.language, link=link),
         )
         db.commit()
     except (MailConfigurationError, MailDeliveryError) as error:
@@ -251,9 +271,9 @@ def request_email(
             logger.error("Email configuration failed: %s", error)
             raise HTTPException(
                 status_code=503,
-                detail="Email verification is unavailable. Check the server's email settings.",
+                detail=localized("api.emailVerificationIsUnavailableCheckTheServerSEmail"),
             ) from error
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        raise HTTPException(status_code=503, detail=error_detail(error)) from error
     return email_status(user, now)
 
 
@@ -267,12 +287,16 @@ def verify_email(payload: TokenRequest, db: Session = Depends(get_db)) -> Messag
         .returning(EmailVerification.user_id, EmailVerification.email)
     ).first()
     if consumed is None:
-        raise HTTPException(status_code=400, detail="Verification link is invalid or expired")
+        raise HTTPException(
+            status_code=400, detail=localized("api.verificationLinkIsInvalidOrExpired")
+        )
     user_id, email = consumed
     user = db.get(User, user_id)
     if user is None:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Verification link is invalid or expired")
+        raise HTTPException(
+            status_code=400, detail=localized("api.verificationLinkIsInvalidOrExpired")
+        )
     try:
         user.email = email
         user.email_verified_at = now
@@ -280,5 +304,7 @@ def verify_email(payload: TokenRequest, db: Session = Depends(get_db)) -> Messag
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise HTTPException(status_code=409, detail="That email is already in use") from error
-    return Message(message="Email verified")
+        raise HTTPException(
+            status_code=409, detail=localized("api.thatEmailIsAlreadyInUse")
+        ) from error
+    return Message(message=localized("ui.accountSettings.emailVerified"))

@@ -1,4 +1,7 @@
+import type { Language, Message } from '../i18n';
+
 export interface User {
+  language: Language;
   id: number;
   email: string;
   display_name: string;
@@ -69,7 +72,7 @@ export interface Task {
   created_at: string;
   updated_at: string;
   score: number;
-  scoring_warning: string | null;
+  scoring_warning: Message | null;
   ranking_score: number;
   ranking_source_task_id: number | null;
   ranking_source_score: number | null;

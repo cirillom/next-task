@@ -31,6 +31,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    language: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="en", server_default="en"
+    )
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(Text)
     gemini_model: Mapped[str | None] = mapped_column(String(100))
     scoring_formula: Mapped[str | None] = mapped_column(Text)
@@ -90,6 +93,9 @@ class Invitation(Base):
     __tablename__ = "invitations"
 
     email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    language: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="en", server_default="en"
+    )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

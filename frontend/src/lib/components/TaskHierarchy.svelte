@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { Task } from '../api/types';
 
@@ -15,10 +16,10 @@
     {#if task.parent_task}
       <div class="parent-link">
         <span aria-hidden="true">↳</span>
-        <span>Parent:</span>
+        <span>{$t('ui.taskHierarchy.parent')}</span>
         <button
           type="button"
-          title={`Open parent task #${task.parent_task.id}`}
+          title={$t('ui.taskHierarchy.openParentTask', { value1: task.parent_task.id })}
           on:click={() => dispatch('open', task.parent_task!.id)}
         >
           {task.parent_task.title}
@@ -29,7 +30,7 @@
 
     {#if task.subtasks.length}
       <span class="subtask-progress">
-        Subtasks {completedSubtasks} / {task.subtasks.length} complete
+        {$t('ui.taskHierarchy.subtasksComplete', { value1: completedSubtasks, value2: task.subtasks.length })}
       </span>
     {/if}
   </div>

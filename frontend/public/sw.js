@@ -1,4 +1,4 @@
-const CACHE = 'next-task-shell-v1';
+const CACHE = 'next-task-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/offline.html'];
 
 self.addEventListener('install', (event) => {

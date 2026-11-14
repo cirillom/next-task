@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
   import type { PomodoroSession, PomodoroSettings } from '../api/types';
@@ -13,7 +14,7 @@
   let serverClockOffset = 0;
   let refreshTicks = 0;
   let timer: number;
-  let error = '';
+  let error: Message = '';
 
   function updateRemaining() {
     if (activeSession?.state !== 'running' || !activeSession.ends_at) {
@@ -32,15 +33,15 @@
       if (activeSession) serverClockOffset = Date.parse(activeSession.server_now) - Date.now();
       updateRemaining();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load Pomodoro settings';
+      error = errorMessage(reason, 'ui.pomodoroLauncher.couldNotLoadPomodoroSettings');
     }
   }
 
   function activePhaseLabel(): string {
     if (!activeSession) return '';
-    if (activeSession.phase === 'focus') return 'Focus';
-    if (activeSession.phase === 'long-break') return 'Long break';
-    return 'Short break';
+    if (activeSession.phase === 'focus') return $t('ui.pomodoroLauncher.focus');
+    if (activeSession.phase === 'long-break') return $t('ui.pomodoroLauncher.longBreak');
+    return $t('ui.pomodoroLauncher.shortBreak');
   }
 
   function formatTime(total: number): string {
@@ -53,7 +54,7 @@
         settings = await api.pomodoroSettings();
         await refreshSession();
       } catch (reason) {
-        error = reason instanceof Error ? reason.message : 'Could not load Pomodoro settings';
+        error = errorMessage(reason, 'ui.pomodoroLauncher.couldNotLoadPomodoroSettings');
       }
     })();
     timer = window.setInterval(() => {
@@ -69,7 +70,7 @@
   }
 </script>
 
-<section class="pomodoro-launcher" aria-label="Pomodoro session">
+<section class="pomodoro-launcher" aria-label={$t('ui.pomodoroLauncher.pomodoroSession')}>
   <div class="pomodoro-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24">
       <circle cx="12" cy="13" r="7.5" />
@@ -79,19 +80,19 @@
   </div>
 
   <div class="pomodoro-copy">
-    <p class="eyebrow">Pomodoro</p>
+    <p class="eyebrow">{$t('ui.pomodoroLauncher.pomodoro')}</p>
     {#if activeSession?.state === 'running'}
-      <p>{activePhaseLabel()} · {formatTime(activeRemainingSeconds)} remaining · synced across devices</p>
+      <p>{$t('ui.pomodoroLauncher.remainingSyncedAcrossDevices', { value1: activePhaseLabel(), value2: formatTime(activeRemainingSeconds) })}</p>
     {:else if activeSession?.state === 'ringing'}
-      <p>Alarm ringing · continue to dismiss it</p>
+      <p>{$t('ui.pomodoroLauncher.alarmRingingContinueToDismissIt')}</p>
     {:else if activeSession}
-      <p>{activePhaseLabel()} ready · synced across devices</p>
+      <p>{$t('ui.pomodoroLauncher.readySyncedAcrossDevices', { value1: activePhaseLabel() })}</p>
     {:else if settings}
-      <p>{settings.focus_minutes} min focus · {settings.short_break_minutes} min break · {settings.long_break_minutes} min long break</p>
+      <p>{$t('ui.pomodoroLauncher.minFocusMinBreakMinLongBreak', { value1: settings.focus_minutes, value2: settings.short_break_minutes, value3: settings.long_break_minutes })}</p>
     {:else if error}
-      <p class="error">{error}</p>
+      <p class="error">{$text(error)}</p>
     {:else}
-      <p>Loading focus settings…</p>
+      <p>{$t('ui.pomodoroLauncher.loadingFocusSettings')}</p>
     {/if}
   </div>
 
@@ -99,12 +100,12 @@
     variant="primary"
     className="start-button"
     disabled={!settings || (!activeSession && !recommendedTaskTitle)}
-    aria-label={activeSession ? 'Continue active Pomodoro' : recommendedTaskTitle ? `Start Pomodoro with ${recommendedTaskTitle}` : 'Start Pomodoro'}
-    title={activeSession ? 'Continue the Pomodoro active on your account' : recommendedTaskTitle ? `Start with ${recommendedTaskTitle}` : 'No recommended task in this scope'}
+    aria-label={activeSession ? $t('ui.pomodoroLauncher.continueActivePomodoro') : recommendedTaskTitle ? $t('ui.pomodoroLauncher.startPomodoroWith', { value1: recommendedTaskTitle }) : $t('ui.pomodoroLauncher.startPomodoro')}
+    title={activeSession ? $t('ui.pomodoroLauncher.continueThePomodoroActiveOnYourAccount') : recommendedTaskTitle ? $t('ui.pomodoroLauncher.startWith', { value1: recommendedTaskTitle }) : $t('ui.pomodoroLauncher.noRecommendedTaskInThisScope')}
     on:click={startSession}
   >
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5Z" /></svg>
-    {activeSession ? 'Continue Pomodoro' : 'Start Pomodoro'}
+    {activeSession ? $t('ui.pomodoroLauncher.continuePomodoro') : $t('ui.pomodoroLauncher.startPomodoro')}
   </AppButton>
 </section>
 

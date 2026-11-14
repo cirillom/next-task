@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, text, rich, message, errorMessage, type Message } from '../i18n';
   import { onMount } from 'svelte';
   import { geminiApi, type GeminiModel, type GeminiSettings } from '../api/gemini';
   import AppButton from './AppButton.svelte';
@@ -9,18 +10,18 @@
   let models: GeminiModel[] = [];
   let selectedModel = '';
   let modelsLoading = false;
-  let modelError = '';
+  let modelError: Message = '';
   let loading = true;
   let busy = false;
-  let error = '';
-  let notice = '';
+  let error: Message = '';
+  let notice: Message = '';
 
   onMount(async () => {
     try {
       settings = await geminiApi.settings();
       if (settings.configured) await loadModels();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not load Gemini settings';
+      error = errorMessage(reason, 'ui.geminiSettings.couldNotLoadGeminiSettings');
     } finally {
       loading = false;
     }
@@ -34,7 +35,7 @@
       selectedModel = settings?.model || '';
     } catch (reason) {
       models = [];
-      modelError = reason instanceof Error ? reason.message : 'Could not load Google models';
+      modelError = errorMessage(reason, 'ui.geminiSettings.couldNotLoadGoogleModels');
     } finally {
       modelsLoading = false;
     }
@@ -47,10 +48,10 @@
     try {
       settings = await geminiApi.saveKey(apiKey);
       apiKey = '';
-      notice = 'Gemini API key saved securely.';
+      notice = message('ui.geminiSettings.geminiApiKeySavedSecurely');
       await loadModels();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not save Gemini API key';
+      error = errorMessage(reason, 'ui.geminiSettings.couldNotSaveGeminiApiKey');
     } finally {
       busy = false;
     }
@@ -62,16 +63,16 @@
     notice = '';
     try {
       settings = await geminiApi.saveModel(selectedModel);
-      notice = 'Gemini model saved.';
+      notice = message('ui.geminiSettings.geminiModelSaved');
     } catch (reason) {
-      modelError = reason instanceof Error ? reason.message : 'Could not save Gemini model';
+      modelError = errorMessage(reason, 'ui.geminiSettings.couldNotSaveGeminiModel');
     } finally {
       busy = false;
     }
   }
 
   async function remove() {
-    if (!window.confirm('Remove your Gemini API key? Text to task will stop working.')) return;
+    if (!window.confirm($t('ui.geminiSettings.removeYourGeminiApiKeyTextToTask'))) return;
     busy = true;
     error = '';
     notice = '';
@@ -80,9 +81,9 @@
       models = [];
       selectedModel = '';
       modelError = '';
-      notice = 'Gemini API key removed.';
+      notice = message('ui.geminiSettings.geminiApiKeyRemoved');
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : 'Could not remove Gemini API key';
+      error = errorMessage(reason, 'ui.geminiSettings.couldNotRemoveGeminiApiKey');
     } finally {
       busy = false;
     }
@@ -92,64 +93,62 @@
 <section class="panel">
   <div class="integration-heading">
     <div>
-      <p class="eyebrow">AI integration</p>
-      <h2>Gemini text to task</h2>
+      <p class="eyebrow">{$t('ui.geminiSettings.aiIntegration')}</p>
+      <h2>{$t('ui.geminiSettings.geminiTextToTask')}</h2>
     </div>
-    {#if settings?.configured}<span class="configured">Configured</span>{/if}
+    {#if settings?.configured}<span class="configured">{$t('ui.geminiSettings.configured')}</span>{/if}
   </div>
   <p class="muted">
-    Add your personal Gemini API key to turn natural-language notes into editable task drafts.
-    The key is encrypted on this server and is never shown again.
+    {$t('ui.geminiSettings.addYourPersonalGeminiApiKeyToTurn')}
   </p>
   {#if loading}
-    <p class="muted">Loading integration settings…</p>
+    <p class="muted">{$t('ui.geminiSettings.loadingIntegrationSettings')}</p>
   {:else}
     <form on:submit|preventDefault={save}>
       <label>
-        Gemini API key
+        {$t('ui.geminiSettings.geminiApiKey')}
         <TextField
           type="password"
           bind:value={apiKey}
           minlength="20"
           maxlength="512"
           autocomplete="off"
-          placeholder={settings?.configured ? settings.masked_key || 'Configured' : 'Paste your API key'}
+          placeholder={settings?.configured ? settings.masked_key || $t('ui.geminiSettings.configured') : $t('ui.geminiSettings.pasteYourApiKey')}
           required
         />
       </label>
       <p class="help">
-        Keys are available from
-        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>.
+        {@html $rich('ui.geminiSettings.keyHelp')}
       </p>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
-      {#if notice}<p class="notice">{notice}</p>{/if}
+      {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
+      {#if notice}<p class="notice">{$text(notice)}</p>{/if}
       <div class="integration-actions">
         {#if settings?.configured}
-          <AppButton variant="danger" disabled={busy} on:click={remove}>Remove key</AppButton>
+          <AppButton variant="danger" disabled={busy} on:click={remove}>{$t('ui.geminiSettings.removeKey')}</AppButton>
         {/if}
         <span></span>
         <AppButton type="submit" variant="primary" disabled={busy || apiKey.trim().length < 20}>
-          {busy ? 'Saving…' : settings?.configured ? 'Replace key' : 'Save key'}
+          {busy ? $t('ui.geminiSettings.saving') : settings?.configured ? $t('ui.geminiSettings.replaceKey') : $t('ui.geminiSettings.saveKey')}
         </AppButton>
       </div>
     </form>
     {#if settings?.configured}
       <div class="model-settings">
-        <label for="gemini-model">Model for text to task</label>
+        <label for="gemini-model">{$t('ui.geminiSettings.modelForTextToTask')}</label>
         <div class="model-actions">
           <select id="gemini-model" bind:value={selectedModel} disabled={busy || modelsLoading || models.length === 0}>
             {#if selectedModel && !models.some((model) => model.id === selectedModel)}
-              <option value={selectedModel}>{selectedModel} (current default)</option>
+              <option value={selectedModel}>{$t('ui.geminiSettings.currentDefault', { value1: selectedModel })}</option>
             {/if}
             {#each models as model}
               <option value={model.id}>{model.name} ({model.id})</option>
             {/each}
           </select>
-          <AppButton disabled={busy || modelsLoading} on:click={loadModels}>Refresh</AppButton>
-          <AppButton variant="primary" disabled={busy || modelsLoading || !models.some((model) => model.id === selectedModel) || selectedModel === settings.model} on:click={saveModel}>Save model</AppButton>
+          <AppButton disabled={busy || modelsLoading} on:click={loadModels}>{$t('ui.geminiSettings.refresh')}</AppButton>
+          <AppButton variant="primary" disabled={busy || modelsLoading || !models.some((model) => model.id === selectedModel) || selectedModel === settings.model} on:click={saveModel}>{$t('ui.geminiSettings.saveModel')}</AppButton>
         </div>
-        <p class="help">{modelsLoading ? 'Loading models from Google…' : 'Available text models for your API key. Current model: ' + settings.model}</p>
-        {#if modelError}<p class="error" role="alert">{modelError}</p>{/if}
+        <p class="help">{modelsLoading ? $t('ui.geminiSettings.loadingModelsFromGoogle') : $t('ui.geminiSettings.modelHelp', {model: settings.model})}</p>
+        {#if modelError}<p class="error" role="alert">{$text(modelError)}</p>{/if}
       </div>
     {/if}
   {/if}

@@ -31,7 +31,7 @@ def invite_link(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], str]:
     )
 
     def factory(email: str) -> str:
-        invitations.send_invitation(email)
+        invitations.send_invitation(email, "pt-BR")
         match = re.search(r"token=([A-Za-z0-9_-]+)", messages[-1])
         assert match is not None
         return match.group(1)
@@ -222,6 +222,8 @@ def test_operator_created_accounts_get_the_same_examples(
             "cli@example.com",
             "--display-name",
             "CLI User",
+            "--language",
+            "pt-BR",
         ]
     )
     args.handler(args)
