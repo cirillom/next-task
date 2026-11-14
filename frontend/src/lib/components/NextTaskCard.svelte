@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TaskAction from './TaskAction.svelte';
   import { t, localized, numeric, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
@@ -171,20 +172,11 @@
   {#if !readOnly || task.abandoned_by_task_id}
     <div class="recommended-actions">
       {#if !readOnly && !task.abandoned_by_task_id}
-        <button type="button" class="action-button finish-action" disabled={busy} on:click={finish}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-          <span>{$t('ui.nextTaskCard.finish')}</span>
-        </button>
-        <button type="button" class="action-button worked-action" disabled={busy} on:click={markWorkedNow}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>
-          <span>{$t('ui.nextTaskCard.workedNow')}</span>
-        </button>
-        <button type="button" class="action-button block-action" disabled={busy} on:click={() => (blockModalOpen = true)}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-          <span>{$t('ui.nextTaskCard.block')}</span>
-        </button>
+        <TaskAction icon="finish" label={$t('ui.nextTaskCard.finish')} className="action-button finish-action" disabled={busy} compact={false} on:click={finish} />
+        <TaskAction icon="worked" label={$t('ui.nextTaskCard.workedNow')} className="action-button worked-action" disabled={busy} compact={false} on:click={markWorkedNow} />
+        <TaskAction icon="block" label={$t('ui.nextTaskCard.block')} className="action-button block-action" disabled={busy} active={!!task.current_block} compact={false} on:click={() => (blockModalOpen = true)} />
       {/if}
-      <TaskAbandonment {task} {readOnly} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
+      <TaskAbandonment {task} {readOnly} compact={false} disabled={busy} on:abandon={() => void act(() => api.abandonTask(task.id))} on:restore={() => void act(() => api.restoreTask(task.id))} on:open={(event) => dispatch('open', event.detail)} />
     </div>
   {/if}
 </article>
@@ -251,18 +243,13 @@
   .priority { color: var(--forest); font-weight: 800; }
   .date-meta { font-variant-numeric: tabular-nums; }
   .overdue { color: var(--danger); font-weight: 700; }
-  .recommended-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; border-top: 1px solid #e8e3d9; padding-top: .85rem; }
-  .action-button { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #cbc8be; border-radius: .55rem; background: #fff; color: var(--ink); padding: .58rem .78rem; font-size: .8rem; font-weight: 700; }
-  .action-button svg { width: 1rem; height: 1rem; flex: 0 0 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-  .action-button:hover:not(:disabled) { border-color: #9fa9a3; background: #fbfaf6; }
-  .finish-action { border-color: var(--forest); background: var(--forest); color: #fff; }
-  .finish-action:hover:not(:disabled) { border-color: var(--forest-2); background: var(--forest-2); }
-  .worked-action { color: var(--forest-2); }
-  .block-action { color: #8a4d36; }
+  .recommended-actions { --task-action-height: 2.4rem; --task-action-padding: .78rem; --task-action-font-size: .8rem; display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; border-top: 1px solid #e8e3d9; padding-top: .85rem; }
 
   @media (max-width: 600px) {
     .recommended-card { padding: 1.05rem; }
     .edit-button { opacity: .6; }
-    .action-button { flex: 1 1 calc(50% - .55rem); justify-content: center; }
+    .recommended-actions :global(.task-action), .recommended-actions :global(.abandonment) { flex: 1 1 calc(50% - .55rem); }
+    .recommended-actions :global(.abandonment .task-action) { flex-basis: 100%; }
+
   }
 </style>

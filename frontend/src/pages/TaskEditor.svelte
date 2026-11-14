@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TaskAction from '../lib/components/TaskAction.svelte';
   import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../lib/api/client';
@@ -302,32 +303,9 @@
       <div class="editor-header-actions">
         {#if task}
           {#if !isDraft && !task.abandoned_by_task_id}
-            <button
-              type="button"
-              class="finish-action"
-              class:reopen={!!task.finished_at}
-              disabled={busy}
-              on:click={toggleFinished}
-            >
-              {#if task.finished_at}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>
-                <span>{$t('ui.taskCard.reopen')}</span>
-              {:else}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg>
-                <span>{$t('ui.nextTaskCard.finish')}</span>
-              {/if}
-            </button>
+            <TaskAction icon={task.finished_at ? 'reopen' : 'finish'} label={task.finished_at ? $t('ui.taskCard.reopen') : $t('ui.nextTaskCard.finish')} className="finish-action" disabled={busy} on:click={toggleFinished} />
             <TaskAbandonment {task} disabled={busy} on:abandon={() => void runTaskAction(() => api.abandonTask(task!.id), 'ui.taskAbandonment.couldNotAbandonTask')} on:restore={() => void runTaskAction(() => api.restoreTask(task!.id), 'ui.taskAbandonment.couldNotRestoreTask')} on:open={(event) => dispatch('openTask', event.detail)} />
-            <button
-              type="button"
-              class="quick-action block-action"
-              class:active={!!task.current_block}
-              disabled={busy}
-              on:click={() => (blockModalOpen = true)}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg>
-              <span>{task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')}</span>
-            </button>
+            <TaskAction icon="block" label={task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')} className="quick-action block-action" disabled={busy} active={!!task.current_block} on:click={() => (blockModalOpen = true)} />
           {/if}
           <button
             type="button"
@@ -457,53 +435,15 @@
   }
 
   .editor-header-actions {
+    --task-action-height: 2.1rem;
+    --task-action-padding: .65rem;
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     gap: .4rem;
   }
 
-  .finish-action,
-  .quick-action {
-    display: inline-flex;
-    height: 2.1rem;
-    align-items: center;
-    gap: .38rem;
-    border-radius: .55rem;
-    padding: 0 .65rem;
-    font-size: .78rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-
-  .finish-action {
-    border: 1px solid var(--forest);
-    background: var(--forest);
-    color: #fff;
-    font-weight: 800;
-  }
-
-  .finish-action:hover:not(:disabled) { border-color: var(--forest-2); background: var(--forest-2); }
-  .finish-action.reopen { border-color: #b9c3bd; background: #fff; color: var(--forest-2); }
-
-  .quick-action { border: 1px solid #cfcbc0; background: #fbfaf6; color: var(--ink); }
-
-  .finish-action svg,
-  .quick-action svg,
-  .header-icon svg {
-    width: 1rem;
-    height: 1rem;
-    flex: 0 0 1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.8;
-  }
-
-  .quick-action:hover:not(:disabled) { border-color: #aaa69c; background: #fff; }
-  .block-action { color: #8a4d36; }
-  .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
+  .header-icon svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 
   .header-icon {
     display: grid;
@@ -525,9 +465,6 @@
   @media (max-width: 600px) {
     .task-editor { padding: .75rem; }
     .editor-header { top: -.75rem; margin: -.75rem -.75rem .7rem; padding: .7rem .75rem; }
-    .finish-action span,
-    .quick-action span { display: none; }
-    .finish-action,
-    .quick-action { width: 2.1rem; justify-content: center; padding: 0; }
+
   }
 </style>
