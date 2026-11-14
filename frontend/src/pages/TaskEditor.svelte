@@ -2,6 +2,7 @@
   import TaskAction from '../lib/components/TaskAction.svelte';
   import { t, text, errorMessage, type Message } from '../lib/i18n';
   import { createEventDispatcher, onMount } from 'svelte';
+  import { dialog, confirmClose } from '../lib/keyboard';
   import { api } from '../lib/api/client';
   import { localDateTime } from '../lib/format';
   import type { Task, TaskInput, TaskSummary } from '../lib/api/types';
@@ -29,6 +30,7 @@
   let completionTarget: TaskSummary | null = null;
   let error: Message = '';
   let form: TaskForm;
+  function close() { confirmClose(!!form?.isDirty(), () => dispatch('close'), busy); }
   let nestedIntent: 'parent' | 'child' | 'blocks' | 'blocker' | null = null;
   let nestedTitle = '';
 
@@ -290,8 +292,8 @@
   }
 </script>
 
-<div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
-  <div class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
+<div class="modal-backdrop" role="presentation" on:click|self={close}>
+  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
         <p class="eyebrow">{isDraft ? $t('ui.drafts.editDraft') : taskId ? $t('ui.quickCapture.taskDetails') : $t('ui.quickCapture.createTask')}</p>
@@ -318,7 +320,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></svg>
           </button>
         {/if}
-        <button class="header-icon close-icon" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => dispatch('close')}>×</button>
+        <button class="header-icon close-icon" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={close}>×</button>
       </div>
     </header>
 
@@ -349,7 +351,7 @@
         submitLabel={isDraft ? $t('ui.taskEditor.saveAsTask') : taskId ? $t('ui.taskForm.saveTask') : $t('ui.quickCapture.createTask')}
         busyLabel={isDraft ? $t('ui.geminiSettings.saving') : taskId ? $t('ui.geminiSettings.saving') : $t('ui.quickCapture.creating')}
         draftSubmitLabel={isDraft ? $t('ui.quickCapture.saveDraft') : ''}
-        on:cancel={() => dispatch('close')}
+        on:cancel={close}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
         on:createRelated={(event) => { nestedIntent = event.detail.kind; nestedTitle = event.detail.title; }}

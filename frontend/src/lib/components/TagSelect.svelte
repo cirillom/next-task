@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pickerEscape } from '../keyboard';
   import { t, text } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import type { TagSummary } from '../api/types';
@@ -82,7 +83,7 @@
 
 <svelte:window on:click={closeOnOutsideClick} />
 
-<div class="tag-select-control" bind:this={root} on:focusout={closeOnBlur}>
+<div use:pickerEscape={{open: () => open, close: closeSearch}} class="tag-select-control" bind:this={root} on:focusout={closeOnBlur}>
   {#if searchable}
     <TextField
       value={dirty ? search : (selectedOption?.tag.display_name || '')}
@@ -97,10 +98,9 @@
       on:click={() => (open = true)}
       on:input={filterSearch}
       on:blur={closeSearch}
-      on:keydown={(event) => { if (event.key === 'Escape') closeSearch(); if (event.key === 'Enter') event.preventDefault(); }}
     />
   {:else}
-    <button type="button" class="tag-select-trigger" {disabled} aria-label={$text(label)} aria-expanded={open} aria-haspopup="listbox" on:click={() => (open = !open)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>
+    <button type="button" class="tag-select-trigger" {disabled} aria-label={$text(label)} aria-expanded={open} aria-haspopup="listbox" on:click={() => (open = !open)}>
       {#if selectedOption}<span class="option-copy"><TagBadge tag={selectedOption.tag} />{#if selectedOption.context && selectedOption.context !== selectedOption.tag.name}<small>{selectedOption.context}</small>{/if}</span>{:else}<span>{$text(emptyLabel)}</span>{/if}
       <span aria-hidden="true">⌄</span>
     </button>
@@ -108,10 +108,10 @@
   {#if open && !disabled}
     <div class="tag-select-options" class:search-options={searchable} role="listbox" aria-label={$text(label)}>
       {#if !searchable}
-        <button type="button" role="option" aria-selected={value === emptyValue} class:chosen={value === emptyValue} on:click={() => choose(emptyValue)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>{$text(emptyLabel)}</button>
+        <button type="button" role="option" aria-selected={value === emptyValue} class:chosen={value === emptyValue} on:click={() => choose(emptyValue)}>{$text(emptyLabel)}</button>
       {/if}
       {#each filteredOptions as option}
-        <button type="button" role="option" aria-selected={value === option.tag.id} class:chosen={value === option.tag.id} style:--depth={`${option.depth || 0}rem`} on:mousedown={keepSearchFocus} on:click={() => choose(option.tag.id)} on:keydown={(event) => { if (event.key === 'Escape') open = false; }}>
+        <button type="button" role="option" aria-selected={value === option.tag.id} class:chosen={value === option.tag.id} style:--depth={`${option.depth || 0}rem`} on:mousedown={keepSearchFocus} on:click={() => choose(option.tag.id)}>
           <span class="option-copy"><TagBadge tag={option.tag} selected={value === option.tag.id} />{#if option.context && option.context !== option.tag.name}<small>{option.context}</small>{/if}</span>
         </button>
       {/each}

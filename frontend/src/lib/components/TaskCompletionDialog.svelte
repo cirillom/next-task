@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialog } from '../keyboard';
   import { t, text, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher, onMount } from 'svelte';
   import { api } from '../api/client';
@@ -55,7 +56,7 @@
 
 <div class="modal-backdrop completion-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
   <section
-    class="completion-dialog"
+    use:dialog={{close: () => dispatch('close'), busy}} class="completion-dialog"
     role="dialog"
     aria-modal="true"
     aria-labelledby="completion-dialog-title"

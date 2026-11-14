@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t, text, message, errorMessage, type Message } from '../lib/i18n';
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import { api } from '../lib/api/client';
   import AccountSettings from '../lib/components/AccountSettings.svelte';
   import GeminiSettings from '../lib/components/GeminiSettings.svelte';
@@ -13,6 +13,7 @@
   import LanguageSelector from '../lib/components/LanguageSelector.svelte';
 
   export let user: User;
+  const dispatch = createEventDispatcher<{shortcuts: void}>();
   let currentPassword = '';
   let newPassword = '';
   let confirmation = '';
@@ -61,7 +62,10 @@
 
 <div class="page-heading"><div><p class="eyebrow">{$t('ui.accountSettings.yourAccount')}</p><h1>{$t('ui.app.settings')}</h1></div></div>
 <div class="settings-stack narrow">
-  <section class="panel"><LanguageSelector {user} /></section>
+  <section class="panel">
+    <LanguageSelector {user} />
+    <div class="inline-control"><AppButton on:click={() => dispatch('shortcuts')}>{$t('keyboard.showHelp')}</AppButton></div>
+  </section>
   <AccountSettings {user} />
   <section class="panel"><h2>{$t('ui.settings.scoring')}</h2><form on:submit|preventDefault={saveFormula}><label>{$t('ui.settings.scoringFormula')}<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">{$t('ui.settings.variablesPriorityAgedaysIdledaysDueoffsetdaysHasduedateTagvalueSupports')}</p><AppButton type="submit" variant="primary">{$t('ui.settings.saveScoringFormula')}</AppButton></form>{#if workflowError}<p class="error" role="alert">{$text(workflowError)}</p>{/if}{#if workflowNotice}<p class="notice">{$text(workflowNotice)}</p>{/if}</section>
   <PomodoroSettings />
