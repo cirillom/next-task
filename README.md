@@ -97,7 +97,7 @@ creation, using the server timezone consistently with deadline scoring.
 
 ## Abandoning tasks
 
-Use **Abandon task** when work is no longer worth doing. The task and its
+Use **Abandon** when work is no longer worth doing. The task and its
 descendants leave active lists, Next recommendations, Drafts, and focus queues
 without being marked finished. In Tasks, open Filters and select
 **Abandonment → Abandoned** to find them. **Restore task** brings back the

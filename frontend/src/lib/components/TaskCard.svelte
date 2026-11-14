@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TaskAction from './TaskAction.svelte';
   import { t, localized, numeric, errorMessage, type Message } from '../i18n';
   import { createEventDispatcher } from 'svelte';
   import { api } from '../api/client';
@@ -178,21 +179,11 @@
   {#if !readOnly || task.abandoned_by_task_id}
     <div class="task-actions">
       {#if !readOnly && !task.abandoned_by_task_id}
-        <button type="button" class="finish-action" class:reopen={!!task.finished_at} aria-label={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} title={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} disabled={busy} on:click={toggleFinished}>
-          {#if task.finished_at}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg><span>{$t('ui.taskCard.reopen')}</span>
-          {:else}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7" /></svg><span>{$t('ui.nextTaskCard.finish')}</span>
-          {/if}
-        </button>
+        <TaskAction icon={task.finished_at ? 'reopen' : 'finish'} label={task.finished_at ? $t('ui.taskCard.reopen') : $t('ui.nextTaskCard.finish')} className="finish-action" disabled={busy} title={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} ariaLabel={task.finished_at ? $t('ui.taskCard.reopenTask') : $t('ui.taskCard.finishTask')} on:click={toggleFinished} />
 
-        <button type="button" class="quick-action worked-action" disabled={busy} title={$t('ui.taskCard.setLastWorkedOnToNow')} on:click={markWorkedNow}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg><span>{$t('ui.nextTaskCard.workedNow')}</span>
-        </button>
+        <TaskAction icon="worked" label={$t('ui.nextTaskCard.workedNow')} className="quick-action worked-action" disabled={busy} title={$t('ui.taskCard.setLastWorkedOnToNow')} on:click={markWorkedNow} />
 
-        <button type="button" class="quick-action block-action" class:active={!!task.current_block} disabled={busy} on:click={() => (blockModalOpen = true)}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6 18 18 6" /></svg><span>{task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')}</span>
-        </button>
+        <TaskAction icon="block" label={task.current_block ? $t('ui.taskCard.manageBlocks') : $t('ui.nextTaskCard.block')} className="quick-action block-action" disabled={busy} active={!!task.current_block} on:click={() => (blockModalOpen = true)} />
 
         <div class="due-date-action" class:overdue={!!dueDateDraft && !task.finished_at && dueDateDraft < localDate()}>
           <DateTimeInput
@@ -232,25 +223,16 @@
   .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
   .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
-  .edit-button svg, .finish-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .edit-button svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .edit-button svg { width: 100%; height: 100%; }
   .task-card:hover .edit-button, .edit-button:focus-visible { opacity: .85; }
   .edit-button:hover:not(:disabled) { background: rgba(0, 0, 0, .04); }
 
-  .finish-action { display: inline-flex; height: 2rem; align-items: center; gap: .38rem; border: 1px solid var(--forest); border-radius: .55rem; background: var(--forest); color: #fff; padding: 0 .68rem; font-size: .78rem; font-weight: 800; line-height: 1; }
-  .finish-action:hover:not(:disabled) { border-color: var(--forest-2); background: var(--forest-2); }
-  .finish-action.reopen { border-color: #b9c3bd; background: #fff; color: var(--forest-2); }
-  .finish-action.reopen:hover:not(:disabled) { border-color: #93a29a; background: #f8faf8; }
+  .task-actions { --task-action-height: 2rem; --task-action-padding: .62rem; }
 
-  .quick-action { display: inline-flex; height: 2rem; align-items: center; gap: .38rem; border: 1px solid #cfcbc0; border-radius: .55rem; background: #fbfaf6; color: var(--ink); padding: 0 .62rem; font-size: .78rem; font-weight: 700; line-height: 1; }
-  .quick-action svg { width: 1rem; height: 1rem; flex: 0 0 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-  .quick-action:hover:not(:disabled) { border-color: #aaa69c; background: #fff; }
-  .worked-action { color: var(--forest-2); }
   .due-date-action { color: var(--forest-2); }
   .due-date-action.overdue { color: #9b422d; }
   .due-date-action :global(.picker-trigger) { color: inherit; }
-  .block-action { color: #8a4d36; }
-  .block-action.active { border-color: #d8b5a6; background: #fff4ee; }
 
   .priority-stepper { display: inline-grid; height: 2rem; grid-template-columns: 1.65rem auto 1.65rem; align-items: stretch; overflow: hidden; border: 1px solid #cfcbc0; border-radius: .5rem; background: #fbfaf6; }
   .priority-stepper button { min-width: 0; border: 0; border-radius: 0; background: transparent; padding: 0; font-size: .95rem; line-height: 1; }
@@ -263,7 +245,6 @@
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
-    .finish-action span, .quick-action span { display: none; }
-    .finish-action, .quick-action { width: 2rem; justify-content: center; padding: 0; }
+
   }
 </style>
