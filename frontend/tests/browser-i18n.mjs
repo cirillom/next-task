@@ -395,6 +395,15 @@ try {
   await fill('.focus-description-editor textarea.full-source', 'Saved with keyboard');
   await press('s',2);
   await wait(`fetch('/api/tasks/${taskId}').then(r=>r.json()).then(t=>t.description==='Saved with keyboard')`);
+  await wait(`document.querySelector('.focus-description-editor .save-state')?.textContent.includes('Salvo')`);
+  await evaluate(`fetch('/api/tasks/${taskId}',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({description:'Remote focus notes'})})`);
+  await fill('.focus-description-editor textarea.full-source', 'Local focus notes');
+  await press('s',2);
+  await wait(`document.querySelector('.focus-description-editor [role="alert"]') !== null`);
+  assert.equal(await evaluate(`document.querySelector('.focus-description-editor textarea.full-source').value`), 'Local focus notes');
+  assert.equal(await evaluate(`fetch('/api/tasks/${taskId}').then(r=>r.json()).then(t=>t.description)`), 'Remote focus notes');
+  await evaluate(`Array.from(document.querySelectorAll('.focus-description-editor button')).find(b=>b.textContent.includes('Salvar minhas anotações')).click()`);
+  await wait(`fetch('/api/tasks/${taskId}').then(r=>r.json()).then(t=>t.description==='Local focus notes')`);
   await evaluate(`document.querySelector('.session-scope-heading button').click()`);
   await wait(`document.querySelector('.scope-editor') !== null`);
   await press('Escape');

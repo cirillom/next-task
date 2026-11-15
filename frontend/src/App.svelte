@@ -20,6 +20,7 @@
   import AcceptInvitation from './pages/AcceptInvitation.svelte';
   import LanguageSelector from './lib/components/LanguageSelector.svelte';
   import { setLanguage } from './lib/i18n';
+  import { focusDescriptionSaves } from './lib/focusDescriptionSaves';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
@@ -100,7 +101,7 @@
     view = views.includes(candidate) ? candidate : 'next';
   }
   function navigate(nextView: View) { location.hash = `/${nextView}`; view = nextView; }
-  async function logout() { await api.logout(); user = null; draftCount = 0; }
+  async function logout() { await api.logout(); focusDescriptionSaves.clear(); user = null; draftCount = 0; }
 
   function taskEditorChanged() {
     if (view === 'focus') focusTaskVersion += 1;
