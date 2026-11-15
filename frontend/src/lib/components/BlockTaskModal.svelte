@@ -7,7 +7,7 @@
   import { formatDateTime, localDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
   import AppButton from './AppButton.svelte';
-  import TextArea from './TextArea.svelte';
+  import { blockerMention } from '../blockerMention';
   import TaskSearchResults from './TaskSearchResults.svelte';
   import BlockLabel from './BlockLabel.svelte';
 
@@ -28,6 +28,8 @@
     openTask: number;
   }>();
   let reason = '';
+  let ReasonEditor: typeof import('./MarkdownEditor.svelte').default;
+  let reasonEditor: InstanceType<typeof ReasonEditor>;
   let tasks: TaskSummary[] = [];
   let blocker: TaskSummary | null = null;
   let mentionQuery: string | null = null;
@@ -49,7 +51,9 @@
   let minimumAutoUnblock = localDateTime();
 
   onMount(async () => {
-    tasks = await api.tasks({ finished: false });
+    const [loadedTasks, editor] = await Promise.all([api.tasks({ finished: false }), import('./MarkdownEditor.svelte')]);
+    tasks = loadedTasks;
+    ReasonEditor = editor.default;
   });
 
   function isActive(block: Block): boolean {
@@ -65,14 +69,11 @@
   );
   $: latestManualId = history.filter((block) => block.reason).sort(newestFirst)[0]?.id;
 
-  function updateMention(event: Event) {
-    const input = event.target as HTMLTextAreaElement;
-    reason = input.value;
-    mentionCursor = input.selectionStart;
-    const before = reason.slice(0, mentionCursor);
-    mentionStart = before.lastIndexOf('#');
-    mentionQuery = mentionStart >= 0 && !before.slice(mentionStart).includes('\n')
-      ? before.slice(mentionStart + 1) : null;
+  function updateMention(event: CustomEvent<{cursor: number; inCode: boolean}>) {
+    mentionCursor = event.detail.cursor;
+    const match = blockerMention(reason, mentionCursor, event.detail.inCode);
+    mentionStart = match?.start ?? 0;
+    mentionQuery = match?.query ?? null;
   }
 
   function chooseBlocker(task: TaskSummary) {
@@ -103,6 +104,7 @@
   function submit() {
     const trimmed = reason.trim();
     if ((!trimmed && !blocker) || busy) return;
+    if ([...trimmed].length > 4000) { reasonEditor?.focus(); return; }
     const unblockedAt = autoUnblockAt ? new Date(autoUnblockAt).toISOString() : null;
     if (reblockMode) {
       dispatch('reblock', { unblocked_at: unblockedAt });
@@ -135,7 +137,7 @@
 
 
 <div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <section use:dialog={{close, busy}} class="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title">
+  <section use:dialog={{close, busy, navigate: (next) => confirmClose(!!reason.trim() || !!blocker || autoUnblockChoiceSelected, next, busy)}} class="block-modal" role="dialog" aria-modal="true" aria-labelledby="block-modal-title">
     <header class="block-modal__header">
       <div>
         <p class="eyebrow">{$t('ui.blockTaskModal.taskBlocking')}</p>
@@ -150,19 +152,19 @@
       {#if blocker}
         <div class="selected-blocker"><strong>{blocker.title} #{blocker.id}</strong><AppButton disabled={busy} on:click={() => (blocker = null)}>{$t('ui.blockTaskModal.remove')}</AppButton></div>
       {:else}
-        <div use:pickerEscape={{open: () => mentionQuery !== null, close: () => {mentionQuery = null;}}} class="reason-field">
-          <label for="blocking-reason">{$t('ui.blockTaskModal.blockingReason')}</label>
-          <TextArea
-            id="blocking-reason"
+        <div use:pickerEscape={{open: () => mentionQuery !== null, close: () => {mentionQuery = null;}, capture: true}} class="reason-field">
+          <svelte:component this={ReasonEditor}
+            bind:this={reasonEditor}
+            inputId="blocking-reason"
             bind:value={reason}
-            rows="4"
+            label={$t('ui.blockTaskModal.blockingReason')}
             placeholder={$t('ui.blockTaskModal.whatIsPreventingThisTaskFromMovingForward')}
-            disabled={busy}
-            readonly={reblockMode}
-            required
-            on:input={updateMention}
+            disabled={busy || reblockMode}
+            compact
+            on:selection={updateMention}
             on:blur={() => (mentionQuery = null)}
           />
+          {#if [...reason.trim()].length > 4000}<p class="error" role="alert">{$t('validation.maxLength', {count: 4000})}</p>{/if}
           {#if mentionQuery !== null && !reblockMode}
             <TaskSearchResults
                 {tasks}
@@ -216,7 +218,7 @@
             {#each orderedHistory as block (block.id)}
               <li class:active={isActive(block)}>
                 <div class="block-history__top">
-                  <strong><BlockLabel {block} on:openTask={(event) => dispatch('openTask', event.detail)} /></strong>
+                  <div><BlockLabel {block} on:openTask={(event) => dispatch('openTask', event.detail)} /></div>
                   <div class="history-actions">
                     {#if block.id === latestManualId && !isActive(block)}
                       <button
@@ -268,7 +270,7 @@
 
       <footer class="block-modal__actions">
         <AppButton disabled={busy} on:click={close}>{$t('ui.blockTaskModal.cancel')}</AppButton>
-        <AppButton type="submit" variant="primary" disabled={busy || (!reason.trim() && !blocker)}>
+        <AppButton type="submit" variant="primary" disabled={busy || (!reason.trim() && !blocker) || [...reason.trim()].length > 4000}>
           {#if busy}
             {reblockMode ? $t('ui.blockTaskModal.reblocking') : $t('ui.blockTaskModal.blocking')}
           {:else}
@@ -387,7 +389,7 @@
 
   .block-history li.active { border-left-color: #bb623f; background: #f8e6dc; }
   .block-history__top { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
-  .block-history__top strong { min-width: 0; overflow-wrap: anywhere; }
+  .block-history__top > div:first-child { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
   .block-history span { color: var(--muted); font-size: .78rem; }
   .history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .35rem; }
 

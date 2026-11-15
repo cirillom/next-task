@@ -295,7 +295,7 @@
 </script>
 
 <div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
+  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy, navigate: (next) => confirmClose(!!form?.isDirty(), next, busy)}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
         <p class="eyebrow">{isDraft ? $t('ui.drafts.editDraft') : taskId ? $t('ui.quickCapture.taskDetails') : $t('ui.quickCapture.createTask')}</p>
@@ -341,7 +341,7 @@
         bind:this={form}
         {taskId}
         initialTitle={task?.title || initialTitle}
-        initialDescription={task?.description || ''}
+        initialDescription={task ? task.description : ''}
         initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
         initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}

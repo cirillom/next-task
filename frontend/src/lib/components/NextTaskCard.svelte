@@ -8,7 +8,7 @@
   import { daysSince, formatDate, formatDateTime, localDate } from '../format';
   import BlockTaskModal from './BlockTaskModal.svelte';
   import BlockSummary from './BlockSummary.svelte';
-  import Markdown from './Markdown.svelte';
+  import SavedMarkdown from './SavedMarkdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
   import TaskAbandonment from './TaskAbandonment.svelte';
@@ -134,7 +134,7 @@
 
   {#if task.description}
     <div class:expanded={descriptionExpanded} class="task-description">
-      <Markdown source={task.description} />
+      <SavedMarkdown {task} disabled={readOnly || busy} on:changed={(event) => dispatch('changed', event.detail)} on:error={(event) => {descriptionExpanded = true; dispatch('error', event.detail);}} on:open={(event) => dispatch('open', event.detail)} />
     </div>
     <button
       type="button"

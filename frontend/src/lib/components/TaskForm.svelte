@@ -6,7 +6,6 @@
   import type { Tag, Task, TaskInput, TaskSummary } from '../api/types';
   import { formatDateTime } from '../format';
   import DateTimeInput from './DateTimeInput.svelte';
-  import MarkdownEditor from './MarkdownEditor.svelte';
   import TagPicker from './TagPicker.svelte';
   import TagBadge from './TagBadge.svelte';
   import AppButton from './AppButton.svelte';
@@ -17,7 +16,7 @@
 
   export let taskId = 0;
   export let initialTitle = '';
-  export let initialDescription = '';
+  export let initialDescription: string | null = '';
   export let initialPriority = 1;
   export let initialDueDate = '';
   export let initialLastWorked = '';
@@ -46,10 +45,12 @@
   }>();
 
   let tags: Tag[] = [];
+  let MarkdownEditor: typeof import('./MarkdownEditor.svelte').default;
   let parentTasks: Task[] = [];
 
   let title = initialTitle;
-  let description = initialDescription;
+  const originalDescription = initialDescription;
+  let description = initialDescription || '';
   let priority = initialPriority;
   let dueDate = initialDueDate;
   let lastWorked = initialLastWorked;
@@ -81,10 +82,14 @@
 
   onMount(async () => {
     try {
-      [tags, parentTasks] = await Promise.all([
+      const [loadedTags, loadedTasks, editor] = await Promise.all([
         api.tags(),
-        api.tasks({ finished: false })
+        api.tasks({ finished: false }),
+        import('./MarkdownEditor.svelte')
       ]);
+      tags = loadedTags;
+      parentTasks = loadedTasks;
+      MarkdownEditor = editor.default;
 
     } catch (reason) {
       localError = errorMessage(reason, 'ui.taskForm.couldNotLoadTaskOptions');
@@ -150,7 +155,7 @@
   function taskInput(): TaskInput {
     return {
       title,
-      description: description || null,
+      description: taskId && description === (originalDescription || '') ? originalDescription : description || null,
       priority,
       due_date: dueDate || null,
       last_worked_at: lastWorked ? new Date(lastWorked).toISOString() : null,
@@ -210,7 +215,7 @@
       {/if}
     </section>
 
-    <MarkdownEditor bind:value={description} compact />
+    <svelte:component this={MarkdownEditor} bind:value={description} documentId={taskId} compact />
 
 
     <section class="hierarchy-panel" aria-label={$t('ui.taskForm.relations')}>

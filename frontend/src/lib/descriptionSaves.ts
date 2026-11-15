@@ -58,13 +58,13 @@ export class DescriptionSaves {
     draft.timer = null;
     if (draft.inFlight || (draft.state === 'error' && !retry)) return;
     if (draft.state === 'idle' || draft.state === 'saved') return;
-    const value = draft.value || null;
-    if (value === draft.base) {
+    if (draft.value === (draft.base || '')) {
       draft.state = 'saved';
       draft.error = null;
       this.notify(id);
       return;
     }
+    const value = draft.value || null;
     const revision = draft.revision;
     draft.inFlight = true;
     draft.state = 'saving';

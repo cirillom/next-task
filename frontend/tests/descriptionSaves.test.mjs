@@ -45,5 +45,20 @@ test('opening or flushing unchanged empty source does not rewrite it', () => {
   let calls = 0;
   const queue = new DescriptionSaves(async () => { calls++; });
   queue.open(1, ''); queue.flush(1);
+  queue.edit(1, 'temporary'); queue.edit(1, ''); queue.flush(1);
   assert.equal(calls, 0);
+  assert.equal(queue.get(1).base, '');
+});
+
+test('a failed save on an earlier task does not change the current task state', async () => {
+  const requests = [];
+  const queue = new DescriptionSaves((...args) => new Promise((resolve, reject) => requests.push({args, resolve, reject})));
+  queue.open(1, 'A'); queue.edit(1, 'A changed'); queue.flush(1);
+  queue.open(2, 'B'); queue.edit(2, 'B changed'); queue.flush(2);
+  requests[1].resolve(); await tick();
+  requests[0].reject(new Error('offline')); await tick();
+  assert.equal(queue.get(1).state, 'error');
+  assert.equal(queue.get(1).value, 'A changed');
+  assert.equal(queue.get(2).state, 'saved');
+  assert.equal(queue.open(1, 'Server A').value, 'A changed');
 });

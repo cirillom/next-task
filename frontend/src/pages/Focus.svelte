@@ -12,7 +12,6 @@
     Tag,
     Task
   } from '../lib/api/types';
-  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TagBadge from '../lib/components/TagBadge.svelte';
   import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
@@ -32,6 +31,7 @@
   const baseDocumentTitle = typeof document === 'undefined' ? $t('ui.app.nextTask') : document.title;
 
   let settings: PomodoroSettings | null = null;
+  let MarkdownEditor: typeof import('../lib/components/MarkdownEditor.svelte').default;
   let session: PomodoroSession | null = null;
   let tags: Tag[] = [];
   let currentTask: Task | null = null;
@@ -56,6 +56,8 @@
   let timer: number;
   let pollTimer: number;
   let syncInFlight = false;
+  let mounted = false;
+  let sessionRevision = 0;
   let initializedSession = false;
   let lastAlarmAt = 0;
   let seenTaskVersion = taskVersion;
@@ -164,6 +166,7 @@
   }
 
   async function applySession(next: PomodoroSession, announceCompletion = true) {
+    const revision = ++sessionRevision;
     const previousSession = session;
     const scopeChanged = !!previousSession && !sameTagScope(previousSession.scope, next.scope);
     const taskChanged = next.task_id !== currentTask?.id;
@@ -184,12 +187,14 @@
       } else {
         try {
           const loaded = await api.task(next.task_id);
-          if (session?.task_id === next.task_id) setCurrentTask(loaded);
+          if (mounted && sessionRevision === revision && session?.task_id === next.task_id) setCurrentTask(loaded);
         } catch {
-          if (session?.task_id === next.task_id) setCurrentTask(null);
+          if (mounted && sessionRevision === revision && session?.task_id === next.task_id) setCurrentTask(null);
         }
       }
     }
+
+    if (!mounted || sessionRevision !== revision) return;
 
     if (scopeChanged) {
       if (editingScope && !sameTagScope(scopeBase, next.scope)) scopeConflict = true;
@@ -213,10 +218,12 @@
   }
 
   async function syncSession() {
-    if (syncInFlight) return;
+    if (syncInFlight || selecting) return;
     syncInFlight = true;
+    const revision = sessionRevision;
     try {
       const latest = await api.pomodoroSession();
+      if (!mounted || selecting || revision !== sessionRevision) return;
       if (!latest) {
         dispatch('end');
         return;
@@ -342,14 +349,23 @@
   }
 
   async function selectNextTask() {
+    if (selecting) return;
     selecting = true;
+    sessionRevision++;
     error = '';
     try {
       const ranked = await rankedTasksForScope(session?.scope ?? sessionScope);
-      setCurrentTask(ranked[0] ?? null);
+      if (!mounted) return;
+      const selected = ranked[0] ?? null;
       scopeCheckRequest++;
       pinnedOutsideScope = false;
-      if (session) session = await api.updatePomodoroSessionTask(currentTask?.id ?? null);
+      if (session) {
+        const updated = await api.updatePomodoroSessionTask(selected?.id ?? null);
+        if (mounted) { sessionRevision++; session = updated; }
+      }
+      if (!mounted) return;
+      const latest = selected ? await api.task(selected.id) : null;
+      if (mounted) setCurrentTask(latest);
     } catch (reason) {
       error = errorMessage(reason, 'ui.focus.couldNotSelectTheNextTask');
     } finally {
@@ -379,11 +395,17 @@
   }
 
   async function focusTask(task: Task): Promise<boolean> {
-    if (task.finished_at || task.current_block || task.abandoned_by_task_id) return false;
+    if (selecting || task.finished_at || task.current_block || task.abandoned_by_task_id) return false;
+    selecting = true;
+    sessionRevision++;
     try {
       const updatedSession = await api.updatePomodoroSessionTask(task.id);
+      if (!mounted) return false;
+      const revision = ++sessionRevision;
       session = updatedSession;
-      setCurrentTask(task);
+      const latest = await api.task(task.id);
+      if (!mounted || revision !== sessionRevision || session?.task_id !== task.id) return false;
+      setCurrentTask(latest);
       scopeCheckRequest++;
       pinnedOutsideScope = false;
       error = '';
@@ -391,6 +413,8 @@
     } catch (reason) {
       error = errorMessage(reason, 'ui.focus.couldNotChangeThePomodoroTask');
       return false;
+    } finally {
+      selecting = false;
     }
   }
 
@@ -458,8 +482,10 @@
 
     if (phase === 'focus' && currentTask) {
       try {
-        const updated = await api.updateTask(currentTask.id, { last_worked_at: new Date().toISOString() });
-        setCurrentTask(updated);
+        const taskId = currentTask.id;
+        const revision = focusDescriptionSaves.get(taskId)?.revision;
+        const updated = await api.updateTask(taskId, { last_worked_at: new Date().toISOString() });
+        if (currentTask?.id === taskId && focusDescriptionSaves.get(taskId)?.revision === revision) setCurrentTask(updated);
         sessionTasks = sessionTasks.map((task) => task.id === updated.id ? updated : task);
         void loadSessionTasks();
       } catch (reason) {
@@ -579,10 +605,10 @@
       } else {
         if (focusDescriptionSaves.get(taskId)?.revision === revision) setCurrentTask(refreshed);
       }
-    } catch {
+    } catch (reason) {
       if (currentTask?.id !== taskId) return;
-      setCurrentTask(null);
-      await selectNextTask();
+      error = errorMessage(reason, 'ui.focus.couldNotLoadSessionTasks');
+      return;
     }
     await loadSessionTasks();
     await refreshPinnedScope();
@@ -598,16 +624,19 @@
   }
 
   onMount(() => {
+    mounted = true;
     const unsubscribeDescriptions = focusDescriptionSaves.subscribe(syncDescription);
     timer = window.setInterval(tick, 250);
     pollTimer = window.setInterval(() => void syncSession(), 1500);
     void (async () => {
       try {
-        const [loadedSettings, existingSession, loadedTags] = await Promise.all([
+        const [loadedSettings, existingSession, loadedTags, editor] = await Promise.all([
           api.pomodoroSettings(),
           api.pomodoroSession(),
-          api.tags()
+          api.tags(),
+          import('../lib/components/MarkdownEditor.svelte')
         ]);
+        MarkdownEditor = editor.default;
         settings = loadedSettings;
         tags = loadedTags;
         const activeSession = existingSession ?? await api.createPomodoroSession({
@@ -635,6 +664,8 @@
   });
 
   onDestroy(() => {
+    mounted = false;
+    sessionRevision++;
     if (currentTask) focusDescriptionSaves.flush(currentTask.id);
   });
 </script>
@@ -770,8 +801,9 @@
                 <AppButton on:click={flushDescriptionSave}>{$t('ui.focus.retrySave')}</AppButton>
               {/if}
             {/if}
-            <MarkdownEditor
+            <svelte:component this={MarkdownEditor}
               bind:value={descriptionDraft}
+              documentId={currentTask.id}
 
               label=""
               placeholder={$t('ui.focus.takeNotesUpdateChecklistsPasteLinksOrWrite')}

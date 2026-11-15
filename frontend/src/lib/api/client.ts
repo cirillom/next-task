@@ -1,5 +1,6 @@
 import type {
   EmailStatus,
+  MarkdownReference,
   NextScope,
   PomodoroSession,
   PomodoroSettings,
@@ -110,6 +111,9 @@ export const api = {
     request<{ scoring_formula: string }>('/api/settings/scoring', json('PUT', { scoring_formula })),
 
   tags: () => request<Tag[]>('/api/tags'),
+  references: (query: string) => request<MarkdownReference[]>(`/api/references?query=${encodeURIComponent(query)}`),
+  resolveReferences: (items: Pick<MarkdownReference, 'kind' | 'id'>[]) =>
+    request<MarkdownReference[]>('/api/references/resolve', json('POST', {items})),
   createTag: (
     body: {
       name: string;

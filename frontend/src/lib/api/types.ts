@@ -95,6 +95,13 @@ export interface TaskInput {
   tag_ids: number[];
 }
 
+export interface MarkdownReference {
+  kind: 'task' | 'tag';
+  id: number;
+  label: string | null;
+  paths: string[];
+}
+
 export interface PomodoroSettings {
   focus_minutes: number;
   short_break_minutes: number;

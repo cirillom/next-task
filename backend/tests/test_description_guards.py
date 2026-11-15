@@ -27,7 +27,8 @@ def test_guarded_description_updates_are_atomic_and_owner_scoped(logged_in_clien
     foreign = other.patch(url, json={"description": "Foreign", "expected_description": "First"})
     assert foreign.status_code == 404
 
-    assert owner.patch(url, json={name_field: "Renamed"}).status_code == 200
+    renamed = owner.patch(url, json={name_field: "Renamed", "expected_description": "Unrelated"})
+    assert renamed.status_code == 200
     second = owner.patch(url, json={"description": "Second", "expected_description": "First"})
     assert second.status_code == 200
     assert second.json()["description"] == "Second"

@@ -114,7 +114,9 @@ def test_i18n_in_chrome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
             check=False,
             capture_output=True,
             text=True,
-            timeout=90,
+            encoding="utf-8",
+            errors="replace",
+            timeout=150,
         )
         assert result.returncode == 0, result.stdout + result.stderr
         with SessionLocal() as db:

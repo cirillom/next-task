@@ -1,14 +1,27 @@
 import { translate } from './i18n';
 
-type DialogOptions = { close: () => void; submit?: () => void; save?: () => void; busy?: boolean };
+type DialogOptions = { close: () => void; submit?: () => void; save?: () => void; busy?: boolean; navigate?: (next: () => void) => void };
 const dialogs: { node: HTMLElement; options: DialogOptions }[] = [];
 export const hasDialog = () => dialogs.length > 0;
+export function closeTopDialog(): void {
+  const current = dialogs.at(-1);
+  if (current && !current.options.busy) current.options.close();
+}
 export const isModified = (event: KeyboardEvent) => event.ctrlKey || event.metaKey || event.altKey;
 export const ignoreKey = (event: KeyboardEvent) => event.defaultPrevented || event.isComposing || event.repeat;
 export const isSaveKey = (event: KeyboardEvent) => (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && (event.key === 'Enter' || event.key.toLowerCase() === 's');
 
 export function confirmClose(dirty: boolean, close: () => void, busy = false): void {
   if (!busy && (!dirty || window.confirm(translate('keyboard.discard')))) close();
+}
+
+export function navigateFromDialogs(next: () => void): void {
+  const open = [...dialogs].reverse();
+  function advance(index: number) {
+    if (index === open.length) next();
+    else open[index].options.navigate?.(() => advance(index + 1));
+  }
+  advance(0);
 }
 
 export function submitEditor(form: HTMLFormElement | null): void {
@@ -29,7 +42,7 @@ export function dialog(node: HTMLElement, options: DialogOptions) {
   });
   function keydown(event: KeyboardEvent) {
     if (dialogs.at(-1) !== entry || event.defaultPrevented || event.isComposing) return;
-    if (event.repeat && event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement)) {event.preventDefault(); return;}
+    if (event.repeat && event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement) && !(event.target instanceof HTMLElement && event.target.isContentEditable)) {event.preventDefault(); return;}
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation();
       if (!event.repeat && !entry.options.busy) entry.options.close();
@@ -55,13 +68,13 @@ export function dialog(node: HTMLElement, options: DialogOptions) {
 }
 
 // Close only the innermost open picker before Escape reaches its parent dialog.
-export function pickerEscape(node: HTMLElement, options: { open: () => boolean; close: () => void }) {
+export function pickerEscape(node: HTMLElement, options: { open: () => boolean; close: () => void; capture?: boolean }) {
   function keydown(event: KeyboardEvent) {
     if (event.key !== 'Escape' || ignoreKey(event) || isModified(event) || !options.open()) return;
     event.preventDefault(); event.stopPropagation(); options.close();
   }
-  node.addEventListener('keydown', keydown);
-  return {destroy() {node.removeEventListener('keydown', keydown);}};
+  node.addEventListener('keydown', keydown, !!options.capture);
+  return {destroy() {node.removeEventListener('keydown', keydown, !!options.capture);}};
 }
 
 export function isTyping(target: EventTarget | null): boolean {

@@ -10,7 +10,7 @@
   import BlockSummary from './BlockSummary.svelte';
   import DateTimeInput from './DateTimeInput.svelte';
   import TagBadge from './TagBadge.svelte';
-  import Markdown from './Markdown.svelte';
+  import SavedMarkdown from './SavedMarkdown.svelte';
   import TaskCompletionDialog from './TaskCompletionDialog.svelte';
   import TaskHierarchy from './TaskHierarchy.svelte';
   import TaskAbandonment from './TaskAbandonment.svelte';
@@ -156,7 +156,7 @@
   </div>
 
   {#if task.description}
-    <div class:expanded={descriptionExpanded} class="task-description"><Markdown source={task.description} /></div>
+    <div class:expanded={descriptionExpanded} class="task-description"><SavedMarkdown {task} disabled={readOnly || busy} on:changed={(event) => dispatch('changed', event.detail)} on:error={(event) => {descriptionExpanded = true; dispatch('error', event.detail);}} on:open={(event) => dispatch('open', event.detail)} /></div>
     <button type="button" class="description-toggle" aria-expanded={descriptionExpanded} on:click={() => (descriptionExpanded = !descriptionExpanded)}>
       {descriptionExpanded ? $t('ui.nextTaskCard.collapseDescription') : $t('ui.nextTaskCard.expandDescription')}
     </button>
