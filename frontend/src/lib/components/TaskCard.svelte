@@ -131,12 +131,12 @@
 </script>
 
 <article class:blocked={task.current_block} class:finished={task.finished_at} class="task-card">
-  <div class="task-card__top">
-    <button class="title-button" on:click={() => dispatch('open', task.id)}>
+  <div class="card-heading">
+    <button class="title-button card-title" on:click={() => dispatch('open', task.id)}>
       <span>{task.title}</span>
       <span class="task-id">#{task.id}</span>
     </button>
-    <div class="task-card__header-actions">
+    <div class="card-header-actions">
       {#if !readOnly}
         <button
           type="button"
@@ -150,11 +150,10 @@
         </button>
       {/if}
       <span class="score" title={$t('ui.nextTaskCard.calculatedScore')}>{$numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
+    <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
+    <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
   </div>
-
-  <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
 
   {#if task.description}
     <div class:expanded={descriptionExpanded} class="task-description"><Markdown source={task.description} /></div>
@@ -220,7 +219,6 @@
   .task-id { flex: 0 0 auto; color: var(--muted); font-size: .72rem; font-weight: 700; opacity: .72; }
   .date-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
   .meta-row > span + span::before { content: '·'; margin-right: .65rem; color: #b8b3a8; font-weight: 700; }
-  .task-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
   .edit-button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem; background: transparent; color: var(--muted); opacity: .35; padding: .3rem; transition: opacity .15s ease, background .15s ease; }
   .edit-button svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -245,6 +243,5 @@
 
   @media (max-width: 600px) {
     .edit-button { opacity: .6; }
-
   }
 </style>

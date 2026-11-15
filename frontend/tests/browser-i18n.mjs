@@ -80,6 +80,31 @@ try {
   const blur = () => evaluate(`document.activeElement?.blur()`);
   const changeLanguage = value => evaluate(`{const select = document.querySelector('.language-selector select'); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', {bubbles:true}));}`);
   const navigate = async hash => {await evaluate(`location.hash=${JSON.stringify(hash)}`); await delay(150);};
+  const checkScrolledHeader = async () => {
+    const result = await evaluate(`(() => {
+      const toolbar=document.querySelector('.tasks-toolbar'),header=document.querySelector('.topbar');
+      window.scrollBy(0,toolbar.getBoundingClientRect().top-8);
+      const t=toolbar.getBoundingClientRect(),h=header.getBoundingClientRect();
+      const top=Math.max(t.top,h.top),bottom=Math.min(t.bottom,h.bottom);
+      const hit=document.elementFromPoint((t.left+t.right)/2,(top+bottom)/2);
+      const buttons=[...header.querySelectorAll('button')];
+      return {overlap:bottom>top,headerOnTop:header.contains(hit),buttonsReachable:buttons.every(button=>{const r=button.getBoundingClientRect();return button.contains(document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2));})};
+    })()`);
+    assert.ok(result.overlap && result.headerOnTop && result.buttonsReachable, `Search toolbar covers scrolled header: ${JSON.stringify(result)}`);
+    await evaluate(`window.scrollTo(0,0)`);
+  };
+  const checkCardHeading = async selector => {
+    const layout=await evaluate(`(() => {
+      const card=document.querySelector(${JSON.stringify(selector)});
+      const rect=selector=>{const r=card.querySelector(selector).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width};};
+      const parent=card.querySelector('.parent-link button');
+      return {header:rect('.card-heading'),title:rect('.card-title'),actions:rect('.card-header-actions'),score:rect('.score'),hierarchy:rect('.task-hierarchy'),boost:rect('.ranking-boost'),parentOverflow:parent.scrollWidth>parent.clientWidth+1};
+    })()`);
+    assert.ok(Math.abs(layout.title.top-layout.actions.top)<1 && layout.title.right<=layout.actions.left, JSON.stringify(layout));
+    assert.ok(Math.abs(layout.hierarchy.top-layout.boost.top)<1 && layout.hierarchy.right<=layout.boost.left, JSON.stringify(layout));
+    assert.ok(Math.abs(layout.title.left-layout.hierarchy.left)<1 && Math.abs(layout.score.right-layout.boost.right)<1, JSON.stringify(layout));
+    assert.ok(layout.hierarchy.top>=layout.title.bottom && layout.boost.top>=layout.actions.bottom && layout.title.width>=layout.header.width*.45 && !layout.parentOverflow, JSON.stringify(layout));
+  };
   await send('Page.navigate', {url: address}, sessionId);
   await wait(`document.querySelector('.login-card form') !== null`);
   await fill('input[name="email"], input[autocomplete="username"]', 'en@example.com');
@@ -226,17 +251,84 @@ try {
   await press('Escape');
   await wait(`document.querySelector('.filter-popover') === null`);
   // Preserve wide Markdown/code inside cards rather than allowing grid tracks to overflow the page.
-  const stressPatch = {title: 'Keyboard task updated ' + 'x'.repeat(350), description: ['```text', 'x'.repeat(4000), '```'].join('\n')};
-  await evaluate(`(async()=>{const tasks=await fetch('/api/tasks').then(r=>r.json());const task=tasks.find(t=>t.title==='Keyboard task updated');await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify(stressPatch)})});})()`);
+  const stressPatch = {title: 'Keyboard task updated ' + 'x'.repeat(350), priority:40, description: ['```text', 'x'.repeat(4000), '```'].join('\n')};
+  const boostedTask = await evaluate(`(async()=>{
+    const tasks=await fetch('/api/tasks').then(r=>r.json());const task=tasks.find(t=>t.title==='Keyboard task updated');
+    const parent=await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'High-priority parent',priority:10000})}).then(r=>r.json());
+    await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({...${JSON.stringify(stressPatch)},parent_task_id:parent.id,due_date:new Date().toISOString().slice(0,10)})});
+    return {id:task.id,parentId:parent.id};
+  })()`);
   await navigate('/settings'); await navigate('/tasks');
   await wait(`document.querySelector('.task-card') !== null`);
-  for (const width of [390, 760, 1024, 1640]) {
+  for (const width of [320, 390, 760, 1024, 1640]) {
     await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<600},sessionId);
     await delay(50);
     assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth + 1`), `Tasks overflow at ${width}px`);
     assert.ok(await evaluate(`Array.from(document.querySelectorAll('.task-card')).every(card=>card.getBoundingClientRect().right <= document.querySelector('.content').getBoundingClientRect().right + 1)`), `Card escapes its column at ${width}px`);
+    await checkCardHeading('.task-card:has(.ranking-boost)');
   }
+  for (const language of ['en', 'pt-BR']) {
+    await navigate('/settings');
+    await wait(`document.querySelector('.language-selector select') !== null`);
+    await changeLanguage(language);
+    await wait(`document.documentElement.lang === '${language}'`);
+    await send('Emulation.setDeviceMetricsOverride',{width:390,height:740,deviceScaleFactor:1,mobile:true},sessionId);
+    for (const view of ['next','tasks','drafts','tags','settings']) {
+      await navigate('/'+view);
+      assert.equal(await evaluate(`document.querySelectorAll('.mobile-nav [aria-current="page"]').length`),1);
+      assert.ok(await evaluate(`document.querySelector('.mobile-nav button:nth-child(${['next','tasks','drafts','tags','settings'].indexOf(view)+1})').matches('.active[aria-current="page"]')`));
+      assert.ok(await evaluate(`getComputedStyle(document.querySelector('.mobile-nav .active')).backgroundColor !== getComputedStyle(document.querySelector('.mobile-nav button:not(.active)')).backgroundColor`));
+      if (view==='next') {
+        await wait(`document.querySelector('.recommended-card .ranking-boost') !== null`);
+        await checkCardHeading('.recommended-card');
+      }
+    }
+    await navigate('/tasks');
+    await wait(`document.querySelector('.task-card .ranking-boost') !== null`);
+    for (const width of [320,390,640]) {
+      await send('Emulation.setDeviceMetricsOverride',{width,height:740,deviceScaleFactor:1,mobile:true},sessionId);
+      await evaluate(`window.scrollTo(0,0)`);
+      await delay(50);
+      assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth+1`), `${language} overflow at ${width}px`);
+      await checkCardHeading('.task-card:has(.ranking-boost)');
+      await checkScrolledHeader();
+      for (const [index, panel] of [[1,'sort'],[0,'filter']]) {
+        await evaluate(`document.querySelectorAll('.tasks-toolbar .toolbar-icon')[${index}].click()`);
+        await wait(`document.querySelector('.${panel}-popover') !== null`);
+        const layout=await evaluate(`(() => {
+          const button=document.querySelectorAll('.tasks-toolbar .toolbar-icon')[${index}],panel=document.querySelector('.${panel}-popover');
+          const b=button.getBoundingClientRect(),p=panel.getBoundingClientRect();
+          return {gap:p.top-b.bottom,left:p.left,right:p.right,bottom:p.bottom,listTop:document.querySelector('.task-list').getBoundingClientRect().top,linked:button.getAttribute('aria-controls')===panel.id};
+        })()`);
+        assert.ok(layout.gap>=0 && layout.gap<=24 && layout.left>=0 && layout.right<=width+1 && layout.listTop>=layout.bottom && layout.linked, `${language} ${panel} panel ${width}px: ${JSON.stringify(layout)}`);
+        await checkScrolledHeader();
+        if (panel==='sort') {
+          await evaluate(`{const select=document.querySelector('.sort-popover select');select.value='due_date';select.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('.direction-options button').click();}`);
+          await wait(`document.querySelector('.task-card .title-button .task-id')?.textContent.trim() === '#${boostedTask.id}'`);
+        } else {
+          await evaluate(`{const select=document.querySelector('.filter-grid select');select.value='only';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+          await wait(`document.querySelectorAll('.task-card').length === 0 && document.querySelector('.clear-button') !== null`);
+          await evaluate(`document.querySelector('.clear-button').click()`);
+          await wait(`document.querySelector('.task-card') !== null`);
+          await evaluate(`document.querySelector('.filter-popover').scrollIntoView({block:'center'})`);
+          assert.ok(await evaluate(`{const panel=document.querySelector('.filter-popover').getBoundingClientRect();panel.top>=document.querySelector('.topbar').getBoundingClientRect().bottom && panel.bottom<=document.querySelector('.mobile-nav').getBoundingClientRect().top;}`), `Filter controls obscured at ${width}px`);
+        }
+        await press('Escape');
+        await wait(`document.querySelector('.toolbar-popover') === null`);
+      }
+      await evaluate(`document.querySelectorAll('.tasks-toolbar .toolbar-icon')[1].click()`);
+      await evaluate(`document.querySelectorAll('.tasks-toolbar .toolbar-icon')[0].click()`);
+      await wait(`!!document.querySelector('.filter-popover') && !document.querySelector('.sort-popover')`);
+      await evaluate(`document.querySelector('.popover-backdrop').click()`);
+      await wait(`document.querySelector('.toolbar-popover') === null`);
+    }
+  }
+  await evaluate(`(async()=>{await fetch('/api/tasks/${boostedTask.id}',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({parent_task_id:null,due_date:null,priority:1})});await fetch('/api/tasks/${boostedTask.parentId}',{method:'DELETE'});})()`);
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false},sessionId);
+  await navigate('/settings');
+  await wait(`document.querySelector('.language-selector select') !== null`);
+  await changeLanguage('en');
+  await wait(`document.documentElement.lang === 'en'`);
   await navigate('/tags');
   await wait(`document.querySelector('.tag-tree .tag-select') !== null`);
   await evaluate(`document.querySelector('.tag-tree .tag-select').click()`);

@@ -107,12 +107,10 @@
 </script>
 
 <article class="recommended-card">
-  <div class="recommended-card__top">
-    <div>
-      <p class="eyebrow">{$t('ui.nextTaskCard.recommendedNext')}</p>
-      <h2>{task.title} <span class="task-id">#{task.id}</span></h2>
-    </div>
-    <div class="recommended-card__header-actions">
+  <p class="eyebrow">{$t('ui.nextTaskCard.recommendedNext')}</p>
+  <div class="card-heading">
+    <h2 class="card-title">{task.title} <span class="task-id">#{task.id}</span></h2>
+    <div class="card-header-actions">
       {#if !readOnly}
         <button
           type="button"
@@ -129,11 +127,10 @@
         </button>
       {/if}
       <span class="score" title={$t('ui.nextTaskCard.calculatedScore')}>{$numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-      <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
     </div>
+    <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
+    <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
   </div>
-
-  <TaskHierarchy {task} on:open={(event) => dispatch('open', event.detail)} />
 
   {#if task.description}
     <div class:expanded={descriptionExpanded} class="task-description">
@@ -217,11 +214,9 @@
     box-shadow: 0 14px 38px rgba(30, 48, 39, .1);
   }
 
-  .recommended-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-  .recommended-card__top .eyebrow { margin-bottom: .35rem; }
+  .recommended-card .eyebrow { margin-bottom: .35rem; }
   .recommended-card h2 { margin: 0; font-size: clamp(1.35rem, 3vw, 1.8rem); }
   .task-id { color: var(--muted); font-size: .55em; font-weight: 750; vertical-align: middle; }
-  .recommended-card__header-actions { display: flex; align-items: center; gap: .35rem; }
 
   .edit-button {
     display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border: 0; border-radius: .4rem;
