@@ -24,6 +24,7 @@
   }>();
 
   let task: Task | null = null;
+  let originalDescription: string | null = null;
   let loading = true;
   let busy = false;
   let blockModalOpen = false;
@@ -55,6 +56,7 @@
 
     try {
       task = await api.task(taskId);
+      originalDescription = task.description;
     } catch (reason) {
       error = errorMessage(reason, 'ui.taskEditor.couldNotLoadTask');
     } finally {
@@ -71,7 +73,7 @@
     error = '';
     try {
       const saved = taskId
-        ? await api.updateTask(taskId, input)
+        ? await api.updateTask(taskId, { ...input, expected_description: originalDescription })
         : await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
@@ -87,7 +89,7 @@
     error = '';
     try {
       const { priority: _priority, ...draftInput } = input;
-      const saved = await api.updateTask(taskId, draftInput);
+      const saved = await api.updateTask(taskId, { ...draftInput, expected_description: originalDescription });
       dispatch('saved', saved);
     } catch (reason) {
       error = errorMessage(reason, 'ui.taskEditor.couldNotSaveDraft');

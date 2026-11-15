@@ -235,6 +235,7 @@
   "ui.blockTaskModal.close": "Fechar",
   "ui.blockTaskModal.couldNotUnblockTask": "Não foi possível desbloquear a tarefa",
   "ui.blockTaskModal.currentlyActive": "Ativo no momento",
+  "api.descriptionChanged": "A descrição foi alterada em outro lugar. Recarregue-a antes de salvar.",
   "ui.blockTaskModal.deleteBlockingReason": "Excluir motivo do bloqueio",
   "ui.blockTaskModal.historyCount": "{count, plural, =0 {# registros} one {# registro} other {# registros}}",
   "ui.blockTaskModal.in3Days": "Em 3 dias",

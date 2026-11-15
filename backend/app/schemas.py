@@ -148,6 +148,7 @@ class TaskCreate(ApiModel):
 class TaskUpdate(ApiModel):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     description: str | None = None
+    expected_description: str | None = None
     priority: int | None = Field(default=None, ge=1)
     due_date: date | None = None
     last_worked_at: UtcDateTime | None = None
@@ -231,6 +232,7 @@ class TagCreate(ApiModel):
 class TagUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
+    expected_description: str | None = None
     color: str | None = Field(default=None, max_length=32)
     score_value: float | None = Field(default=None, allow_inf_nan=False)
 

@@ -42,10 +42,11 @@
   let createColor = randomTagColor();
   let createScoreValue = 0;
   let createParentChoice = 0;
-  let parentDraft: { tagId: number; name: string; description: string; color: string; scoreValue: number; parentChoice: number } | null = null;
+  let parentDraft: { tagId: number; name: string; description: string; originalDescription: string | null; color: string; scoreValue: number; parentChoice: number } | null = null;
 
   let editName = '';
   let editDescription = '';
+  let originalDescription: string | null = null;
   let editColor = '';
   let editScoreValue = 0;
   let parentChoice = 0;
@@ -85,6 +86,7 @@
   function setEditFields(tag: Tag) {
     editName = tag.name;
     editDescription = tag.description || '';
+    originalDescription = tag.description;
     editColor = tag.color || '#587b6a';
     editScoreValue = tag.score_value;
     parentChoice = 0;
@@ -148,8 +150,8 @@
   function startCreateParent(name: string) {
     if (!creating && !selectedTag) return;
     parentDraft = creating
-      ? { tagId: 0, name: createName, description: createDescription, color: createColor, scoreValue: createScoreValue, parentChoice: createParentChoice }
-      : { tagId: selectedTag!.id, name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue, parentChoice: parentChoice };
+      ? { tagId: 0, name: createName, description: createDescription, originalDescription: null, color: createColor, scoreValue: createScoreValue, parentChoice: createParentChoice }
+      : { tagId: selectedTag!.id, name: editName, description: editDescription, originalDescription, color: editColor, scoreValue: editScoreValue, parentChoice: parentChoice };
     createName = name;
     createDescription = '';
     createColor = randomTagColor();
@@ -165,6 +167,7 @@
       selectedId = parentDraft.tagId;
       editName = parentDraft.name;
       editDescription = parentDraft.description;
+      originalDescription = parentDraft.originalDescription;
       editColor = parentDraft.color;
       editScoreValue = parentDraft.scoreValue;
       parentChoice = parentDraft.parentChoice;
@@ -223,6 +226,7 @@
       await api.updateTag(selectedTag.id, {
         name: editName,
         description: editDescription,
+        expected_description: originalDescription,
         color: editColor,
         score_value: editScoreValue
       });
@@ -237,7 +241,7 @@
   async function addParent(parentId: number) {
     if (!selectedTag || !parentId) return;
     const tagId = selectedTag.id;
-    const draft = { name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue };
+    const draft = { name: editName, description: editDescription, originalDescription, color: editColor, scoreValue: editScoreValue };
     busy = true;
     error = '';
     try {
@@ -245,6 +249,7 @@
       await load(tagId);
       editName = draft.name;
       editDescription = draft.description;
+      originalDescription = draft.originalDescription;
       editColor = draft.color;
       editScoreValue = draft.scoreValue;
     } catch (reason) {

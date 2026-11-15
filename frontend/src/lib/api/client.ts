@@ -119,7 +119,7 @@ export const api = {
       parent_tag_id?: number | null;
     }
   ) => request<Tag>('/api/tags', json('POST', body)),
-  updateTag: (tagId: number, body: Partial<Tag>) =>
+  updateTag: (tagId: number, body: Partial<Tag> & { expected_description?: string | null }) =>
     request<Tag>(`/api/tags/${tagId}`, json('PATCH', body)),
   deleteTag: (tagId: number) => request<void>(`/api/tags/${tagId}`, json('DELETE')),
   addTagParent: (tagId: number, parent_tag_id: number) =>
@@ -165,7 +165,7 @@ export const api = {
   task: (id: number) => request<Task>(`/api/tasks/${id}`),
   createTask: (body: TaskInput) =>
     request<Task>('/api/tasks', json('POST', body)),
-  updateTask: (id: number, body: Partial<TaskInput>) =>
+  updateTask: (id: number, body: Partial<TaskInput> & { expected_description?: string | null }) =>
     request<Task>(`/api/tasks/${id}`, json('PATCH', body)),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, json('DELETE')),
   finishTask: (id: number) => request<Task>(`/api/tasks/${id}/finish`, json('POST')),

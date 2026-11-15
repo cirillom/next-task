@@ -235,6 +235,7 @@
   "ui.blockTaskModal.close": "Close",
   "ui.blockTaskModal.couldNotUnblockTask": "Could not unblock task",
   "ui.blockTaskModal.currentlyActive": "Currently active",
+  "api.descriptionChanged": "The description changed elsewhere. Reload it before saving.",
   "ui.blockTaskModal.deleteBlockingReason": "Delete blocking reason",
   "ui.blockTaskModal.historyCount": "{count, plural, one {# entry} other {# entries}}",
   "ui.blockTaskModal.in3Days": "In 3 days",

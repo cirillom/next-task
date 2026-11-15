@@ -353,8 +353,17 @@ def update_task(
 ) -> TaskRead:
     task = get_task_for_user(db, task_id, user)
     values = payload.model_dump(exclude_unset=True)
+    expected = values.pop("expected_description", None)
     if "parent_task_id" in values:
         validate_parent(db, user.id, values["parent_task_id"], task.id)
+    if "description" in values and "expected_description" in payload.model_fields_set:
+        result = db.execute(
+            update(Task)
+            .where(Task.id == task_id, Task.user_id == user.id, Task.description == expected)
+            .values(description=values.pop("description"))
+        )
+        if result.rowcount != 1:
+            raise HTTPException(status_code=409, detail=localized("api.descriptionChanged"))
     apply_task_relations(db, task, values.pop("tag_ids", None))
     for key, value in values.items():
         setattr(task, key, value)

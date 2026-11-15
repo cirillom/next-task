@@ -235,6 +235,20 @@ try {
   await wait(`document.querySelector('.task-editor') === null`);
   await wait(`Array.from(document.querySelectorAll('.title-button')).some(b=>b.textContent.includes('Keyboard task updated'))`);
   await evaluate(`Array.from(document.querySelectorAll('.title-button')).find(b=>b.textContent.includes('Keyboard task updated')).click()`);
+  await wait(`document.querySelector('.shared-task-form') !== null`);
+  const conflictTaskId = await evaluate(`(async()=>{
+    const task=(await fetch('/api/tasks').then(r=>r.json())).find(t=>t.title==='Keyboard task updated');
+    await fetch('/api/tasks/'+task.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({description:'Changed elsewhere'})});
+    return task.id;
+  })()`);
+  await fill('.shared-task-form .title-row input', 'Unsaved title');
+  await press('s', 2);
+  await wait(`document.querySelector('.shared-task-form [role="alert"]')?.textContent.includes('description changed')`);
+  assert.equal(await evaluate(`document.querySelector('.shared-task-form .title-row input').value`), 'Unsaved title');
+  assert.deepEqual(await evaluate(`fetch('/api/tasks/${conflictTaskId}').then(r=>r.json()).then(t=>[t.title,t.description])`), ['Keyboard task updated', 'Changed elsewhere']);
+  await evaluate(`{const confirm=window.confirm; window.confirm=()=>true; document.querySelector('.task-editor .close-icon').click(); window.confirm=confirm;}`);
+  await wait(`document.querySelector('.task-editor') === null`);
+  await evaluate(`Array.from(document.querySelectorAll('.title-button')).find(b=>b.textContent.includes('Keyboard task updated')).click()`);
   await wait(`document.querySelector('.editor-header-actions .block-action') !== null`);
   await evaluate(`document.querySelector('.editor-header-actions .block-action').click()`);
   await wait(`document.querySelector('#blocking-reason') !== null`);
@@ -336,6 +350,17 @@ try {
   await fill('.tag-details form[data-shortcut-save] textarea', 'Keyboard tag notes');
   await press('s',4);
   await wait(`fetch('/api/tags').then(r=>r.json()).then(tags=>tags.some(t=>t.description==='Keyboard tag notes'))`);
+  await wait(`document.querySelector('.tag-details textarea')?.value === 'Keyboard tag notes'`);
+  const conflictTagId = await evaluate(`(async()=>{
+    const tag=(await fetch('/api/tags').then(r=>r.json())).find(t=>t.description==='Keyboard tag notes');
+    await fetch('/api/tags/'+tag.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({description:'Changed elsewhere'})});
+    return tag.id;
+  })()`);
+  await fill('.tag-details textarea', 'Unsaved tag notes');
+  await press('s',4);
+  await wait(`document.querySelector('.error[role="alert"]')?.textContent.includes('description changed')`);
+  assert.equal(await evaluate(`document.querySelector('.tag-details textarea').value`), 'Unsaved tag notes');
+  assert.equal(await evaluate(`fetch('/api/tags').then(r=>r.json()).then(tags=>tags.find(t=>t.id===${conflictTagId}).description)`), 'Changed elsewhere');
   await navigate('/settings');
   await wait(`document.querySelector('.language-selector select') !== null`);
   // Task and tag editing plus fixed date formats remain usable in both languages.
