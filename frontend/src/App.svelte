@@ -197,7 +197,7 @@
     <aside class="sidebar">
       <nav aria-label={$t('ui.app.primaryNavigation')}>
         {#each nav as item}
-          <button class:active={view === item.id} on:click={() => navigate(item.id)}>
+          <button class:active={view === item.id} aria-current={view === item.id ? 'page' : undefined} on:click={() => navigate(item.id)}>
             <span>{item.icon}</span>{item.label}
             {#if item.id === 'drafts' && draftCount > 0}<span class="draft-count">{draftCount}</span>{/if}
           </button>
@@ -216,7 +216,7 @@
     </main>
     <nav class="mobile-nav" aria-label={$t('ui.app.primaryNavigation')}>
       {#each nav as item}
-        <button class:active={view === item.id} on:click={() => navigate(item.id)}>
+        <button class:active={view === item.id} aria-current={view === item.id ? 'page' : undefined} on:click={() => navigate(item.id)}>
           <span class="mobile-nav-icon">{item.icon}{#if item.id === 'drafts' && draftCount > 0}<b>{draftCount}</b>{/if}</span>
           <small>{item.label}</small>
         </button>

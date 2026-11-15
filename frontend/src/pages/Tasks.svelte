@@ -249,6 +249,7 @@
       class:active={filtersOpen || activeFilterCount > 0}
       aria-label={$t('ui.tasks.filterTasks')}
       aria-expanded={filtersOpen}
+      aria-controls={filtersOpen ? 'task-filters' : undefined}
       title={$t('ui.tasks.filterTasks')}
       on:click={toggleFilters}
     >
@@ -257,7 +258,7 @@
     </button>
 
     {#if filtersOpen}
-      <div use:dismissible={closePopovers} class="toolbar-popover filter-popover" role="dialog" aria-label={$t('ui.tasks.taskFilters')}>
+      <div id="task-filters" use:dismissible={closePopovers} class="toolbar-popover filter-popover" role="dialog" aria-label={$t('ui.tasks.taskFilters')}>
         <div class="popover-header">
           <strong>{$t('ui.tasks.filters')}</strong>
           {#if activeFilterCount > 0}<button type="button" class="clear-button" on:click={clearFilters}>{$t('ui.tasks.clear')}</button>{/if}
@@ -306,6 +307,7 @@
       class:active={sortOpen || sortField !== 'score' || sortDirection !== 'desc'}
       aria-label={$t('ui.tasks.sortTasks')}
       aria-expanded={sortOpen}
+      aria-controls={sortOpen ? 'task-sorting' : undefined}
       title={$t('ui.tasks.sortTasks')}
       on:click={toggleSort}
     >
@@ -313,7 +315,7 @@
     </button>
 
     {#if sortOpen}
-      <div use:dismissible={closePopovers} class="toolbar-popover sort-popover" role="dialog" aria-label={$t('ui.tasks.taskSorting')}>
+      <div id="task-sorting" use:dismissible={closePopovers} class="toolbar-popover sort-popover" role="dialog" aria-label={$t('ui.tasks.taskSorting')}>
         <div class="popover-header"><strong>{$t('ui.tasks.sort')}</strong></div>
         <label>
           {$t('ui.tasks.orderBy')}
@@ -366,7 +368,7 @@
 <style>
   .tasks-toolbar {
     position: relative;
-    z-index: 21;
+    z-index: 19;
     display: flex;
     align-items: end;
     gap: .55rem;
@@ -527,7 +529,7 @@
   .popover-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 20;
+    z-index: 18;
     border: 0;
     background: transparent;
     padding: 0;
@@ -536,22 +538,26 @@
 
   @media (max-width: 640px) {
     .tasks-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: end;
     }
 
     .search-field {
+      grid-column: 1;
+      grid-row: 1;
       min-width: 0;
     }
 
+    .popover-control { display: contents; }
+    .popover-control .toolbar-icon { grid-row: 1; }
+
     .toolbar-popover {
-      position: fixed;
-      top: auto;
-      right: 1rem;
-      bottom: 1rem;
-      left: 1rem;
-      width: auto;
-      max-height: calc(100vh - 2rem);
-      overflow: auto;
+      position: static;
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: 100%;
+      margin-top: .25rem;
     }
 
     .filter-grid {

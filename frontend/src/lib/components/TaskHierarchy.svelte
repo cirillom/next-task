@@ -60,11 +60,9 @@
   }
 
   .parent-link button {
-    display: inline-flex;
+    display: block;
     min-width: 0;
-    align-items: baseline;
-    gap: .3rem;
-    overflow: hidden;
+    overflow-wrap: anywhere;
     border: 0;
     background: transparent;
     color: var(--forest-2);
@@ -80,7 +78,7 @@
   }
 
   .parent-link button small {
-    flex: 0 0 auto;
+    margin-left: .3rem;
     color: var(--muted);
     font-size: .68rem;
     font-weight: 700;
