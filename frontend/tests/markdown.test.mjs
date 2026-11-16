@@ -9,7 +9,7 @@ test('maps footnote references to matching definitions and leaves code literal',
   const source = 'Text[^a] and again[^a]\r\n\r\n`[^a]`\r\n\r\n[^a]: Example';
   const result = parsedFootnotes(source);
   assert.deepEqual(result.references.map(ref => ref.id), ['1', '1']);
-  assert.equal(source.slice(result.positions.get('a')), '[^a]: Example');
+  assert.equal(source.slice(result.positions.get('a').from), '[^a]: Example');
   assert.deepEqual(parsedFootnotes(source).references.map(ref => ref.id), ['1', '1']);
 });
 

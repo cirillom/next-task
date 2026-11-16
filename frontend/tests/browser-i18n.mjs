@@ -542,6 +542,10 @@ try {
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-footnote a')?.textContent`), '1');
   await evaluate(`document.querySelector('.focus-description-editor .cm-md-footnote a').click()`);
   await wait(`document.getSelection()?.anchorNode?.parentElement?.closest('.cm-line')?.textContent.includes('[^note]: Footnote body')`);
+  await press('Home',2);
+  await wait(`document.querySelector('.focus-description-editor .cm-md-block .footnotes li')?.textContent.includes('Footnote body')`);
+  await evaluate(`document.querySelector('.focus-description-editor .cm-md-block .footnotes a').click()`);
+  await wait(`document.getSelection()?.anchorNode?.parentElement?.closest('.cm-line')?.textContent.includes('footnote[^note]')`);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[1].click()`);
   await fillEditor('.focus-description-editor .cm-content', '[[Meet');
   await wait(`document.querySelector('.focus-description-editor .cm-tooltip-autocomplete')?.textContent.includes('Meet your next task')`);

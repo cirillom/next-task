@@ -92,12 +92,12 @@ export function parsedFootnotes(source: string) {
     if (token.type === 'footnoteRef' && typeof token.label === 'string' && typeof token.id === 'string') references.push({raw: token.raw, label: token.label, id: token.id});
     if (token.type === 'footnote' && typeof token.label === 'string') definitions.push({raw: token.raw, label: token.label});
   });
-  const positions = new Map<string, number>();
+  const positions = new Map<string, {from: number; to: number}>();
   taskParser.parse(source).iterate({enter(node) {
     if (node.name !== 'Paragraph' && node.name !== 'LinkReference') return;
     const text = source.slice(node.from, node.to).replace(/\r\n?/g, '\n');
     const definition = definitions.find(item => item.raw.trimEnd() === text.trimEnd());
-    if (definition && !positions.has(definition.label)) positions.set(definition.label, node.from);
+    if (definition && !positions.has(definition.label)) positions.set(definition.label, {from: node.from, to: node.to});
   }});
   return {references, positions};
 }
@@ -155,6 +155,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
     const callouts = new Map<string, {from: number; to: number; html: string}>();
     const diagramBlocks = new Map<string, {from: number; to: number; html: string}>();
     const codeBlocks = new Map<string, {from: number; to: number; html: string}>();
+    const footnoteBlocks = new Map<string, {from: number; to: number; html: string}>();
     const mathBlocks = new Map<string, {from: number; to: number; html: string}>();
     const inlineLinks = new Map<string, {from: number; to: number; html: string}>();
     const linkKeys = new Map<Token, string>();
@@ -361,9 +362,16 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       const element = fragment.querySelector(`[data-markdown-link="${key}"]`);
       if (element) entry.html = element.outerHTML;
     }
+    if (source.includes('[^')) {
+      const parsed = parsedFootnotes(source);
+      for (const [label, position] of parsed.positions) {
+        const element = [...fragment.querySelectorAll<HTMLElement>('[id]')].find(item => item.id === `${nonce}-footnote-${encodeURIComponent(label)}`);
+        if (element) footnoteBlocks.set(label, {...position, html: `<section class="footnotes"><ol>${element.outerHTML}</ol></section>`});
+      }
+    }
     const container = document.createElement('div');
     container.append(fragment);
-    return { html: container.innerHTML, controls, diagrams, maths, references, tables, callouts, diagramBlocks, codeBlocks, mathBlocks, inlineLinks, footnotePrefix: `${nonce}-footnote-` };
+    return { html: container.innerHTML, controls, diagrams, maths, references, tables, callouts, diagramBlocks, codeBlocks, footnoteBlocks, mathBlocks, inlineLinks, footnotePrefix: `${nonce}-footnote-` };
   } catch {
     return {
       html: `<pre>${escapeHtml(source)}</pre>`,
@@ -375,6 +383,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       callouts: new Map<string, {from: number; to: number; html: string}>(),
       diagramBlocks: new Map<string, {from: number; to: number; html: string}>(),
       codeBlocks: new Map<string, {from: number; to: number; html: string}>(),
+      footnoteBlocks: new Map<string, {from: number; to: number; html: string}>(),
       mathBlocks: new Map<string, {from: number; to: number; html: string}>(),
       inlineLinks: new Map<string, {from: number; to: number; html: string}>(),
       footnotePrefix: ''

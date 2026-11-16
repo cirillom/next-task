@@ -47,7 +47,7 @@ class TaskCheckbox extends WidgetType {
 }
 
 class TableWidget extends WidgetType {
-  constructor(private html: string, private from: number, private to: number, private rendered: ReturnType<typeof renderMarkdown>, private navigate?: (target: ReferenceKey) => void) { super(); }
+  constructor(private html: string, private from: number, private to: number, private rendered: ReturnType<typeof renderMarkdown>, private footnoteTargets: Map<string, number>, private navigate?: (target: ReferenceKey) => void) { super(); }
   eq(other: TableWidget) { return this.html === other.html && this.from === other.from && this.to === other.to; }
   toDOM(view: EditorView) {
     const node = document.createElement('div');
@@ -58,7 +58,7 @@ class TableWidget extends WidgetType {
       const anchor = event.target instanceof Element ? event.target.closest('a') : null;
       if (anchor?.getAttribute('href')?.startsWith(`#${this.rendered.footnotePrefix}`)) {
         event.preventDefault();
-        view.dispatch({selection: {anchor: this.from}});
+        view.dispatch({selection: {anchor: this.footnoteTargets.get(anchor.getAttribute('href')!.slice(1)) ?? this.from}, scrollIntoView: true});
         view.focus();
         return;
       }
@@ -173,7 +173,7 @@ class FootnoteWidget extends WidgetType {
 
 class RenderedBlockWidget extends WidgetType {
   private stop = () => {};
-  constructor(private html: string, private from: number, private to: number, private source: string, private rendered: ReturnType<typeof renderMarkdown>, private disclosures: Map<string, boolean>, private navigate?: (target: ReferenceKey) => void) { super(); }
+  constructor(private html: string, private from: number, private to: number, private source: string, private rendered: ReturnType<typeof renderMarkdown>, private disclosures: Map<string, boolean>, private footnoteTargets: Map<string, number>, private navigate?: (target: ReferenceKey) => void) { super(); }
   eq(other: RenderedBlockWidget) { return this.html === other.html && this.from === other.from && this.to === other.to; }
   toDOM(view: EditorView) {
     const node = document.createElement('div');
@@ -205,7 +205,7 @@ class RenderedBlockWidget extends WidgetType {
       const anchor = event.target instanceof Element ? event.target.closest('a') : null;
       if (anchor?.getAttribute('href')?.startsWith(`#${this.rendered.footnotePrefix}`)) {
         event.preventDefault();
-        view.dispatch({selection: {anchor: this.from}});
+        view.dispatch({selection: {anchor: this.footnoteTargets.get(anchor.getAttribute('href')!.slice(1)) ?? this.from}, scrollIntoView: true});
         view.focus();
         return;
       }
@@ -231,7 +231,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
   let matches: RegExpMatchArray[] = [];
   let highlights: {from: number; to: number}[] = [];
   let maths: {from: number; math: ReturnType<typeof parsedInlineMath>[number]}[] = [];
-  let footnotes: {from: number; to: number; target: number; label: string}[] = [];
+  let footnotes: {from: number; to: number; target: number; label: string; name: string}[] = [];
   const disclosures = new Map<string, boolean>();
   function decorations(state: EditorState) {
     const ranges: ReturnType<Decoration['range']>[] = [];
@@ -288,7 +288,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       const parsedMaths = source.includes('$') ? parsedInlineMath(source) : [];
       maths = parsedMaths.length === mathMatches.length && parsedMaths.every((math, index) => math.raw === mathMatches[index][0])
         ? parsedMaths.map((math, index) => ({from: mathMatches[index].index!, math})) : [];
-      const parsedFootnote = source.includes('[^') ? parsedFootnotes(source) : {references: [], positions: new Map<string, number>()};
+      const parsedFootnote = source.includes('[^') ? parsedFootnotes(source) : {references: [], positions: new Map<string, {from: number; to: number}>()};
       const footnoteMatches: {from: number; to: number; raw: string}[] = [];
       syntaxTree(state).iterate({enter(node) {
         if (node.name !== 'Link') return;
@@ -300,17 +300,28 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       }});
       footnotes = parsedFootnote.references.length === footnoteMatches.length && parsedFootnote.references.every((ref, index) => ref.raw === footnoteMatches[index].raw)
         ? parsedFootnote.references.flatMap((ref, index) => {
-          const target = offsets.indexOf(parsedFootnote.positions.get(ref.label) ?? -1);
-          return target < 0 ? [] : [{...footnoteMatches[index], target, label: ref.id}];
+          const target = offsets.indexOf(parsedFootnote.positions.get(ref.label)?.from ?? -1);
+          return target < 0 ? [] : [{...footnoteMatches[index], target, label: ref.id, name: ref.label}];
         }) : [];
     }
     const selected = (from: number, to: number) => state.selection.ranges.some(range => range.from <= to && range.to >= from);
     const blocks = tables.map(table => ({...table, from: offsets.indexOf(table.from), to: offsets.indexOf(table.to)}))
       .filter(table => table.from >= 0 && table.to > table.from && table.html && state.doc.lineAt(table.from).from === table.from && !selected(table.from, table.to));
-    const richBlocks = rendered ? [...rendered.callouts.values(), ...rendered.diagramBlocks.values(), ...rendered.codeBlocks.values(), ...rendered.mathBlocks.values()]
+    const richBlocks = rendered ? [...rendered.callouts.values(), ...rendered.diagramBlocks.values(), ...rendered.codeBlocks.values(), ...rendered.footnoteBlocks.values(), ...rendered.mathBlocks.values()]
       .map(block => ({...block, from: offsets.indexOf(block.from), to: offsets.indexOf(block.to)}))
       .filter(block => block.from >= 0 && block.to > block.from && block.html && state.doc.lineAt(block.from).from === block.from && !selected(block.from, block.to)) : [];
     const allBlocks = [...blocks, ...richBlocks].filter(block => ![...blocks, ...richBlocks].some(other => other !== block && other.from <= block.from && other.to >= block.to));
+    const footnoteTargets = new Map<string, number>();
+    if (rendered) {
+      const counts = new Map<string, number>();
+      for (const note of footnotes) {
+        const encoded = encodeURIComponent(note.name);
+        const count = counts.get(note.name) || 0;
+        counts.set(note.name, count + 1);
+        footnoteTargets.set(`${rendered.footnotePrefix}${encoded}`, note.target);
+        footnoteTargets.set(`${rendered.footnotePrefix}ref-${encoded}${count ? `-${count + 1}` : ''}`, note.from);
+      }
+    }
     const candidates = rendered ? [...rendered.inlineLinks.values()]
       .map(link => ({...link, from: offsets.indexOf(link.from), to: offsets.indexOf(link.to)}))
       .filter(link => link.from >= 0 && link.to > link.from && link.html && !selected(link.from, link.to) && !allBlocks.some(block => link.from >= block.from && link.to <= block.to)) : [];
@@ -362,7 +373,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       }
     }});
     for (const block of allBlocks) {
-      const widget = blocks.includes(block) ? new TableWidget(block.html, block.from, block.to, rendered!, navigate) : new RenderedBlockWidget(block.html, block.from, block.to, source, rendered!, disclosures, navigate);
+      const widget = blocks.includes(block) ? new TableWidget(block.html, block.from, block.to, rendered!, footnoteTargets, navigate) : new RenderedBlockWidget(block.html, block.from, block.to, source, rendered!, disclosures, footnoteTargets, navigate);
       ranges.push(Decoration.replace({widget, block: true}).range(block.from, block.to));
     }
     return Decoration.set(ranges, true);
