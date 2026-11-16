@@ -241,7 +241,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       cachedSource = source;
       blockReadOnly = state.readOnly;
       validOffsets = new Set(checklistOffsets(source).values());
-      rendered = /\||\[!|mermaid|\${1,2}[\r\n]|\]/.test(source) ? renderMarkdown(source, !state.readOnly, checkboxLabel) : null;
+      rendered = /\||\[!|```|~~~|^ {4}|\${1,2}[\r\n]|\]/m.test(source) ? renderMarkdown(source, !state.readOnly, checkboxLabel) : null;
       tables = rendered ? [...rendered.tables.values()] : [];
       references = source.includes('[[') ? parsedReferences(source) : [];
       const text = state.doc.toString();
@@ -307,7 +307,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
     const selected = (from: number, to: number) => state.selection.ranges.some(range => range.from <= to && range.to >= from);
     const blocks = tables.map(table => ({...table, from: offsets.indexOf(table.from), to: offsets.indexOf(table.to)}))
       .filter(table => table.from >= 0 && table.to > table.from && table.html && state.doc.lineAt(table.from).from === table.from && !selected(table.from, table.to));
-    const richBlocks = rendered ? [...rendered.callouts.values(), ...rendered.diagramBlocks.values(), ...rendered.mathBlocks.values()]
+    const richBlocks = rendered ? [...rendered.callouts.values(), ...rendered.diagramBlocks.values(), ...rendered.codeBlocks.values(), ...rendered.mathBlocks.values()]
       .map(block => ({...block, from: offsets.indexOf(block.from), to: offsets.indexOf(block.to)}))
       .filter(block => block.from >= 0 && block.to > block.from && block.html && state.doc.lineAt(block.from).from === block.from && !selected(block.from, block.to)) : [];
     const allBlocks = [...blocks, ...richBlocks].filter(block => ![...blocks, ...richBlocks].some(other => other !== block && other.from <= block.from && other.to >= block.to));

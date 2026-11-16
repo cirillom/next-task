@@ -147,6 +147,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
     const tables = new Map<string, {from: number; to: number; html: string}>();
     const callouts = new Map<string, {from: number; to: number; html: string}>();
     const diagramBlocks = new Map<string, {from: number; to: number; html: string}>();
+    const codeBlocks = new Map<string, {from: number; to: number; html: string}>();
     const mathBlocks = new Map<string, {from: number; to: number; html: string}>();
     const inlineLinks = new Map<string, {from: number; to: number; html: string}>();
     const linkKeys = new Map<Token, string>();
@@ -183,7 +184,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       }
     }
     if (source.includes('[!')) locateBlocks('blockquote', ['Blockquote'], calloutPositions);
-    if (source.includes('mermaid')) locateBlocks('code', ['FencedCode', 'CodeBlock'], codePositions);
+    if (/```|~~~|^ {4}/m.test(source)) locateBlocks('code', ['FencedCode', 'CodeBlock'], codePositions);
     if (source.includes(']')) {
       const markedLinks: Token[] = [];
       const parsedLinks: {from: number; to: number; raw: string}[] = [];
@@ -272,8 +273,13 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
         if (position) diagramBlocks.set(key, {...position, html: ''});
         return `<pre data-markdown-diagram="${key}"><code>${escapeHtml(token.text)}</code></pre>\n`;
       }
-      if (!language || !hljs.getLanguage(language)) return code.call(this, token);
-      return `<pre><code class="hljs language-${escapeHtml(language)}">${hljs.highlight(token.text, {language}).value}</code></pre>\n`;
+      const html = !language || !hljs.getLanguage(language) ? code.call(this, token)
+        : `<pre><code class="hljs language-${escapeHtml(language)}">${hljs.highlight(token.text, {language}).value}</code></pre>\n`;
+      const position = codePositions.get(token);
+      if (!position) return html;
+      const key = `${nonce}-${codeBlocks.size}`;
+      codeBlocks.set(key, {...position, html: ''});
+      return `<div data-markdown-code="${key}">${html}</div>`;
     };
     const link = renderer.link;
     renderer.link = function (token) {
@@ -336,6 +342,10 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       const element = fragment.querySelector(`[data-markdown-diagram="${key}"]`);
       if (element) entry.html = element.outerHTML;
     }
+    for (const [key, entry] of codeBlocks) {
+      const element = fragment.querySelector(`[data-markdown-code="${key}"]`);
+      if (element) entry.html = element.outerHTML;
+    }
     for (const [key, entry] of mathBlocks) {
       const element = fragment.querySelector(`[data-markdown-math="${key}"]`);
       if (element) entry.html = element.outerHTML;
@@ -346,7 +356,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
     }
     const container = document.createElement('div');
     container.append(fragment);
-    return { html: container.innerHTML, controls, diagrams, maths, references, tables, callouts, diagramBlocks, mathBlocks, inlineLinks, footnotePrefix: `${nonce}-footnote-` };
+    return { html: container.innerHTML, controls, diagrams, maths, references, tables, callouts, diagramBlocks, codeBlocks, mathBlocks, inlineLinks, footnotePrefix: `${nonce}-footnote-` };
   } catch {
     return {
       html: `<pre>${escapeHtml(source)}</pre>`,
@@ -357,6 +367,7 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       tables: new Map<string, {from: number; to: number; html: string}>(),
       callouts: new Map<string, {from: number; to: number; html: string}>(),
       diagramBlocks: new Map<string, {from: number; to: number; html: string}>(),
+      codeBlocks: new Map<string, {from: number; to: number; html: string}>(),
       mathBlocks: new Map<string, {from: number; to: number; html: string}>(),
       inlineLinks: new Map<string, {from: number; to: number; html: string}>(),
       footnotePrefix: ''
