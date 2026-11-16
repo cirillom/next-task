@@ -51,6 +51,13 @@ markdown.use(footnote(), {extensions: [{
 function lex(source: string) {
   const tokens = markdown.lexer(source);
   if (markdown.defaults.walkTokens) markdown.walkTokens(tokens, markdown.defaults.walkTokens);
+  // marked-footnote retains its counter between lex-only calls.
+  const footnotes = new Map<string, string>();
+  markdown.walkTokens(tokens, token => {
+    if (token.type !== 'footnoteRef' || typeof token.label !== 'string') return;
+    if (!footnotes.has(token.label)) footnotes.set(token.label, String(footnotes.size + 1));
+    token.id = footnotes.get(token.label);
+  });
   return tokens;
 }
 

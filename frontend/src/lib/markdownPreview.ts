@@ -348,7 +348,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       if (inlineLinks.some(link => node.from === link.from && node.to === link.to)) return false;
       if (visibleFootnotes.some(note => node.from === note.from && node.to === note.to)) return false;
       if (marks[node.name]) ranges.push(Decoration.mark({class: marks[node.name]}).range(node.from, node.to));
-      if (/^ATXHeading[1-6]$/.test(node.name)) ranges.push(Decoration.mark({class: 'cm-md-heading'}).range(node.from, node.to));
+      if (/^(?:ATX|Setext)Heading[1-6]$/.test(node.name)) ranges.push(Decoration.mark({class: 'cm-md-heading'}).range(node.from, node.to));
       if (['EmphasisMark', 'StrikethroughMark', 'CodeMark', 'HeaderMark'].includes(node.name)) {
         const parent = node.node.parent;
         if (parent && !selected(parent.from, parent.to)) ranges.push(Decoration.replace({}).range(node.from, node.to));

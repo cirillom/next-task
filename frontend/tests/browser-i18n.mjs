@@ -531,11 +531,12 @@ try {
   await evaluate(`document.querySelector('.focus-description-editor .cm-md-block [data-markdown-diagram]').scrollIntoView()`);
   await wait(`document.querySelector('.focus-description-editor .cm-md-block [data-markdown-diagram] svg') !== null`);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[1].click()`);
-  await fillEditor('.focus-description-editor .cm-content', 'Intro\n\n```js\nconst x = 1;\n```\n\n[Reference link][site] and ![Picture](/api/health) with footnote[^note]\n\n[site]: https://example.com\n\n[^note]: Footnote body');
+  await fillEditor('.focus-description-editor .cm-content', 'Intro\n\nHeading\n=======\n\n```js\nconst x = 1;\n```\n\n[Reference link][site] and ![Picture](/api/health) with footnote[^note]\n\n[site]: https://example.com\n\n[^note]: Footnote body');
   await press('Home',2);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[0].click()`);
   await wait(`document.querySelector('.focus-description-editor .cm-md-inline a') !== null`);
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-block pre code')?.textContent.trim()`), 'const x = 1;');
+  assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-heading')?.textContent`), 'Heading');
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-inline a')?.getAttribute('href')`), 'https://example.com');
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-inline img')?.getAttribute('alt')`), 'Picture');
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-footnote a')?.textContent`), '1');

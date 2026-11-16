@@ -10,6 +10,7 @@ test('maps footnote references to matching definitions and leaves code literal',
   const result = parsedFootnotes(source);
   assert.deepEqual(result.references.map(ref => ref.id), ['1', '1']);
   assert.equal(source.slice(result.positions.get('a')), '[^a]: Example');
+  assert.deepEqual(parsedFootnotes(source).references.map(ref => ref.id), ['1', '1']);
 });
 
 test('maps duplicate, nested, quoted and ordered tasks to their exact UTF-16 characters', () => {
