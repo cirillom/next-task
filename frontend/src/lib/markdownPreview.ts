@@ -366,8 +366,10 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       }
       if (node.name === 'TaskMarker' && validOffsets.has(offsets[node.from + 1])) {
         const parent = node.node.parent;
-        if (parent && !selected(parent.from, parent.to)) {
+        const listMark = parent?.parent?.getChild('ListMark');
+        if (parent && !selected(listMark?.from ?? parent.from, parent.to)) {
           const checked = state.doc.sliceString(node.from + 1, node.from + 2).toLowerCase() === 'x';
+          if (listMark) ranges.push(Decoration.replace({}).range(listMark.from, node.from));
           ranges.push(Decoration.replace({widget: new TaskCheckbox(node.from, checked, checkboxLabel, state.readOnly)}).range(node.from, node.to));
         }
       }
