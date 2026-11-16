@@ -110,6 +110,17 @@ try {
     assert.ok(Math.abs(layout.title.left-layout.hierarchy.left)<1 && Math.abs(layout.score.right-layout.boost.right)<1, JSON.stringify(layout));
     assert.ok(layout.hierarchy.top>=layout.title.bottom && layout.boost.top>=layout.actions.bottom && layout.title.width>=layout.header.width*.45 && !layout.parentOverflow, JSON.stringify(layout));
   };
+  const checkQueueTags = async () => {
+    const rows = await evaluate(`Promise.all([...document.querySelectorAll('.queue-row')].map(async row => {
+      const id=row.querySelector('.queue-title .task-id').textContent.trim().slice(1);
+      const task=await fetch('/api/tasks/'+id).then(r=>r.json());
+      const badges=[...row.querySelectorAll('.queue-tags .tag-badge')];
+      return {expected:task.direct_tags.map(tag=>tag.display_name),actual:badges.map(badge=>badge.textContent.trim()),
+        contained:badges.every(badge=>{const b=badge.getBoundingClientRect(),r=row.getBoundingClientRect();return b.left>=r.left && b.right<=r.right && badge.scrollWidth<=badge.clientWidth+1;})};
+    }))`);
+    assert.ok(rows.some(row=>row.expected.length), 'Queue fixture must include tagged tasks');
+    for (const row of rows) {assert.deepEqual(row.actual,row.expected); assert.ok(row.contained,JSON.stringify(row));}
+  };
   await send('Page.navigate', {url: address}, sessionId);
   await wait(`document.querySelector('.login-card form') !== null`);
   await fill('input[name="email"], input[autocomplete="username"]', 'en@example.com');
@@ -375,6 +386,8 @@ try {
       if (view==='next') {
         await wait(`document.querySelector('.recommended-card .ranking-boost') !== null`);
         await checkCardHeading('.recommended-card');
+        await wait(`document.querySelector('.queue-tags .tag-badge') !== null`);
+        await checkQueueTags();
       }
     }
     await navigate('/tasks');
@@ -583,6 +596,7 @@ try {
   await wait(`window.heldFocusSaves.length===1`);
   await evaluate(`document.querySelector('.choose-task-toggle').click()`);
   await wait(`Array.from(document.querySelectorAll('.queue-row')).some(row=>row.textContent.includes('Focus race second') && row.querySelector('.queue-action'))`);
+  await checkQueueTags();
   await evaluate(`Array.from(document.querySelectorAll('.queue-row')).find(row=>row.textContent.includes('Focus race second')).querySelector('.queue-action').click()`);
   await wait(`document.querySelector('.focus-task-area .task-id')?.textContent.includes('#${raceTaskId}')`);
   await fillEditor('.focus-description-editor .cm-content', 'B notes');
