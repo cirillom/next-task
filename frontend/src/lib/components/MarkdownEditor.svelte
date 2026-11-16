@@ -172,7 +172,7 @@
   .editor-surface :global(.cm-md-link) { color: var(--forest-2); text-decoration: underline; }
   .editor-surface :global(.cm-md-table) { overflow: auto; padding: .35rem .8rem; }
   .editor-surface :global(.cm-md-block) { overflow: auto; padding: .25rem .8rem; }
-  .editor-surface :global(input[type='checkbox']) { accent-color: var(--forest); }
+  .editor-surface :global(input[type='checkbox']) { width: .95rem; height: .95rem; padding: 0; margin: 0 .35rem 0 0; vertical-align: -.12rem; accent-color: var(--forest); }
   .reading-surface { padding: .7rem .8rem; }
   .compact .editor-surface, .compact .reading-surface { min-height: 9rem; max-height: 18rem; }
   @media (max-width: 640px) { .editor-surface, .reading-surface, .compact .editor-surface, .compact .reading-surface { min-height: 12rem; max-height: 24rem; } }

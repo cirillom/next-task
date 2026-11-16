@@ -496,6 +496,13 @@ try {
   await delay(800);
   assert.equal(await evaluate(`window.modeSaves`), 0);
   await evaluate(`window.fetch=window.modeFetch`);
+  await fillEditor('.focus-description-editor .cm-content', 'Intro\n\n- [ ] one\n- [X] two');
+  await press('Home',2);
+  await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[0].click()`);
+  await wait(`document.querySelectorAll('.focus-description-editor .cm-content input[type="checkbox"]').length===2`);
+  const checklistLayout = await evaluate(`Array.from(document.querySelectorAll('.focus-description-editor .cm-content input[type="checkbox"]')).map(input => ({width:input.getBoundingClientRect().width,height:input.closest('.cm-line').getBoundingClientRect().height}))`);
+  assert.ok(checklistLayout.every(item => item.width < 24 && item.height < 40), JSON.stringify(checklistLayout));
+  await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[1].click()`);
   await fillEditor('.focus-description-editor .cm-content', '- [ ] one\n- [X] two');
   await press('s',2);
   await wait(`fetch('/api/tasks/${taskId}').then(r=>r.json()).then(t=>t.description===${JSON.stringify('- [ ] one\n- [X] two')})`);
