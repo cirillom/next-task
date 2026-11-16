@@ -5,6 +5,7 @@
   import { daysSince, formatDate } from '../format';
   import TaskHierarchy from './TaskHierarchy.svelte';
   import RankingBoost from './RankingBoost.svelte';
+  import TagBadge from './TagBadge.svelte';
 
   export let tasks: Task[] = [];
   export let currentTaskId: number | null = null;
@@ -41,6 +42,11 @@
           <span>{$t('ui.nextTaskCard.priority', { value1: task.priority })}</span>
           <span>{$t('ui.taskQueue.score', { value1: $numeric(task.score, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>
           <RankingBoost {task} on:open={(event) => dispatch('open', event.detail)} />
+          {#if task.direct_tags.length}
+            <div class="queue-tags">
+              {#each task.direct_tags as tag (tag.id)}<TagBadge {tag} compact />{/each}
+            </div>
+          {/if}
         </div>
       </div>
       <div class="queue-actions">
@@ -166,6 +172,13 @@
 
   .queue-meta > span {
     white-space: nowrap;
+  }
+
+  .queue-tags {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: .2rem;
   }
 
   .queue-meta > span + span::before {
