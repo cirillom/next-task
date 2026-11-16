@@ -2,7 +2,7 @@ import { StateField, type EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
-import { checklistOffsets, editChecklist, parsedHighlights, parsedInlineMath, parsedReferences, renderMarkdown } from './markdown';
+import { checklistOffsets, editChecklist, parsedFootnotes, parsedHighlights, parsedInlineMath, parsedReferences, renderMarkdown } from './markdown';
 import { markdownSource, sourceOffsets } from './markdownDocument';
 import { resolveReference, type ReferenceKey } from './referenceResolver';
 import { renderVisibleDiagrams } from './markdownDiagrams';
@@ -151,6 +151,26 @@ class InlineLinkWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+class FootnoteWidget extends WidgetType {
+  constructor(private label: string, private target: number) { super(); }
+  eq(other: FootnoteWidget) { return this.label === other.label && this.target === other.target; }
+  toDOM(view: EditorView) {
+    const superscript = document.createElement('sup');
+    superscript.className = 'cm-md-footnote';
+    const anchor = document.createElement('a');
+    anchor.href = '#';
+    anchor.textContent = this.label;
+    anchor.addEventListener('click', event => {
+      event.preventDefault();
+      view.dispatch({selection: {anchor: this.target}, scrollIntoView: true});
+      view.focus();
+    });
+    superscript.append(anchor);
+    return superscript;
+  }
+  ignoreEvent() { return true; }
+}
+
 class RenderedBlockWidget extends WidgetType {
   private stop = () => {};
   constructor(private html: string, private from: number, private to: number, private source: string, private rendered: ReturnType<typeof renderMarkdown>, private disclosures: Map<string, boolean>, private navigate?: (target: ReferenceKey) => void) { super(); }
@@ -162,6 +182,7 @@ class RenderedBlockWidget extends WidgetType {
     [...node.querySelectorAll<HTMLDetailsElement>('details.callout')].forEach((details, index) => {
       const key = `${this.from}:${index}`;
       if (this.disclosures.has(key)) details.open = this.disclosures.get(key)!;
+      details.querySelector('summary')?.addEventListener('click', () => this.disclosures.set(key, !details.open));
       details.addEventListener('toggle', () => this.disclosures.set(key, details.open));
     });
     const stopDiagram = renderVisibleDiagrams(node, this.rendered.diagrams);
@@ -210,6 +231,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
   let matches: RegExpMatchArray[] = [];
   let highlights: {from: number; to: number}[] = [];
   let maths: {from: number; math: ReturnType<typeof parsedInlineMath>[number]}[] = [];
+  let footnotes: {from: number; to: number; target: number; label: string}[] = [];
   const disclosures = new Map<string, boolean>();
   function decorations(state: EditorState) {
     const ranges: ReturnType<Decoration['range']>[] = [];
@@ -266,6 +288,21 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       const parsedMaths = source.includes('$') ? parsedInlineMath(source) : [];
       maths = parsedMaths.length === mathMatches.length && parsedMaths.every((math, index) => math.raw === mathMatches[index][0])
         ? parsedMaths.map((math, index) => ({from: mathMatches[index].index!, math})) : [];
+      const parsedFootnote = source.includes('[^') ? parsedFootnotes(source) : {references: [], positions: new Map<string, number>()};
+      const footnoteMatches: {from: number; to: number; raw: string}[] = [];
+      syntaxTree(state).iterate({enter(node) {
+        if (node.name !== 'Link') return;
+        const raw = state.doc.sliceString(node.from, node.to);
+        if (!/^\[\^[^\]\n]+\]$/.test(raw)) return;
+        const line = state.doc.lineAt(node.from);
+        if (/^\s*$/.test(state.doc.sliceString(line.from, node.from)) && state.doc.sliceString(node.to, node.to + 1) === ':') return;
+        footnoteMatches.push({from: node.from, to: node.to, raw});
+      }});
+      footnotes = parsedFootnote.references.length === footnoteMatches.length && parsedFootnote.references.every((ref, index) => ref.raw === footnoteMatches[index].raw)
+        ? parsedFootnote.references.flatMap((ref, index) => {
+          const target = offsets.indexOf(parsedFootnote.positions.get(ref.label) ?? -1);
+          return target < 0 ? [] : [{...footnoteMatches[index], target, label: ref.id}];
+        }) : [];
     }
     const selected = (from: number, to: number) => state.selection.ranges.some(range => range.from <= to && range.to >= from);
     const blocks = tables.map(table => ({...table, from: offsets.indexOf(table.from), to: offsets.indexOf(table.to)}))
@@ -279,6 +316,8 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
       .filter(link => link.from >= 0 && link.to > link.from && link.html && !selected(link.from, link.to) && !allBlocks.some(block => link.from >= block.from && link.to <= block.to)) : [];
     const inlineLinks = candidates.filter(link => !candidates.some(other => other !== link && other.from <= link.from && other.to >= link.to));
     for (const link of inlineLinks) ranges.push(Decoration.replace({widget: new InlineLinkWidget(link.html, link.from, link.to)}).range(link.from, link.to));
+    const visibleFootnotes = footnotes.filter(note => !selected(note.from, note.to) && ![...allBlocks, ...inlineLinks].some(block => note.from >= block.from && note.to <= block.to));
+    for (const note of visibleFootnotes) ranges.push(Decoration.replace({widget: new FootnoteWidget(note.label, note.target)}).range(note.from, note.to));
     for (const entry of maths) {
       const to = entry.from + entry.math.raw.length;
       if (!selected(entry.from, to) && ![...allBlocks, ...inlineLinks].some(block => entry.from >= block.from && to <= block.to)) {
@@ -307,6 +346,7 @@ export function liveMarkdownPreview(checkboxLabel: string, unavailable: string, 
     syntaxTree(state).iterate({ enter(node) {
       if (allBlocks.some(block => node.from === block.from && node.to === block.to)) return false;
       if (inlineLinks.some(link => node.from === link.from && node.to === link.to)) return false;
+      if (visibleFootnotes.some(note => node.from === note.from && node.to === note.to)) return false;
       if (marks[node.name]) ranges.push(Decoration.mark({class: marks[node.name]}).range(node.from, node.to));
       if (/^ATXHeading[1-6]$/.test(node.name)) ranges.push(Decoration.mark({class: 'cm-md-heading'}).range(node.from, node.to));
       if (['EmphasisMark', 'StrikethroughMark', 'CodeMark', 'HeaderMark'].includes(node.name)) {

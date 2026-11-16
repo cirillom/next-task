@@ -3,7 +3,14 @@ import test from 'node:test';
 import { sourceModule } from './sourceModule.mjs';
 import { Marked } from 'marked';
 
-const { checklistOffsets, editChecklist, parsedHighlights, parsedInlineMath, parsedReferences } = await import(sourceModule(new URL('../src/lib/markdown.ts', import.meta.url)));
+const { checklistOffsets, editChecklist, parsedFootnotes, parsedHighlights, parsedInlineMath, parsedReferences } = await import(sourceModule(new URL('../src/lib/markdown.ts', import.meta.url)));
+
+test('maps footnote references to matching definitions and leaves code literal', () => {
+  const source = 'Text[^a] and again[^a]\r\n\r\n`[^a]`\r\n\r\n[^a]: Example';
+  const result = parsedFootnotes(source);
+  assert.deepEqual(result.references.map(ref => ref.id), ['1', '1']);
+  assert.equal(source.slice(result.positions.get('a')), '[^a]: Example');
+});
 
 test('maps duplicate, nested, quoted and ordered tasks to their exact UTF-16 characters', () => {
   const source = '😀\r\n\r\n> - [ ] same\r\n>   - [X] same\r\n\r\n1. [ ] same\r\n\r\n```\r\n- [ ] example\r\n```\r\n';

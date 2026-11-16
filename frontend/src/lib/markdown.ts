@@ -78,6 +78,23 @@ export function parsedInlineMath(source: string): {raw: string; source: string; 
   return result;
 }
 
+export function parsedFootnotes(source: string) {
+  const references: {raw: string; label: string; id: string}[] = [];
+  const definitions: {raw: string; label: string}[] = [];
+  markdown.walkTokens(lex(source), token => {
+    if (token.type === 'footnoteRef' && typeof token.label === 'string' && typeof token.id === 'string') references.push({raw: token.raw, label: token.label, id: token.id});
+    if (token.type === 'footnote' && typeof token.label === 'string') definitions.push({raw: token.raw, label: token.label});
+  });
+  const positions = new Map<string, number>();
+  taskParser.parse(source).iterate({enter(node) {
+    if (node.name !== 'Paragraph' && node.name !== 'LinkReference') return;
+    const text = source.slice(node.from, node.to).replace(/\r\n?/g, '\n');
+    const definition = definitions.find(item => item.raw.trimEnd() === text.trimEnd());
+    if (definition && !positions.has(definition.label)) positions.set(definition.label, node.from);
+  }});
+  return {references, positions};
+}
+
 export function checklistOffsets(source: string, tokens: Token[] = lex(source)): Map<Tokens.ListItem, number> {
   const markedItems: Tokens.ListItem[] = [];
   markdown.walkTokens(tokens, (token) => {
@@ -172,7 +189,10 @@ export function renderMarkdown(source: string, interactive = false, checkboxLabe
       const parsedLinks: {from: number; to: number; raw: string}[] = [];
       markdown.walkTokens(tokens, token => {if (token.type === 'link' || token.type === 'image') markedLinks.push(token);});
       taskParser.parse(source).iterate({enter(node) {
-        if (node.name === 'Link' || node.name === 'Image') parsedLinks.push({from: node.from, to: node.to, raw: source.slice(node.from, node.to)});
+        if (node.name === 'Link' || node.name === 'Image') {
+          const raw = source.slice(node.from, node.to);
+          if (!/^\[\^[^\]\n]+\]$/.test(raw)) parsedLinks.push({from: node.from, to: node.to, raw});
+        }
       }});
       if (markedLinks.length === parsedLinks.length && markedLinks.every((link, index) => link.raw === parsedLinks[index].raw)) {
         markedLinks.forEach((link, index) => {

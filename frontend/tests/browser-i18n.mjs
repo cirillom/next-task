@@ -531,12 +531,15 @@ try {
   await evaluate(`document.querySelector('.focus-description-editor .cm-md-block [data-markdown-diagram]').scrollIntoView()`);
   await wait(`document.querySelector('.focus-description-editor .cm-md-block [data-markdown-diagram] svg') !== null`);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[1].click()`);
-  await fillEditor('.focus-description-editor .cm-content', 'Intro\n\n[Reference link][site] and ![Picture](/api/health)\n\n[site]: https://example.com');
+  await fillEditor('.focus-description-editor .cm-content', 'Intro\n\n[Reference link][site] and ![Picture](/api/health) with footnote[^note]\n\n[site]: https://example.com\n\n[^note]: Footnote body');
   await press('Home',2);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[0].click()`);
   await wait(`document.querySelector('.focus-description-editor .cm-md-inline a') !== null`);
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-inline a')?.getAttribute('href')`), 'https://example.com');
   assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-inline img')?.getAttribute('alt')`), 'Picture');
+  assert.equal(await evaluate(`document.querySelector('.focus-description-editor .cm-md-footnote a')?.textContent`), '1');
+  await evaluate(`document.querySelector('.focus-description-editor .cm-md-footnote a').click()`);
+  await wait(`document.getSelection()?.anchorNode?.parentElement?.closest('.cm-line')?.textContent.includes('[^note]: Footnote body')`);
   await evaluate(`document.querySelectorAll('.focus-description-editor .modes button')[1].click()`);
   await fillEditor('.focus-description-editor .cm-content', '[[Meet');
   await wait(`document.querySelector('.focus-description-editor .cm-tooltip-autocomplete')?.textContent.includes('Meet your next task')`);
