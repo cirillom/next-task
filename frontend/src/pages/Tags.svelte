@@ -8,7 +8,9 @@
   import AppButton from '../lib/components/AppButton.svelte';
   import TextField from '../lib/components/TextField.svelte';
   import TagSelect from '../lib/components/TagSelect.svelte';
-  import TextArea from '../lib/components/TextArea.svelte';
+  import { confirmClose } from '../lib/keyboard';
+
+  export let targetTagId = 0;
 
   const SUGGESTED_TAG_COLORS = [
     '#587b6a',
@@ -31,6 +33,7 @@
 
 
   let tags: Tag[] = [];
+  let MarkdownEditor: typeof import('../lib/components/MarkdownEditor.svelte').default;
   let search = '';
   let selectedId = 0;
   let expandedIds = new Set<number>();
@@ -42,10 +45,11 @@
   let createColor = randomTagColor();
   let createScoreValue = 0;
   let createParentChoice = 0;
-  let parentDraft: { tagId: number; name: string; description: string; color: string; scoreValue: number; parentChoice: number } | null = null;
+  let parentDraft: { tagId: number; name: string; description: string; originalDescription: string | null; color: string; scoreValue: number; parentChoice: number } | null = null;
 
   let editName = '';
   let editDescription = '';
+  let originalDescription: string | null = null;
   let editColor = '';
   let editScoreValue = 0;
   let parentChoice = 0;
@@ -58,8 +62,13 @@
 
   let error: Message = '';
   let busy = false;
+  let seenTarget = 0;
 
   $: selectedTag = tags.find((tag) => tag.id === selectedId) || null;
+  $: if (tags.length && targetTagId !== seenTarget) {
+    seenTarget = targetTagId;
+    if (targetTagId) selectTagById(targetTagId);
+  }
   $: hierarchyRows = tagHierarchyRows(tags, search);
   $: visibleRows = search.trim()
     ? hierarchyRows
@@ -85,9 +94,17 @@
   function setEditFields(tag: Tag) {
     editName = tag.name;
     editDescription = tag.description || '';
+    originalDescription = tag.description;
     editColor = tag.color || '#587b6a';
     editScoreValue = tag.score_value;
     parentChoice = 0;
+  }
+
+  export function requestReferenceNavigation(next: () => void) {
+    const dirty = creating
+      ? !!parentDraft || !!createName.trim() || !!createDescription || !!createParentChoice
+      : !!selectedTag && (editName !== selectedTag.name || editDescription !== (originalDescription || '') || editColor !== (selectedTag.color || '#587b6a') || editScoreValue !== selectedTag.score_value || !!parentChoice);
+    confirmClose(dirty, next, busy);
   }
 
   function selectTag(tag: Tag) {
@@ -148,8 +165,8 @@
   function startCreateParent(name: string) {
     if (!creating && !selectedTag) return;
     parentDraft = creating
-      ? { tagId: 0, name: createName, description: createDescription, color: createColor, scoreValue: createScoreValue, parentChoice: createParentChoice }
-      : { tagId: selectedTag!.id, name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue, parentChoice: parentChoice };
+      ? { tagId: 0, name: createName, description: createDescription, originalDescription: null, color: createColor, scoreValue: createScoreValue, parentChoice: createParentChoice }
+      : { tagId: selectedTag!.id, name: editName, description: editDescription, originalDescription, color: editColor, scoreValue: editScoreValue, parentChoice: parentChoice };
     createName = name;
     createDescription = '';
     createColor = randomTagColor();
@@ -165,6 +182,7 @@
       selectedId = parentDraft.tagId;
       editName = parentDraft.name;
       editDescription = parentDraft.description;
+      originalDescription = parentDraft.originalDescription;
       editColor = parentDraft.color;
       editScoreValue = parentDraft.scoreValue;
       parentChoice = parentDraft.parentChoice;
@@ -222,7 +240,8 @@
     try {
       await api.updateTag(selectedTag.id, {
         name: editName,
-        description: editDescription,
+        description: editDescription === (originalDescription || '') ? originalDescription : editDescription,
+        expected_description: originalDescription,
         color: editColor,
         score_value: editScoreValue
       });
@@ -237,7 +256,7 @@
   async function addParent(parentId: number) {
     if (!selectedTag || !parentId) return;
     const tagId = selectedTag.id;
-    const draft = { name: editName, description: editDescription, color: editColor, scoreValue: editScoreValue };
+    const draft = { name: editName, description: editDescription, originalDescription, color: editColor, scoreValue: editScoreValue };
     busy = true;
     error = '';
     try {
@@ -245,6 +264,7 @@
       await load(tagId);
       editName = draft.name;
       editDescription = draft.description;
+      originalDescription = draft.originalDescription;
       editColor = draft.color;
       editScoreValue = draft.scoreValue;
     } catch (reason) {
@@ -256,11 +276,18 @@
 
   async function removeParent(parentId: number) {
     if (!selectedTag) return;
+    const tagId = selectedTag.id;
+    const draft = { name: editName, description: editDescription, originalDescription, color: editColor, scoreValue: editScoreValue };
     busy = true;
     error = '';
     try {
-      await api.removeTagParent(selectedTag.id, parentId);
-      await load(selectedTag.id);
+      await api.removeTagParent(tagId, parentId);
+      await load(tagId);
+      editName = draft.name;
+      editDescription = draft.description;
+      originalDescription = draft.originalDescription;
+      editColor = draft.color;
+      editScoreValue = draft.scoreValue;
     } catch (reason) {
       error = errorMessage(reason, 'ui.tags.couldNotRemoveParent');
     } finally {
@@ -337,7 +364,12 @@
     }
   }
 
-  onMount(() => void load());
+  onMount(() => {
+    void load(targetTagId || selectedId);
+    void import('../lib/components/MarkdownEditor.svelte').then(editor => { MarkdownEditor = editor.default; }, reason => {
+      error = errorMessage(reason, 'ui.tags.couldNotLoadTags');
+    });
+  });
 </script>
 
 <div class="page-heading">
@@ -408,7 +440,7 @@
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={createColor} /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={createScoreValue} /></label>
-        <label class="wide">{$t('ui.markdownEditor.description')}<TextArea bind:value={createDescription} rows="4" /></label>
+        <div class="wide"><svelte:component this={MarkdownEditor} bind:value={createDescription} disabled={busy} compact /></div>
         <label class="wide">{$t('ui.tagPicker.parentTags')}
           <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel={$t('ui.tagPicker.chooseAParentTag')} label={$t('ui.tagPicker.parentTag')} disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
         </label>
@@ -439,7 +471,7 @@
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={editName} maxlength="120" required  /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={editColor}  /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={editScoreValue} /></label>
-        <label class="wide">{$t('ui.markdownEditor.description')}<TextArea bind:value={editDescription} rows="4"  /></label>
+        <div class="wide"><svelte:component this={MarkdownEditor} bind:value={editDescription} documentId={selectedTag.id} disabled={busy} compact /></div>
 
           <div class="detail-actions wide">
             <AppButton type="submit" variant="primary" disabled={busy}>{$t('ui.tags.saveDetails')}</AppButton>

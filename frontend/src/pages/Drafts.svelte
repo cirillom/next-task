@@ -4,7 +4,7 @@
   import { api } from '../lib/api/client';
   import type { Task } from '../lib/api/types';
   import { formatDateTime } from '../lib/format';
-  import Markdown from '../lib/components/Markdown.svelte';
+  import SavedMarkdown from '../lib/components/SavedMarkdown.svelte';
   import AppButton from '../lib/components/AppButton.svelte';
 
   const dispatch = createEventDispatcher<{ openTask: number }>();
@@ -54,7 +54,7 @@
             <span class="task-id">#{draft.id}</span>
           </div>
           {#if draft.description}
-            <div class="draft-description"><Markdown source={draft.description} /></div>
+            <div class="draft-description"><SavedMarkdown task={draft} on:changed={(event) => (drafts = drafts.map(item => item.id === event.detail.id ? event.detail : item))} on:error={(event) => (error = event.detail)} on:open={(event) => dispatch('openTask', event.detail)} /></div>
           {/if}
           <div class="draft-meta">{$t('ui.drafts.captured', { value1: formatDateTime(draft.created_at) })}</div>
         </div>
@@ -88,7 +88,8 @@
   .draft-title-row { display: flex; align-items: baseline; gap: .5rem; }
   .draft-title-row h2 { margin: 0; font-size: 1rem; }
   .task-id { color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
-  .draft-description { max-height: 4.5rem; overflow: hidden; margin-top: .35rem; color: #4c524e; font-size: .86rem; }
+  .draft-description { max-height: 12rem; overflow: auto; margin-top: .35rem; color: #4c524e; font-size: .86rem; }
+  .draft-description:has(:global(.save-error)) { max-height: none; overflow: visible; }
   .draft-description :global(.markdown > :first-child) { margin-top: 0; }
   .draft-description :global(.markdown > :last-child) { margin-bottom: 0; }
   .draft-meta { margin-top: .45rem; color: var(--muted); font-size: .72rem; }

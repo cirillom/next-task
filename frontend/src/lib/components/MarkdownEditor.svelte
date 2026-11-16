@@ -1,440 +1,179 @@
 <script lang="ts">
-  import { ignoreKey, isModified } from '../keyboard';
-  import { t, text, localized } from '../i18n';
-  import { createEventDispatcher, tick } from 'svelte';
-  import DOMPurify from 'dompurify';
-  import { marked } from 'marked';
+  import { createEventDispatcher, getContext, onMount } from 'svelte';
+  import { Annotation, Compartment, EditorSelection, EditorState, Prec, Transaction } from '@codemirror/state';
+  import { EditorView, keymap, placeholder as placeholderExtension } from '@codemirror/view';
+  import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands';
+  import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
+  import { syntaxTree } from '@codemirror/language';
+  import { t, text } from '../i18n';
+  import { markdownSource, markdownSourceState, restoreMarkdownSource, sourceOffsets } from '../markdownDocument';
+  import { liveMarkdownPreview } from '../markdownPreview';
+  import { referenceCompletion } from '../referenceCompletion';
+  import { referenceNavigation, type ReferenceKey } from '../referenceResolver';
+  import Markdown from './Markdown.svelte';
+  import { closeTopDialog, hasDialog } from '../keyboard';
 
   export let value = '';
   export let disabled = false;
   export let label = 'ui.markdownEditor.description';
   export let placeholder = 'ui.markdownEditor.addDetailsLinksListsTablesOrCode';
   export let compact = false;
+  export let documentId: string | number = 0;
+  export let inputId = '';
 
-  const dispatch = createEventDispatcher<{ input: string }>();
-
+  const dispatch = createEventDispatcher<{ input: string; selection: { cursor: number; inCode: boolean }; blur: void }>();
+  const navigateReference = getContext<(target: ReferenceKey) => void>(referenceNavigation);
+  const preview = new Compartment();
+  const permissions = new Compartment();
+  const attributes = new Compartment();
+  const externalChange = Annotation.define<boolean>();
   let root: HTMLDivElement;
-  let activeTextarea: HTMLTextAreaElement;
-  let sourceTextarea: HTMLTextAreaElement;
-  let activeLine: number | null = null;
-  let sourceMode = false;
-  let lines = splitLines(value);
-  let internalValue = value;
+  let view: EditorView;
+  let activeDocument: string | number = documentId;
+  let mode: 'live' | 'source' | 'reading' = 'live';
 
-  function splitLines(markdown: string): string[] {
-    const next = markdown.split('\n');
-    return next.length ? next : [''];
+  function wrap(prefix: string, suffix: string, link = false) {
+    return (editor: EditorView) => {
+      if (editor.state.readOnly) return false;
+      editor.dispatch(editor.state.changeByRange(range => {
+        const selected = editor.state.sliceDoc(range.from, range.to);
+        const content = link && !selected ? 'text' : selected;
+        const insert = prefix + content + suffix;
+        const start = link ? range.from + prefix.length + content.length + 2 : range.from + prefix.length;
+        const end = link ? start + 3 : start + content.length;
+        return { changes: { from: range.from, to: range.to, insert }, range: EditorSelection.range(start, end) };
+      }));
+      return true;
+    };
   }
 
-  function escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  function createState(source: string) {
+    return EditorState.create({
+      doc: source,
+      extensions: [
+        markdownSourceState(source), history(), EditorState.allowMultipleSelections.of(true), referenceCompletion,
+        markdown({base: markdownLanguage, addKeymap: false, completeHTMLTags: false}),
+        keymap.of([
+          {key: 'Mod-b', run: wrap('**', '**')},
+          {key: 'Mod-i', run: wrap('*', '*')},
+          {key: 'Mod-k', run: wrap('[', '](url)', true)},
+          ...markdownKeymap, ...historyKeymap, ...defaultKeymap.filter(binding => binding.key !== 'Escape' && binding.key !== 'Mod-Enter')
+        ]),
+        EditorView.lineWrapping,
+        preview.of(mode === 'live' ? liveMarkdownPreview($t('ui.markdownEditor.toggleChecklistItem'), $t('ui.markdownEditor.referenceUnavailable'), navigateReference) : []),
+        permissions.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
+        attributes.of([EditorView.contentAttributes.of({'aria-label': $text(label) || $t('ui.markdownEditor.markdownEditor'), spellcheck: 'true', ...(inputId ? {id: inputId} : {})}), placeholderExtension($text(placeholder))]),
+        Prec.highest(EditorView.domEventHandlers({
+          blur: () => {dispatch('blur'); return false;},
+          keydown: (event, editor) => {
+            if (event.key !== 'Escape' || event.repeat || event.isComposing || !hasDialog() || editor.dom.querySelector('.cm-tooltip-autocomplete')) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            closeTopDialog();
+            return true;
+          }
+        })),
+        EditorView.updateListener.of(update => {
+          const external = update.transactions.some(transaction => transaction.annotation(externalChange));
+          if (update.docChanged && !external) {
+            value = update.state.field(markdownSource);
+            dispatch('input', value);
+          }
+          if ((update.docChanged && !external) || update.selectionSet) {
+            const head = update.state.selection.main.head;
+            let node = syntaxTree(update.state).resolveInner(Math.max(0, head - 1), -1);
+            let inCode = false;
+            while (node) {
+              if (['FencedCode', 'CodeBlock', 'InlineCode'].includes(node.name)) { inCode = true; break; }
+              if (!node.parent) break;
+              node = node.parent;
+            }
+            dispatch('selection', {cursor: sourceOffsets(value)[head], inCode});
+          }
+        })
+      ]
+    });
   }
 
-  function inlineMarkdown(source: string): string {
-    return DOMPurify.sanitize(marked.parseInline(source, { gfm: true }) as string)
-      .replace(/<a /g, '<a rel="noopener noreferrer" ');
+  onMount(() => {
+    activeDocument = documentId;
+    view = new EditorView({parent: root, state: createState(value)});
+    return () => view.destroy();
+  });
+
+  function changeMode(next: typeof mode) {
+    mode = next;
+    view.dispatch({effects: preview.reconfigure(next === 'live' ? liveMarkdownPreview($t('ui.markdownEditor.toggleChecklistItem'), $t('ui.markdownEditor.referenceUnavailable'), navigateReference) : [])});
   }
 
-  function indentationWidth(indent: string): number {
-    return indent.replace(/\t/g, '    ').length;
+  export function focus() {
+    if (mode === 'reading') changeMode('live');
+    view?.focus();
   }
 
-  function fenceMarker(line: string): RegExpMatchArray | null {
-    return line.match(/^\s*(`{3,}|~{3,})/);
+  function toggleChecklist(next: string) {
+    if (!view || disabled || next.length !== value.length) return;
+    let offset = 0;
+    while (offset < value.length && value[offset] === next[offset]) offset++;
+    const position = sourceOffsets(value).indexOf(offset);
+    if (position < 0 || value.slice(offset + 1) !== next.slice(offset + 1)) return;
+    view.dispatch({changes: {from: position, to: position + 1, insert: next[offset]}, annotations: isolateHistory.of('full')});
   }
 
-  function codeBlockRole(index: number): 'start' | 'middle' | 'end' | null {
-    let fenceCharacter = '';
-
-    for (let lineIndex = 0; lineIndex <= index; lineIndex += 1) {
-      const marker = fenceMarker(lines[lineIndex] || '');
-      if (marker) {
-        const character = marker[1][0];
-        if (!fenceCharacter) {
-          fenceCharacter = character;
-          if (lineIndex === index) return 'start';
-        } else if (fenceCharacter === character) {
-          if (lineIndex === index) return 'end';
-          fenceCharacter = '';
-        }
-      } else if (lineIndex === index && fenceCharacter) {
-        return 'middle';
-      }
-    }
-
-    return null;
+  $: if (view && documentId !== activeDocument) {
+    activeDocument = documentId;
+    view.setState(createState(value));
+  } else if (view && value !== view.state.field(markdownSource)) {
+    view.dispatch({
+      changes: {from: 0, to: view.state.doc.length, insert: value},
+      effects: restoreMarkdownSource.of(value),
+      annotations: [Transaction.addToHistory.of(false), externalChange.of(true)]
+    });
   }
-
-  function insideFence(index: number): boolean {
-    return codeBlockRole(index) === 'middle';
-  }
-
-  function renderedLineHtml(line: string, index: number): string {
-    if (!line) return '<div class="md-blank">&nbsp;</div>';
-
-    const marker = fenceMarker(line);
-    if (marker) {
-      const role = codeBlockRole(index);
-      if (role === 'end') return '<div class="md-code-fence md-code-fence-end">&nbsp;</div>';
-      const language = line.slice(line.indexOf(marker[1]) + marker[1].length).trim();
-      return `<div class="md-code-fence">${language ? escapeHtml(language) : '&nbsp;'}</div>`;
-    }
-
-    if (insideFence(index)) return `<div class="md-code-line">${escapeHtml(line) || '&nbsp;'}</div>`;
-
-    const heading = line.match(/^\s*(#{1,6})\s+(.+)$/);
-    if (heading) {
-      const level = heading[1].length;
-      return `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
-    }
-
-    if (/^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(line)) return '<hr />';
-
-    const task = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/);
-    if (task) {
-      const offset = Math.min(indentationWidth(task[1]) * .45, 4.5);
-      const checked = task[2].toLowerCase() === 'x';
-      return `<div class="md-list-line md-task-line" style="--line-indent:${offset}rem"><input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} aria-label="${escapeHtml($t(checked ? 'markdown.markIncomplete' : 'markdown.markComplete'))}" /><span>${inlineMarkdown(task[3])}</span></div>`;
-    }
-
-    const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
-    if (bullet) {
-      const offset = Math.min(indentationWidth(bullet[1]) * .45, 4.5);
-      return `<div class="md-list-line" style="--line-indent:${offset}rem"><span class="md-marker">•</span><span>${inlineMarkdown(bullet[2])}</span></div>`;
-    }
-
-    const ordered = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
-    if (ordered) {
-      const offset = Math.min(indentationWidth(ordered[1]) * .45, 4.5);
-      return `<div class="md-list-line" style="--line-indent:${offset}rem"><span class="md-marker md-number">${ordered[2]}.</span><span>${inlineMarkdown(ordered[3])}</span></div>`;
-    }
-
-    const quote = line.match(/^\s*>\s?(.*)$/);
-    if (quote) return `<blockquote>${inlineMarkdown(quote[1])}</blockquote>`;
-
-    return `<div class="md-paragraph">${inlineMarkdown(line)}</div>`;
-  }
-
-  function emitLines(nextLines: string[]) {
-    lines = nextLines.length ? nextLines : [''];
-    const next = lines.join('\n');
-    internalValue = next;
-    value = next;
-    dispatch('input', next);
-  }
-
-  function resizeActiveTextarea() {
-    if (!activeTextarea) return;
-    activeTextarea.style.height = 'auto';
-    activeTextarea.style.height = `${Math.max(activeTextarea.scrollHeight, 26)}px`;
-  }
-
-  async function activateLine(index: number, column?: number) {
-    if (disabled || sourceMode) return;
-    activeLine = Math.max(0, Math.min(index, lines.length - 1));
-    await tick();
-    if (!activeTextarea) return;
-    resizeActiveTextarea();
-    activeTextarea.focus();
-    const position = Math.min(column ?? lines[activeLine].length, lines[activeLine].length);
-    activeTextarea.setSelectionRange(position, position);
-  }
-
-  function updateLine(index: number, text: string) {
-    const next = [...lines];
-    next[index] = text;
-    emitLines(next);
-  }
-
-  async function handleLineInput(index: number, event: Event) {
-    const textarea = event.currentTarget as HTMLTextAreaElement;
-    const text = textarea.value;
-
-    if (!text.includes('\n')) {
-      updateLine(index, text);
-      await tick();
-      resizeActiveTextarea();
-      return;
-    }
-
-    const cursor = textarea.selectionStart;
-    const beforeCursor = text.slice(0, cursor).split('\n');
-    const replacement = text.split('\n');
-    const next = [...lines];
-    next.splice(index, 1, ...replacement);
-    emitLines(next);
-
-    const nextIndex = index + beforeCursor.length - 1;
-    const nextColumn = beforeCursor[beforeCursor.length - 1].length;
-    await activateLine(nextIndex, nextColumn);
-  }
-
-  function continuationPrefix(line: string): string {
-    const task = line.match(/^(\s*[-*+]\s+)\[[ xX]\]\s+/);
-    if (task) return `${task[1]}[ ] `;
-    const bullet = line.match(/^(\s*[-*+]\s+)/);
-    if (bullet) return bullet[1];
-    const ordered = line.match(/^(\s*)(\d+)([.)]\s+)/);
-    if (ordered) return `${ordered[1]}${Number(ordered[2]) + 1}${ordered[3]}`;
-    const quote = line.match(/^(\s*>\s?)/);
-    return quote?.[1] || '';
-  }
-
-  async function handleLineKeydown(index: number, event: KeyboardEvent) {
-    if (ignoreKey(event) || isModified(event)) return;
-    const textarea = event.currentTarget as HTMLTextAreaElement;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const line = lines[index] || '';
-
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      const prefix = continuationPrefix(line.slice(0, start));
-      const before = line.slice(0, start);
-      const after = line.slice(end);
-      const next = [...lines];
-      next.splice(index, 1, before, `${prefix}${after}`);
-      emitLines(next);
-      await activateLine(index + 1, prefix.length);
-      return;
-    }
-
-    if (event.key === 'Backspace' && start === 0 && end === 0 && index > 0) {
-      event.preventDefault();
-      const previous = lines[index - 1];
-      const next = [...lines];
-      next.splice(index - 1, 2, `${previous}${line}`);
-      emitLines(next);
-      await activateLine(index - 1, previous.length);
-      return;
-    }
-
-    if (event.key === 'Delete' && start === line.length && end === line.length && index < lines.length - 1) {
-      event.preventDefault();
-      const next = [...lines];
-      next.splice(index, 2, `${line}${lines[index + 1]}`);
-      emitLines(next);
-      await activateLine(index, start);
-      return;
-    }
-  }
-
-  function renderedLink(target: EventTarget | null): HTMLAnchorElement | null {
-    return target instanceof Element ? target.closest('a') : null;
-  }
-
-  function handleRenderedClick(index: number, event: MouseEvent) {
-    if (disabled) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
-      event.stopPropagation();
-      return;
-    }
-
-    const link = renderedLink(target);
-    if (link && (event.ctrlKey || event.metaKey)) return;
-    if (link) event.preventDefault();
-
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed) return;
-    void activateLine(index);
-  }
-
-  function handleRenderedChange(index: number, event: Event) {
-    if (disabled) return;
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
-
-    const match = lines[index]?.match(/^(\s*[-*+]\s+\[)[ xX](\]\s+.*)$/);
-    if (!match) return;
-
-    const next = [...lines];
-    next[index] = `${match[1]}${target.checked ? 'x' : ' '}${match[2]}`;
-    emitLines(next);
-  }
-
-  function handleRenderedKeydown(index: number, event: KeyboardEvent) {
-    if (ignoreKey(event) || isModified(event)) return;
-    if (event.target instanceof HTMLInputElement) return;
-    if (renderedLink(event.target)) return;
-    if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault();
-      void activateLine(index);
-    }
-  }
-
-  function handleSurfaceMouseDown(event: MouseEvent) {
-    if (disabled || event.target !== root) return;
-    event.preventDefault();
-    void activateLine(lines.length - 1);
-  }
-
-  function handleActiveBlur() {
-    window.setTimeout(() => {
-      if (!root?.contains(document.activeElement)) activeLine = null;
-    }, 0);
-  }
-
-  async function toggleSourceMode() {
-    sourceMode = !sourceMode;
-    activeLine = null;
-    lines = splitLines(value);
-    if (!sourceMode) return;
-    await tick();
-    sourceTextarea?.focus();
-  }
-
-  function handleSourceInput(event: Event) {
-    const next = (event.currentTarget as HTMLTextAreaElement).value;
-    value = next;
-    internalValue = next;
-    lines = splitLines(next);
-    dispatch('input', next);
-  }
-
-  $: if (activeLine === null && value !== internalValue) {
-    internalValue = value;
-    lines = splitLines(value);
-  }
+  $: if (view) view.dispatch({effects: [
+    permissions.reconfigure([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
+    attributes.reconfigure([EditorView.contentAttributes.of({'aria-label': $text(label) || $t('ui.markdownEditor.markdownEditor'), spellcheck: 'true', ...(inputId ? {id: inputId} : {})}), placeholderExtension($text(placeholder))])
+  ]});
 </script>
 
-<div class:compact class="markdown-editor-live">
+<div class="markdown-editor-live" class:compact>
   <div class="editor-heading">
     {#if label}<span class="field-label">{$text(label)}</span>{/if}
-    {#if !disabled}
-      <button type="button" class="source-toggle" aria-pressed={sourceMode} on:click={toggleSourceMode}>
-        {sourceMode ? $t('ui.markdownEditor.liveEditor') : $t('ui.markdownEditor.editFullText')}
-      </button>
-    {/if}
-  </div>
-  {#if sourceMode && !disabled}
-    <textarea
-      bind:this={sourceTextarea}
-      class="full-source"
-      value={value}
-      rows="10"
-      spellcheck="true"
-      aria-label={$t('ui.markdownEditor.fullText', { value1: $text(label) || $t('ui.markdownEditor.description') })}
-      placeholder={$text(placeholder)}
-      on:input={handleSourceInput}
-    ></textarea>
-  {:else}
-    <div bind:this={root} class="live-surface" class:disabled class:empty={lines.length === 1 && !lines[0]} role="textbox" aria-multiline="true" aria-label={$text(label) || $t('ui.markdownEditor.markdownEditor')} data-placeholder={$text(placeholder)} on:mousedown={handleSurfaceMouseDown}>
-      {#each lines as line, index (index)}
-        {@const codeRole = codeBlockRole(index)}
-        {#if activeLine === index && !disabled}
-          <textarea
-            bind:this={activeTextarea}
-            class="source-line"
-            class:code-source={codeRole !== null}
-            class:code-start={codeRole === 'start'}
-            class:code-end={codeRole === 'end'}
-            rows="1"
-            value={line}
-            spellcheck="true"
-            aria-label={$t('ui.markdownEditor.markdownSourceLine', { value1: index + 1 })}
-            on:input={(event) => void handleLineInput(index, event)}
-            on:keydown={(event) => void handleLineKeydown(index, event)}
-            on:blur={handleActiveBlur}
-          ></textarea>
-        {:else}
-          <div
-            class="rendered-line"
-            class:interactive={!disabled}
-            class:code-block={codeRole !== null}
-            class:code-start={codeRole === 'start'}
-            class:code-end={codeRole === 'end'}
-            role={!disabled ? 'button' : undefined}
-            tabindex={!disabled ? 0 : undefined}
-            on:click={(event) => handleRenderedClick(index, event)}
-            on:change={(event) => handleRenderedChange(index, event)}
-            on:keydown={(event) => handleRenderedKeydown(index, event)}
-          >{@html $localized(renderedLineHtml(line, index))}</div>
-        {/if}
-      {/each}
+    <div class="modes" role="group" aria-label={$t('ui.markdownEditor.viewMode')}>
+      <button type="button" aria-pressed={mode === 'live'} on:click={() => changeMode('live')}>{$t('ui.markdownEditor.livePreview')}</button>
+      <button type="button" aria-pressed={mode === 'source'} on:click={() => changeMode('source')}>{$t('ui.markdownEditor.source')}</button>
+      <button type="button" aria-pressed={mode === 'reading'} on:click={() => changeMode('reading')}>{$t('ui.markdownEditor.reading')}</button>
     </div>
+  </div>
+  <div bind:this={root} class="editor-surface" hidden={mode === 'reading'}></div>
+  {#if mode === 'reading'}
+    <div class="reading-surface"><Markdown source={value} editable={!disabled} {disabled} on:input={(event) => toggleChecklist(event.detail)} /></div>
   {/if}
 </div>
 
 <style>
   .markdown-editor-live { display: grid; gap: .35rem; }
-  .editor-heading { display: flex; min-height: 1.6rem; align-items: center; justify-content: space-between; gap: .75rem; }
-  .source-toggle { border: 0; background: transparent; color: var(--forest-2); padding: .12rem .2rem; font-size: .72rem; font-weight: 750; }
-  .source-toggle:hover { text-decoration: underline; text-underline-offset: .14rem; }
-  .live-surface { width: 100%; min-height: 15rem; max-height: 32rem; overflow: auto; border: 1px solid #cfcbbf; border-radius: .6rem; background: #fff; padding: .7rem .8rem; color: var(--ink); line-height: 1.55; outline: 0; }
-  .live-surface:focus-within { border-color: #8ca095; box-shadow: 0 0 0 2px rgba(70, 105, 85, .1); }
-  .live-surface.empty:not(:focus-within)::before { content: attr(data-placeholder); display: block; color: var(--muted); pointer-events: none; }
-  .live-surface.disabled { background: #faf8f2; color: var(--muted); }
-  .rendered-line { min-height: 1.55em; border-radius: .3rem; padding: .06rem .2rem; }
-  .rendered-line.interactive { cursor: text; }
-  .rendered-line:focus-visible { outline: 1px solid #9bada2; outline-offset: 1px; }
-  .source-line { display: block; width: 100%; min-height: 1.7rem; overflow: hidden; resize: none; border: 0; border-radius: 0; background: transparent; color: var(--ink); padding: .14rem .2rem; box-shadow: none; font: inherit; line-height: 1.55; outline: 0; }
-  .full-source { width: 100%; min-height: 15rem; max-height: 32rem; resize: vertical; padding: .7rem .8rem; font: inherit; line-height: 1.55; tab-size: 2; white-space: pre-wrap; }
-  .rendered-line :global(.md-blank) { min-height: .85rem; }
-  .rendered-line :global(.md-paragraph) { min-height: 1.55em; }
-  .rendered-line :global(h1), .rendered-line :global(h2), .rendered-line :global(h3), .rendered-line :global(h4), .rendered-line :global(h5), .rendered-line :global(h6) { margin: .1rem 0; line-height: 1.3; }
-  .rendered-line :global(h1) { font-size: 1.55rem; }
-  .rendered-line :global(h2) { font-size: 1.3rem; }
-  .rendered-line :global(h3) { font-size: 1.12rem; }
-  .rendered-line :global(h4), .rendered-line :global(h5), .rendered-line :global(h6) { font-size: 1rem; }
-  .rendered-line :global(strong) { font-weight: 800; }
-  .rendered-line :global(em) { font-style: italic; }
-  .rendered-line :global(del) { color: var(--muted); }
-  .rendered-line :global(.md-list-line) { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: .15rem; margin-left: var(--line-indent); }
-  .rendered-line :global(.md-marker) { color: var(--muted); text-align: right; }
-  .rendered-line :global(.md-number) { font-variant-numeric: tabular-nums; }
-  .rendered-line :global(.md-task-line input) { width: .95rem; height: .95rem; margin: .24rem 0 0 .08rem; accent-color: var(--forest); cursor: pointer; }
-  .rendered-line :global(blockquote) { margin: 0; border-left: 3px solid #c9d3cc; padding-left: .8rem; color: var(--muted); }
-  .rendered-line :global(code) { border-radius: .25rem; background: #f0eee7; padding: .08rem .25rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
-  .rendered-line :global(a) { color: var(--forest-2); cursor: pointer; text-decoration: underline; text-underline-offset: .12rem; }
-  .rendered-line :global(hr) { border: 0; border-top: 1px solid var(--line); margin: .65rem .15rem; }
-
-  .rendered-line.code-block,
-  .source-line.code-source {
-    margin: 0;
-    border-radius: 0;
-    background: #f0eee7;
-    padding: .08rem .65rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: .88em;
-    line-height: 1.5;
-  }
-
-  .rendered-line.code-start,
-  .source-line.code-start {
-    margin-top: .3rem;
-    border-radius: .45rem .45rem 0 0;
-    padding-top: .4rem;
-  }
-
-  .rendered-line.code-end,
-  .source-line.code-end {
-    margin-bottom: .3rem;
-    border-radius: 0 0 .45rem .45rem;
-    padding-bottom: .35rem;
-  }
-
-  .rendered-line.code-block :global(.md-code-fence),
-  .rendered-line.code-block :global(.md-code-line) {
-    min-height: 1.35em;
-    margin: 0;
-    background: transparent;
-    padding: 0;
-    font: inherit;
-  }
-
-  .rendered-line.code-block :global(.md-code-fence) {
-    color: var(--muted);
-    font-size: .8em;
-  }
-
-  .rendered-line.code-block :global(.md-code-fence-end) { min-height: .25rem; }
-
-  .compact .live-surface, .compact .full-source { min-height: 9rem; max-height: 18rem; }
-  @media (max-width: 640px) { .live-surface, .full-source, .compact .live-surface, .compact .full-source { min-height: 12rem; max-height: 24rem; } }
+  .editor-heading { display: flex; min-height: 1.6rem; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+  .modes { display: flex; gap: .2rem; }
+  .modes button { border: 0; border-radius: .3rem; background: transparent; color: var(--forest-2); padding: .2rem .35rem; font-size: .72rem; font-weight: 750; }
+  .modes button[aria-pressed='true'] { background: #e4ece5; }
+  .editor-surface, .reading-surface { width: 100%; min-height: 15rem; max-height: 32rem; overflow: auto; border: 1px solid #cfcbbf; border-radius: .6rem; background: #fff; color: var(--ink); line-height: 1.55; }
+  .editor-surface:focus-within { border-color: #8ca095; box-shadow: 0 0 0 2px rgba(70, 105, 85, .1); }
+  .editor-surface :global(.cm-editor) { min-height: inherit; font: inherit; }
+  .editor-surface :global(.cm-scroller) { font: inherit; }
+  .editor-surface :global(.cm-content) { padding: .7rem .8rem; }
+  .editor-surface :global(.cm-focused) { outline: 0; }
+  .editor-surface :global(.cm-md-strong) { font-weight: 800; }
+  .editor-surface :global(.cm-md-emphasis) { font-style: italic; }
+  .editor-surface :global(.cm-md-strike) { text-decoration: line-through; }
+  .editor-surface :global(.cm-md-code) { background: #f0eee7; font-family: monospace; }
+  .editor-surface :global(.cm-md-highlight) { background: #fff0a8; }
+  .editor-surface :global(.cm-md-heading) { font-weight: 800; font-size: 1.2em; }
+  .editor-surface :global(.cm-md-link) { color: var(--forest-2); text-decoration: underline; }
+  .editor-surface :global(.cm-md-table) { overflow: auto; padding: .35rem .8rem; }
+  .editor-surface :global(.cm-md-block) { overflow: auto; padding: .25rem .8rem; }
+  .editor-surface :global(input[type='checkbox']) { width: .95rem; height: .95rem; padding: 0; margin: 0 .35rem 0 0; vertical-align: -.12rem; accent-color: var(--forest); }
+  .reading-surface { padding: .7rem .8rem; }
+  .compact .editor-surface, .compact .reading-surface { min-height: 9rem; max-height: 18rem; }
+  @media (max-width: 640px) { .editor-surface, .reading-surface, .compact .editor-surface, .compact .reading-surface { min-height: 12rem; max-height: 24rem; } }
 </style>

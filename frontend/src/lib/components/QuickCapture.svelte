@@ -132,7 +132,7 @@
 </script>
 
 <div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <div use:dialog={{close, submit: primaryAction, save: saveShortcut, busy}} class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
+  <div use:dialog={{close, submit: primaryAction, save: saveShortcut, busy, navigate: (next) => confirmClose(!!captureText.trim() || !!form?.isDirty(), next, busy)}} class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
     <header class="editor-header">
       <div>
         <p class="eyebrow">{stage === 'capture' ? $t('ui.quickCapture.quickCapture') : reviewSource === 'gemini' ? $t('ui.quickCapture.reviewGeminiSuggestion') : $t('ui.quickCapture.taskDetails')}</p>

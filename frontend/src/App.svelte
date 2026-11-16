@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t, text, errorMessage, type Message } from './lib/i18n';
-  import { onMount, tick } from 'svelte';
-  import { hasDialog, isSaveKey, isTyping, isModified, submitEditor } from './lib/keyboard';
+  import { onMount, setContext, tick } from 'svelte';
+  import { hasDialog, isSaveKey, isTyping, isModified, navigateFromDialogs, submitEditor } from './lib/keyboard';
   import KeyboardHelp from './lib/components/KeyboardHelp.svelte';
   import { ApiError, api } from './lib/api/client';
   import type { NextScope, User } from './lib/api/types';
@@ -20,6 +20,9 @@
   import AcceptInvitation from './pages/AcceptInvitation.svelte';
   import LanguageSelector from './lib/components/LanguageSelector.svelte';
   import { setLanguage } from './lib/i18n';
+  import { focusDescriptionSaves } from './lib/focusDescriptionSaves';
+  import { cardDescriptionSaves } from './lib/cardDescriptionSaves';
+  import { clearReferenceResolver, referenceNavigation, type ReferenceKey } from './lib/referenceResolver';
 
   type View = 'next' | 'tasks' | 'drafts' | 'tags' | 'settings' | 'focus';
   const views: View[] = ['next', 'tasks', 'drafts', 'tags', 'settings', 'focus'];
@@ -53,6 +56,8 @@
   }
 
   let user: User | null = null;
+  let tagsPage: Tags;
+  let targetTagId = 0;
   let view: View = 'next';
   let loading = true;
   let error: Message = '';
@@ -87,6 +92,8 @@
       await loadDraftCount();
     } catch (reason) {
       if (!(reason instanceof ApiError) || reason.status !== 401) error = errorMessage(reason, 'ui.app.couldNotStartNextTask');
+      clearReferenceResolver();
+      cardDescriptionSaves.clear();
       user = null;
     } finally { loading = false; }
   }
@@ -98,9 +105,21 @@
     if (accountView) return;
     const candidate = requested as View;
     view = views.includes(candidate) ? candidate : 'next';
+    targetTagId = view === 'tags' ? Number(new URLSearchParams(query).get('tag')) || 0 : 0;
   }
   function navigate(nextView: View) { location.hash = `/${nextView}`; view = nextView; }
-  async function logout() { await api.logout(); user = null; draftCount = 0; }
+  async function logout() { await api.logout(); focusDescriptionSaves.clear(); cardDescriptionSaves.clear(); clearReferenceResolver(); user = null; draftCount = 0; }
+
+  setContext(referenceNavigation, (target: ReferenceKey) => navigateFromDialogs(() => {
+    const next = () => {
+      editorTaskId = null;
+      quickCaptureOpen = false;
+      if (target.kind === 'task') openTask(target.id);
+      else {targetTagId = target.id; location.hash = `#/tags?tag=${target.id}`; view = 'tags';}
+    };
+    if (view === 'tags' && tagsPage) tagsPage.requestReferenceNavigation(next);
+    else next();
+  }));
 
   function taskEditorChanged() {
     if (view === 'focus') focusTaskVersion += 1;
@@ -210,7 +229,7 @@
           {#if view === 'next'}<Next userId={user.id} on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} on:startFocus={(event) => startFocus(event.detail)} />
           {:else if view === 'tasks'}<Tasks on:openTask={(event) => openTask(event.detail)} on:createBlocker={(event) => createBlocker(event.detail)} />
           {:else if view === 'drafts'}<Drafts on:openTask={(event) => openTask(event.detail)} />
-          {:else if view === 'tags'}<Tags />
+          {:else if view === 'tags'}<Tags bind:this={tagsPage} {targetTagId} />
           {:else}<Settings {user} on:shortcuts={() => (shortcutHelpOpen = true)} />{/if}
         {/key}
     </main>

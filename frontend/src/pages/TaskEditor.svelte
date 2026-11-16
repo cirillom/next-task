@@ -24,6 +24,7 @@
   }>();
 
   let task: Task | null = null;
+  let originalDescription: string | null = null;
   let loading = true;
   let busy = false;
   let blockModalOpen = false;
@@ -55,6 +56,7 @@
 
     try {
       task = await api.task(taskId);
+      originalDescription = task.description;
     } catch (reason) {
       error = errorMessage(reason, 'ui.taskEditor.couldNotLoadTask');
     } finally {
@@ -71,7 +73,7 @@
     error = '';
     try {
       const saved = taskId
-        ? await api.updateTask(taskId, input)
+        ? await api.updateTask(taskId, { ...input, expected_description: originalDescription })
         : await api.createTask(input);
       dispatch('saved', saved);
     } catch (reason) {
@@ -87,7 +89,7 @@
     error = '';
     try {
       const { priority: _priority, ...draftInput } = input;
-      const saved = await api.updateTask(taskId, draftInput);
+      const saved = await api.updateTask(taskId, { ...draftInput, expected_description: originalDescription });
       dispatch('saved', saved);
     } catch (reason) {
       error = errorMessage(reason, 'ui.taskEditor.couldNotSaveDraft');
@@ -293,7 +295,7 @@
 </script>
 
 <div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
+  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy, navigate: (next) => confirmClose(!!form?.isDirty(), next, busy)}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
         <p class="eyebrow">{isDraft ? $t('ui.drafts.editDraft') : taskId ? $t('ui.quickCapture.taskDetails') : $t('ui.quickCapture.createTask')}</p>
@@ -339,7 +341,7 @@
         bind:this={form}
         {taskId}
         initialTitle={task?.title || initialTitle}
-        initialDescription={task?.description || ''}
+        initialDescription={task ? task.description : ''}
         initialPriority={isDraft ? 1 : task?.priority || 1}
         initialDueDate={task?.due_date || ''}
         initialLastWorked={task?.last_worked_at ? localDateTime(task.last_worked_at) : ''}

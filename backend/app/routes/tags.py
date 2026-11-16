@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -243,7 +243,17 @@ def update_tag(
         raise HTTPException(
             status_code=409, detail=localized("api.tagNameAlreadyExistsUnderThisParent")
         )
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    expected = values.pop("expected_description", None)
+    if "description" in values and "expected_description" in payload.model_fields_set:
+        result = db.execute(
+            update(Tag)
+            .where(Tag.id == tag_id, Tag.user_id == user.id, Tag.description == expected)
+            .values(description=values.pop("description"))
+        )
+        if result.rowcount != 1:
+            raise HTTPException(status_code=409, detail=localized("api.descriptionChanged"))
+    for key, value in values.items():
         setattr(tag, key, value)
     try:
         db.commit()

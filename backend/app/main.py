@@ -14,6 +14,7 @@ from app.routes import (
     invitations,
     password_recovery,
     pomodoro,
+    references,
     settings,
     tags,
     tasks,
@@ -67,6 +68,7 @@ app.include_router(invitations.router)
 app.include_router(password_recovery.router)
 app.include_router(gemini.router)
 app.include_router(pomodoro.router)
+app.include_router(references.router)
 app.include_router(settings.router)
 app.include_router(tags.router)
 app.include_router(tasks.router)

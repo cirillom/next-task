@@ -12,13 +12,13 @@
     Tag,
     Task
   } from '../lib/api/types';
-  import MarkdownEditor from '../lib/components/MarkdownEditor.svelte';
   import TagBadge from '../lib/components/TagBadge.svelte';
   import TagScopeFilters from '../lib/components/TagScopeFilters.svelte';
   import TaskCard from '../lib/components/TaskCard.svelte';
   import TaskQueue from '../lib/components/TaskQueue.svelte';
   import ScoringWarning from '../lib/components/ScoringWarning.svelte';
   import { cleanTagScope, emptyTagScope, sameTagScope } from '../lib/tagScope';
+  import { focusDescriptionSaves } from '../lib/focusDescriptionSaves';
 
   type BlockedFilter = '' | 'false' | 'true';
   type TaskResolution = 'finished' | 'blocked';
@@ -31,6 +31,7 @@
   const baseDocumentTitle = typeof document === 'undefined' ? $t('ui.app.nextTask') : document.title;
 
   let settings: PomodoroSettings | null = null;
+  let MarkdownEditor: typeof import('../lib/components/MarkdownEditor.svelte').default;
   let session: PomodoroSession | null = null;
   let tags: Tag[] = [];
   let currentTask: Task | null = null;
@@ -55,6 +56,8 @@
   let timer: number;
   let pollTimer: number;
   let syncInFlight = false;
+  let mounted = false;
+  let sessionRevision = 0;
   let initializedSession = false;
   let lastAlarmAt = 0;
   let seenTaskVersion = taskVersion;
@@ -72,9 +75,7 @@
 
   let descriptionDraft = '';
   let descriptionSaveState: DescriptionSaveState = 'idle';
-  let descriptionSaveTimer: number;
-  let descriptionSaveInFlight = false;
-  let pendingDescriptionSave: { taskId: number; value: string } | null = null;
+  let descriptionSaveError: unknown = null;
 
   function durationSeconds(targetPhase: PomodoroPhase = phase): number {
     if (!settings) return 0;
@@ -165,6 +166,7 @@
   }
 
   async function applySession(next: PomodoroSession, announceCompletion = true) {
+    const revision = ++sessionRevision;
     const previousSession = session;
     const scopeChanged = !!previousSession && !sameTagScope(previousSession.scope, next.scope);
     const taskChanged = next.task_id !== currentTask?.id;
@@ -181,18 +183,18 @@
 
     if (next.task_id !== currentTask?.id) {
       if (next.task_id === null) {
-        currentTask = null;
-        resetDescriptionEditor(null);
+        setCurrentTask(null);
       } else {
         try {
-          currentTask = await api.task(next.task_id);
-          resetDescriptionEditor(currentTask);
+          const loaded = await api.task(next.task_id);
+          if (mounted && sessionRevision === revision && session?.task_id === next.task_id) setCurrentTask(loaded);
         } catch {
-          currentTask = null;
-          resetDescriptionEditor(null);
+          if (mounted && sessionRevision === revision && session?.task_id === next.task_id) setCurrentTask(null);
         }
       }
     }
+
+    if (!mounted || sessionRevision !== revision) return;
 
     if (scopeChanged) {
       if (editingScope && !sameTagScope(scopeBase, next.scope)) scopeConflict = true;
@@ -216,10 +218,12 @@
   }
 
   async function syncSession() {
-    if (syncInFlight) return;
+    if (syncInFlight || selecting) return;
     syncInFlight = true;
+    const revision = sessionRevision;
     try {
       const latest = await api.pomodoroSession();
+      if (!mounted || selecting || revision !== sessionRevision) return;
       if (!latest) {
         dispatch('end');
         return;
@@ -313,11 +317,26 @@
     }
   }
 
-  function resetDescriptionEditor(task: Task | null) {
-    window.clearTimeout(descriptionSaveTimer);
-    pendingDescriptionSave = null;
-    descriptionDraft = task?.description || '';
-    descriptionSaveState = 'idle';
+  function syncDescription(id: number) {
+    if (currentTask?.id !== id) return;
+    const draft = focusDescriptionSaves.get(id);
+    if (!draft) return;
+    descriptionDraft = draft.value;
+    descriptionSaveState = draft.state;
+    descriptionSaveError = draft.error;
+  }
+
+  function setCurrentTask(task: Task | null) {
+    if (currentTask && currentTask.id !== task?.id) focusDescriptionSaves.flush(currentTask.id);
+    currentTask = task;
+    if (task) {
+      focusDescriptionSaves.open(task.id, task.description);
+      syncDescription(task.id);
+    } else {
+      descriptionDraft = '';
+      descriptionSaveState = 'idle';
+      descriptionSaveError = null;
+    }
   }
 
   function rankedTasksForScope(scope: NextScope) {
@@ -330,15 +349,23 @@
   }
 
   async function selectNextTask() {
+    if (selecting) return;
     selecting = true;
+    sessionRevision++;
     error = '';
     try {
       const ranked = await rankedTasksForScope(session?.scope ?? sessionScope);
-      currentTask = ranked[0] ?? null;
+      if (!mounted) return;
+      const selected = ranked[0] ?? null;
       scopeCheckRequest++;
       pinnedOutsideScope = false;
-      resetDescriptionEditor(currentTask);
-      if (session) session = await api.updatePomodoroSessionTask(currentTask?.id ?? null);
+      if (session) {
+        const updated = await api.updatePomodoroSessionTask(selected?.id ?? null);
+        if (mounted) { sessionRevision++; session = updated; }
+      }
+      if (!mounted) return;
+      const latest = selected ? await api.task(selected.id) : null;
+      if (mounted) setCurrentTask(latest);
     } catch (reason) {
       error = errorMessage(reason, 'ui.focus.couldNotSelectTheNextTask');
     } finally {
@@ -368,19 +395,26 @@
   }
 
   async function focusTask(task: Task): Promise<boolean> {
-    if (task.finished_at || task.current_block || task.abandoned_by_task_id) return false;
+    if (selecting || task.finished_at || task.current_block || task.abandoned_by_task_id) return false;
+    selecting = true;
+    sessionRevision++;
     try {
       const updatedSession = await api.updatePomodoroSessionTask(task.id);
+      if (!mounted) return false;
+      const revision = ++sessionRevision;
       session = updatedSession;
-      currentTask = task;
+      const latest = await api.task(task.id);
+      if (!mounted || revision !== sessionRevision || session?.task_id !== task.id) return false;
+      setCurrentTask(latest);
       scopeCheckRequest++;
       pinnedOutsideScope = false;
-      resetDescriptionEditor(task);
       error = '';
       return true;
     } catch (reason) {
       error = errorMessage(reason, 'ui.focus.couldNotChangeThePomodoroTask');
       return false;
+    } finally {
+      selecting = false;
     }
   }
 
@@ -422,40 +456,22 @@
 
   function scheduleDescriptionSave(value: string) {
     if (!currentTask) return;
-    descriptionDraft = value;
-    descriptionSaveState = 'saving';
-    window.clearTimeout(descriptionSaveTimer);
-    const taskId = currentTask.id;
-    descriptionSaveTimer = window.setTimeout(() => {
-      pendingDescriptionSave = { taskId, value };
-      void drainDescriptionSave();
-    }, 650);
+    focusDescriptionSaves.edit(currentTask.id, value);
   }
 
   function flushDescriptionSave() {
     if (!currentTask) return;
-    window.clearTimeout(descriptionSaveTimer);
-    pendingDescriptionSave = {taskId: currentTask.id, value: descriptionDraft};
-    void drainDescriptionSave();
+    focusDescriptionSaves.flush(currentTask.id, descriptionSaveState === 'error' && !(descriptionSaveError instanceof ApiError && descriptionSaveError.status === 409));
   }
 
-  async function drainDescriptionSave() {
-    if (descriptionSaveInFlight || !pendingDescriptionSave) return;
-    const request = pendingDescriptionSave;
-    pendingDescriptionSave = null;
-    descriptionSaveInFlight = true;
-    descriptionSaveState = 'saving';
+  async function resolveDescription(keepDraft: boolean) {
+    const taskId = currentTask?.id;
+    if (!taskId) return;
     try {
-      const updated = await api.updateTask(request.taskId, { description: request.value || null });
-      if (currentTask?.id === request.taskId) currentTask = updated;
-      sessionTasks = sessionTasks.map((task) => task.id === request.taskId ? updated : task);
-      descriptionSaveState = 'saved';
+      const latest = await api.task(taskId);
+      if (currentTask?.id === taskId) focusDescriptionSaves.resolve(taskId, latest.description, keepDraft);
     } catch (reason) {
-      descriptionSaveState = 'error';
       error = errorMessage(reason, 'ui.focus.couldNotSaveDescription');
-    } finally {
-      descriptionSaveInFlight = false;
-      if (pendingDescriptionSave) void drainDescriptionSave();
     }
   }
 
@@ -466,8 +482,10 @@
 
     if (phase === 'focus' && currentTask) {
       try {
-        const updated = await api.updateTask(currentTask.id, { last_worked_at: new Date().toISOString() });
-        currentTask = updated;
+        const taskId = currentTask.id;
+        const revision = focusDescriptionSaves.get(taskId)?.revision;
+        const updated = await api.updateTask(taskId, { last_worked_at: new Date().toISOString() });
+        if (currentTask?.id === taskId && focusDescriptionSaves.get(taskId)?.revision === revision) setCurrentTask(updated);
         sessionTasks = sessionTasks.map((task) => task.id === updated.id ? updated : task);
         void loadSessionTasks();
       } catch (reason) {
@@ -547,8 +565,7 @@
     if (!currentTask || updated.id !== currentTask.id || !settings) return;
 
     if (updated.abandoned_by_task_id) {
-      currentTask = null;
-      resetDescriptionEditor(null);
+      setCurrentTask(null);
       await selectNextTask();
       return;
     }
@@ -556,17 +573,13 @@
     if (updated.current_block || updated.finished_at) {
       const shouldAskForBreak = running && phase === 'focus';
       const resolution: TaskResolution = updated.current_block ? 'blocked' : 'finished';
-      currentTask = null;
-      resetDescriptionEditor(null);
+      setCurrentTask(null);
       await selectNextTask();
       if (shouldAskForBreak) breakPrompt = resolution;
       return;
     }
 
-    currentTask = updated;
-    if (descriptionSaveState === 'idle' || descriptionSaveState === 'saved') {
-      descriptionDraft = updated.description || '';
-    }
+    setCurrentTask(updated);
   }
 
   async function handlePinnedTaskChanged(updated: Task) {
@@ -582,20 +595,20 @@
       return;
     }
 
+    const taskId = currentTask.id;
     try {
-      const refreshed = await api.task(currentTask.id);
+      const revision = focusDescriptionSaves.get(taskId)?.revision;
+      const refreshed = await api.task(taskId);
+      if (currentTask?.id !== taskId) return;
       if (refreshed.finished_at || refreshed.current_block || refreshed.abandoned_by_task_id) {
         await handleTaskChanged(refreshed);
       } else {
-        currentTask = refreshed;
-        if (descriptionSaveState === 'idle' || descriptionSaveState === 'saved') {
-          descriptionDraft = refreshed.description || '';
-        }
+        if (focusDescriptionSaves.get(taskId)?.revision === revision) setCurrentTask(refreshed);
       }
-    } catch {
-      currentTask = null;
-      resetDescriptionEditor(null);
-      await selectNextTask();
+    } catch (reason) {
+      if (currentTask?.id !== taskId) return;
+      error = errorMessage(reason, 'ui.focus.couldNotLoadSessionTasks');
+      return;
     }
     await loadSessionTasks();
     await refreshPinnedScope();
@@ -611,15 +624,19 @@
   }
 
   onMount(() => {
+    mounted = true;
+    const unsubscribeDescriptions = focusDescriptionSaves.subscribe(syncDescription);
     timer = window.setInterval(tick, 250);
     pollTimer = window.setInterval(() => void syncSession(), 1500);
     void (async () => {
       try {
-        const [loadedSettings, existingSession, loadedTags] = await Promise.all([
+        const [loadedSettings, existingSession, loadedTags, editor] = await Promise.all([
           api.pomodoroSettings(),
           api.pomodoroSession(),
-          api.tags()
+          api.tags(),
+          import('../lib/components/MarkdownEditor.svelte')
         ]);
+        MarkdownEditor = editor.default;
         settings = loadedSettings;
         tags = loadedTags;
         const activeSession = existingSession ?? await api.createPomodoroSession({
@@ -642,15 +659,14 @@
       window.clearInterval(pollTimer);
       document.title = baseDocumentTitle;
       if (audioContext) void audioContext.close();
+      unsubscribeDescriptions();
     };
   });
 
   onDestroy(() => {
-    window.clearTimeout(descriptionSaveTimer);
-    if (currentTask) {
-      pendingDescriptionSave = { taskId: currentTask.id, value: descriptionDraft };
-      void drainDescriptionSave();
-    }
+    mounted = false;
+    sessionRevision++;
+    if (currentTask) focusDescriptionSaves.flush(currentTask.id);
   });
 </script>
 
@@ -775,8 +791,19 @@
                 </span>
               {/if}
             </div>
-            <MarkdownEditor
+            {#if descriptionSaveState === 'error'}
+              {#if descriptionSaveError instanceof ApiError && descriptionSaveError.status === 409}
+                <p class="error" role="alert">{$t('api.descriptionChanged')}</p>
+                <AppButton on:click={() => void resolveDescription(false)}>{$t('ui.focus.reloadNotes')}</AppButton>
+                <AppButton on:click={() => void resolveDescription(true)}>{$t('ui.focus.saveMyNotes')}</AppButton>
+              {:else}
+                <p class="error" role="alert">{$text(errorMessage(descriptionSaveError, 'ui.focus.couldNotSaveDescription'))}</p>
+                <AppButton on:click={flushDescriptionSave}>{$t('ui.focus.retrySave')}</AppButton>
+              {/if}
+            {/if}
+            <svelte:component this={MarkdownEditor}
               bind:value={descriptionDraft}
+              documentId={currentTask.id}
 
               label=""
               placeholder={$t('ui.focus.takeNotesUpdateChecklistsPasteLinksOrWrite')}

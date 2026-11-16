@@ -61,7 +61,7 @@ def create_draft(
 ) -> TaskRead:
     validate_parent(db, user.id, payload.parent_task_id)
 
-    values = payload.model_dump(exclude={"priority", "tag_ids"})
+    values = payload.model_dump(exclude={"priority", "tag_ids", "expected_description"})
     task = Task(user_id=user.id, priority=0, **values)
     db.add(task)
     db.flush()
