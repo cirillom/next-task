@@ -1,7 +1,7 @@
 <script lang="ts">
   import { pickerEscape } from '../keyboard';
   import { t, text, localized } from '../i18n';
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import type { Tag } from '../api/types';
   import { hierarchicalTagResults, tagHierarchyPaths } from '../tagHierarchy';
   import TagBadge from './TagBadge.svelte';
@@ -19,10 +19,10 @@
   export let searchLabel = 'ui.tagPicker.searchTags';
   export let displayName: (tag: Tag) => string = (tag) => tag.display_name;
   export let createdParentId = 0;
+  export let createTag: (input: { name: string; parent_tag_id: number | null; color: string; asParent?: boolean }) => Promise<boolean> = async () => false;
 
   const dispatch = createEventDispatcher<{
     change: number[];
-    create: { name: string; parent_tag_id: number | null; color: string; asParent?: boolean };
   }>();
 
   let search = '';
@@ -93,19 +93,31 @@
     createColor = '#587b6a';
   }
 
-  function submitCreate() {
+  export function hasPendingCreation() { return createOpen; }
+
+  export async function savePendingCreation(): Promise<boolean> {
+    if (!createOpen) return true;
+    if (!await submitCreate()) return false;
+    await tick();
+    if (childDraft) return false;
+    return createOpen ? savePendingCreation() : true;
+  }
+
+  async function submitCreate(): Promise<boolean> {
     const name = createName.trim();
-    if (!name || creating) return;
-    dispatch('create', {
+    if (!name || creating) return false;
+    const parent = !!childDraft;
+    if (!await createTag({
       name,
       parent_tag_id: createParentId || null,
       color: createColor,
       asParent: !!childDraft
-    });
-    if (!childDraft) {
+    })) return false;
+    if (!parent) {
       createOpen = false;
       search = '';
     }
+    return true;
   }
 
   function contextPaths(tag: Tag): string[] {
@@ -194,7 +206,7 @@
     <div class="inline-tag-create" aria-label={$t('ui.tagPicker.createTag')}>
       <label>
         {$t('ui.accountSettings.name')}
-        <TextField bind:value={createName} maxlength="120" disabled={creating} />
+        <TextField bind:value={createName} maxlength="120" required disabled={creating} />
       </label>
       <label>
         {$t('ui.tagPicker.parentTags')}

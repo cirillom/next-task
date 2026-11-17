@@ -8,7 +8,6 @@
   import AppButton from '../lib/components/AppButton.svelte';
   import TextField from '../lib/components/TextField.svelte';
   import TagSelect from '../lib/components/TagSelect.svelte';
-  import { confirmClose } from '../lib/keyboard';
 
   export let targetTagId = 0;
 
@@ -62,6 +61,8 @@
 
   let error: Message = '';
   let busy = false;
+  let leaving = false;
+  let detailsForm: HTMLFormElement;
   let seenTarget = 0;
 
   $: selectedTag = tags.find((tag) => tag.id === selectedId) || null;
@@ -100,14 +101,28 @@
     parentChoice = 0;
   }
 
-  export function requestReferenceNavigation(next: () => void) {
-    const dirty = creating
-      ? !!parentDraft || !!createName.trim() || !!createDescription || !!createParentChoice
+  function isDirty() {
+    return creating
+      ? !!parentDraft || !!createName.trim() || !!createDescription || !!createParentChoice || createScoreValue !== 0
       : !!selectedTag && (editName !== selectedTag.name || editDescription !== (originalDescription || '') || editColor !== (selectedTag.color || '#587b6a') || editScoreValue !== selectedTag.score_value || !!parentChoice);
-    confirmClose(dirty, next, busy);
   }
 
-  function selectTag(tag: Tag) {
+  export async function requestReferenceNavigation(next: () => void) {
+    if (busy || leaving) return false;
+    leaving = true;
+    try {
+      while (isDirty()) {
+        if (!detailsForm?.reportValidity()) return false;
+        if (!(creating ? await create() : await saveEdit())) return false;
+      }
+      next();
+      return true;
+    } finally { leaving = false; }
+  }
+
+  function selectTag(tag: Tag) { void requestReferenceNavigation(() => setSelectedTag(tag)); }
+
+  function setSelectedTag(tag: Tag) {
     creating = false;
     mergeOpen = false;
     mergeDestinationId = 0;
@@ -140,14 +155,18 @@
       }
 
       const selected = loaded.find((tag) => tag.id === preferredId) || loaded[0] || null;
-      if (selected) selectTag(selected);
+      if (selected) setSelectedTag(selected);
       else selectedId = 0;
+      return true;
     } catch (reason) {
       error = errorMessage(reason, 'ui.tags.couldNotLoadTags');
+      return false;
     }
   }
 
-  function startCreate() {
+  function startCreate() { void requestReferenceNavigation(beginCreate); }
+
+  function beginCreate() {
     parentDraft = null;
     const searchedName = search.trim();
 
@@ -200,6 +219,7 @@
   }
 
   async function create() {
+    if (busy) return false;
     busy = true;
     error = '';
     try {
@@ -210,44 +230,51 @@
         score_value: createScoreValue,
         parent_tag_id: createParentChoice || null
       });
+      tags = [...tags, created];
       if (parentDraft) {
         const draft = parentDraft;
         if (draft.tagId) {
           try {
             await api.addTagParent(draft.tagId, created.id);
           } finally {
-            await load(draft.tagId);
+            const loaded = await load(draft.tagId);
             restoreParentDraft();
+            if (!loaded) return false;
           }
         } else {
-          tags = await api.tags();
           restoreParentDraft(created.id);
+          tags = await api.tags();
         }
       } else {
-        await load(created.id);
+        setSelectedTag(created);
+        if (!await load(created.id)) return false;
       }
+      return true;
     } catch (reason) {
       error = errorMessage(reason, 'ui.taskForm.couldNotCreateTag');
+      return false;
     } finally {
       busy = false;
     }
   }
 
   async function saveEdit() {
-    if (!selectedTag) return;
+    if (!selectedTag || busy) return false;
     busy = true;
     error = '';
     try {
-      await api.updateTag(selectedTag.id, {
+      const updated = await api.updateTag(selectedTag.id, {
         name: editName,
         description: editDescription === (originalDescription || '') ? originalDescription : editDescription,
         expected_description: originalDescription,
         color: editColor,
         score_value: editScoreValue
       });
-      await load(selectedTag.id);
+      originalDescription = updated.description;
+      return await load(selectedTag.id);
     } catch (reason) {
       error = errorMessage(reason, 'ui.tags.couldNotUpdateTag');
+      return false;
     } finally {
       busy = false;
     }
@@ -436,7 +463,7 @@
           <h2>{$t('ui.tagPicker.createTag')}</h2>
         </div>
       </header>
-      <form data-shortcut-save class="detail-form" on:submit|preventDefault={create}>
+      <form bind:this={detailsForm} data-shortcut-save class="detail-form" on:submit|preventDefault={create}>
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={createName} maxlength="120" required /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={createColor} /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={createScoreValue} /></label>
@@ -445,7 +472,7 @@
           <TagSelect bind:value={createParentChoice} options={tagHierarchyOrder(tags)} existingNames={tags.filter((tag) => !tag.parents.length).map((tag) => tag.name)} searchable allowCreate={!parentDraft} emptyLabel={$t('ui.tagPicker.chooseAParentTag')} label={$t('ui.tagPicker.parentTag')} disabled={busy} on:create={(event) => startCreateParent(event.detail)} />
         </label>
         <div class="detail-actions">
-          <AppButton on:click={() => { creating = false; restoreParentDraft(); }}>{$t('ui.blockTaskModal.cancel')}</AppButton>
+          <AppButton disabled={busy || leaving} on:click={() => { creating = false; restoreParentDraft(); }}>{$t('ui.blockTaskModal.cancel')}</AppButton>
           <AppButton type="submit" variant="primary" disabled={busy}>{$t('ui.tagPicker.createTag')}</AppButton>
         </div>
       </form>
@@ -467,13 +494,14 @@
         </div>
       {/if}
 
-      <form data-shortcut-save class="detail-form" on:submit|preventDefault={saveEdit}>
+      <form bind:this={detailsForm} data-shortcut-save class="detail-form" on:submit|preventDefault={saveEdit}>
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={editName} maxlength="120" required  /></label>
         <label class="color-field">{$t('ui.tagPicker.color')}<input type="color" bind:value={editColor}  /></label>
         <label>{$t('ui.tags.value')}<input type="number" step="any" bind:value={editScoreValue} /></label>
         <div class="wide"><svelte:component this={MarkdownEditor} bind:value={editDescription} documentId={selectedTag.id} disabled={busy} compact /></div>
 
           <div class="detail-actions wide">
+            <AppButton disabled={busy || leaving} on:click={() => setEditFields(selectedTag!)}>{$t('ui.blockTaskModal.cancel')}</AppButton>
             <AppButton type="submit" variant="primary" disabled={busy}>{$t('ui.tags.saveDetails')}</AppButton>
           </div>
       </form>
