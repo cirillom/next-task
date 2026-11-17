@@ -479,8 +479,8 @@ Set it before the first API key is saved and keep it unchanged across deployment
 it is lost or replaced, users must save their Gemini keys again.
 Each user can choose a text model in Settings from the models Google lists for their
 key. The selected model is saved per user and used for future drafts. Replacing or
-removing the key resets the selection. `NEXT_TASK_GEMINI_MODEL` sets the server default
-until a user chooses a model.
+removing the key resets the selection. The default is `gemini-3.1-flash-lite`.
+`NEXT_TASK_GEMINI_MODEL` overrides the server default until a user chooses a model.
 
 ## Tags
 

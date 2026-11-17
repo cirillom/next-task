@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     session_ttl_days: int = 30
     cookie_secure: bool = False
     credential_secret: SecretStr = SecretStr("")
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
     public_app_url: str = ""
     smtp_host: str = ""
     smtp_port: int = 587

@@ -32,7 +32,7 @@ def test_gemini_key_is_encrypted_and_never_returned(
     assert status == {
         "configured": True,
         "masked_key": "••••••••••••",
-        "model": "gemini-3.8-flash",
+        "model": "gemini-3.1-flash-lite",
     }
     assert key not in json.dumps(status)
 
@@ -126,7 +126,7 @@ def test_selected_model_is_private_and_used_for_drafts(
     assert selected.status_code == 200
     assert selected.json()["model"] == "gemini-2.5-pro"
     assert owner.get("/api/integrations/gemini").json()["model"] == "gemini-2.5-pro"
-    assert other.get("/api/integrations/gemini").json()["model"] == "gemini-3.8-flash"
+    assert other.get("/api/integrations/gemini").json()["model"] == "gemini-3.1-flash-lite"
 
     captured: dict = {}
 
@@ -147,7 +147,7 @@ def test_selected_model_is_private_and_used_for_drafts(
     assert draft.status_code == 200, draft.text
     assert draft.json()["model"] == captured["model"] == "gemini-2.5-pro"
 
-    assert owner.delete("/api/integrations/gemini").json()["model"] == "gemini-3.8-flash"
+    assert owner.delete("/api/integrations/gemini").json()["model"] == "gemini-3.1-flash-lite"
 
 
 def test_text_to_task_maps_only_user_tags(
@@ -185,7 +185,7 @@ def test_text_to_task_maps_only_user_tags(
         "due_date": "2026-09-08",
         "existing_tag_ids": [existing["id"]],
         "new_tag_names": ["ai"],
-        "model": "gemini-3.8-flash",
+        "model": "gemini-3.1-flash-lite",
     }
     assert captured["api_key"] == "AIza-test-key-with-enough-characters"
     assert captured["text"].startswith("Have Team Mate")
