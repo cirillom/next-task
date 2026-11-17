@@ -214,6 +214,8 @@
   "ui.app.nextTask": "Next Task",
   "ui.app.openingYourTasks": "Opening your tasks…",
   "ui.app.primaryNavigation": "Primary navigation",
+  "ui.app.hideSidebar": "Hide sidebar",
+  "ui.app.showSidebar": "Show sidebar",
   "ui.app.settings": "Settings",
   "ui.app.signOut": "Sign out",
   "ui.app.tags": "Tags",
