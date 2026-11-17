@@ -4,6 +4,7 @@
   import AppButton from '../lib/components/AppButton.svelte';
   import PasswordField from '../lib/components/PasswordField.svelte';
   import TextField from '../lib/components/TextField.svelte';
+  import LanguageSelector from '../lib/components/LanguageSelector.svelte';
   import { reloadApp } from '../lib/navigation';
 
   export let token: string | null;
@@ -67,6 +68,7 @@
     {:else}
       <p class="muted">{$t('ui.acceptInvitation.chooseYourNameAndPasswordYourAccountWill')}</p>
       <form on:submit|preventDefault={submit}>
+        <LanguageSelector />
         <label>{$t('ui.accountSettings.name')}<TextField bind:value={name} maxlength={160} autocomplete="name" required /></label>
         <PasswordField id="invite-password" label={$t('ui.acceptInvitation.password')} bind:value={password} minlength={10} maxlength={1024} autocomplete="new-password" required />
         <PasswordField id="invite-confirmation" label={$t('ui.acceptInvitation.confirmPassword')} bind:value={confirmation} minlength={10} maxlength={1024} autocomplete="new-password" required />

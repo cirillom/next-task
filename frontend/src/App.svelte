@@ -192,7 +192,7 @@
   });
 </script>
 
-{#if !user}<div class="signed-out-language"><LanguageSelector /></div>{/if}
+{#if !user && accountView !== 'accept-invite'}<div class="signed-out-language"><LanguageSelector /></div>{/if}
 {#if loading}
   <main class="splash"><div class="brand-mark">✓</div><h1>{$t('ui.app.nextTask')}</h1><p>{$t('ui.app.openingYourTasks')}</p></main>
 {:else if accountView}
