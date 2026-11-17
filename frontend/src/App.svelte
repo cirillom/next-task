@@ -36,6 +36,7 @@
   ];
 
   let shortcutHelpOpen = false;
+  let sidebarHidden = false;
   async function keydown(event: KeyboardEvent) {
     if (!user || accountView || event.defaultPrevented || event.isComposing || hasDialog()) return;
     if (isSaveKey(event)) {
@@ -207,14 +208,17 @@
     on:end={endFocus}
   />
 {:else}
-  <div class="app-shell">
+  <div class="app-shell" class:sidebar-hidden={sidebarHidden}>
     <header class="topbar">
       <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>{$t('ui.app.nextTask')}</strong></button>
       <AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>{$t('ui.app.newTask')}</span></AppButton>
       <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>{$t('ui.app.signOut')}</AppButton></div>
     </header>
-    <aside class="sidebar">
-      <nav aria-label={$t('ui.app.primaryNavigation')}>
+    <aside class="sidebar" id="desktop-sidebar">
+      <AppButton className="sidebar-toggle" aria-label={$t(sidebarHidden ? 'ui.app.showSidebar' : 'ui.app.hideSidebar')} title={$t(sidebarHidden ? 'ui.app.showSidebar' : 'ui.app.hideSidebar')} aria-expanded={!sidebarHidden} aria-controls="sidebar-navigation" on:click={() => (sidebarHidden = !sidebarHidden)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h12" /></svg>
+      </AppButton>
+      <nav id="sidebar-navigation" aria-label={$t('ui.app.primaryNavigation')}>
         {#each nav as item}
           <button class:active={view === item.id} aria-current={view === item.id ? 'page' : undefined} on:click={() => navigate(item.id)}>
             <span>{item.icon}</span>{item.label}

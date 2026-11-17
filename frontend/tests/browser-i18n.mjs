@@ -133,6 +133,21 @@ try {
   // Saved account language overrides the explicit pre-login selection.
   assert.equal(await evaluate('document.documentElement.lang'), 'en');
   assert.match(await evaluate('document.body.innerText'), /Meet your next task/);
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false},sessionId);
+  const contentLeft = await evaluate(`document.querySelector('.content').getBoundingClientRect().left`);
+  await evaluate(`document.querySelector('.sidebar-toggle').focus()`);
+  await press('Enter');
+  assert.ok(await evaluate(`document.querySelector('.sidebar-toggle').getAttribute('aria-expanded')==='false' && getComputedStyle(document.querySelector('#sidebar-navigation')).display==='none' && document.querySelector('#desktop-sidebar').getBoundingClientRect().width<=32 && document.querySelector('.sidebar-toggle').getClientRects().length>0`));
+  assert.ok(await evaluate(`document.querySelector('.content').getBoundingClientRect().left < ${contentLeft}`));
+  await navigate('/tasks');
+  assert.equal(await evaluate(`document.querySelector('.sidebar-toggle').getAttribute('aria-label')`), 'Show sidebar');
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:740,deviceScaleFactor:1,mobile:true},sessionId);
+  assert.ok(await evaluate(`document.querySelector('.sidebar-toggle').getClientRects().length===0 && getComputedStyle(document.querySelector('.mobile-nav')).display!=='none' && document.documentElement.scrollWidth<=innerWidth+1`));
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false},sessionId);
+  await evaluate(`document.querySelector('.sidebar-toggle').focus()`);
+  await press(' ');
+  assert.ok(await evaluate(`document.querySelector('.sidebar-toggle').getAttribute('aria-expanded')==='true' && getComputedStyle(document.querySelector('#sidebar-navigation')).display!=='none'`));
+  assert.equal(await evaluate(`document.querySelector('.content').getBoundingClientRect().left`), contentLeft);
   await navigate('/settings');
   await wait(`document.querySelector('.code-input')?.value.length > 0`);
   await fill('.code-input', 'priority * 26');
@@ -153,7 +168,7 @@ try {
   await evaluate(`document.querySelector('.quick-capture-modal .icon-button').click()`);
 
   await wait(`document.querySelector('.quick-capture-modal') === null`);
-  assert.equal(await evaluate(`document.querySelector('.sidebar > button') === null`), true);
+  assert.equal(await evaluate(`document.querySelector('.sidebar > button:not(.sidebar-toggle)') === null`), true);
   await evaluate(`Array.from(document.querySelectorAll('.content .app-button')).find(button=>button.textContent.includes('Show keyboard shortcuts')).click()`);
   await wait(`document.querySelector('.shortcut-dialog') !== null`);
   assert.ok(await evaluate(`!!document.querySelector('.shortcut-dialog .app-button')`));

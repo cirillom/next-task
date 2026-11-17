@@ -37,6 +37,12 @@ dt { color: var(--muted); } dd { margin: 0; }
 .login-card .brand-mark { margin-bottom: 1.8rem; }
 .login-card form, .panel form { display: grid; gap: 1rem; }
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 13rem minmax(0, 1fr); grid-template-rows: 4.25rem 1fr; }
+.app-shell.sidebar-hidden { grid-template-columns: 1.5rem minmax(0, 1fr); }
+.sidebar-hidden .sidebar { padding: 0; }
+.sidebar-hidden .sidebar nav { display: none; }
+.sidebar .sidebar-toggle { position: absolute; top: 1rem; right: -1rem; z-index: 1; width: 2rem; height: 2rem; min-height: 2rem; padding: .35rem; border-radius: 50%; border-color: #68736e; background: #11271e; color: #cdd8d2; }
+.sidebar .sidebar-toggle:hover { background: #254637; }
+.sidebar-toggle svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .topbar { position: sticky; top: 0; z-index: 20; grid-column: 1 / -1; display: grid; grid-template-columns: 13rem 1fr auto; align-items: center; gap: 1.5rem; border-bottom: 1px solid #d9d5c9; background: rgba(255, 253, 248, .94); backdrop-filter: blur(10px); padding: 0 1.25rem; }
 .brand { display: flex; align-items: center; gap: .7rem; border: 0; background: none; color: var(--ink); padding: 0; }
 .account { display: flex; align-items: center; gap: .8rem; color: var(--muted); font-size: .85rem; }

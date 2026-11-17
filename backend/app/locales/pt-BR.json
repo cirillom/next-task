@@ -214,6 +214,8 @@
   "ui.app.nextTask": "Next Task",
   "ui.app.openingYourTasks": "Abrindo suas tarefas…",
   "ui.app.primaryNavigation": "Navegação principal",
+  "ui.app.hideSidebar": "Ocultar barra lateral",
+  "ui.app.showSidebar": "Mostrar barra lateral",
   "ui.app.settings": "Configurações",
   "ui.app.signOut": "Sair",
   "ui.app.tags": "Tags",
