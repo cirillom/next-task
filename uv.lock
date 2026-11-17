@@ -609,7 +609,7 @@ wheels = [
 
 [[package]]
 name = "next-task"
-version = "2.12.1"
+version = "2.12.2"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
