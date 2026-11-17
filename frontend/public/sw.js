@@ -1,4 +1,4 @@
-const CACHE = 'next-task-shell-v2';
+const CACHE = 'next-task-shell-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/offline.html'];
 
 self.addEventListener('install', (event) => {
@@ -14,7 +14,9 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || new URL(event.request.url).pathname.startsWith('/api/')) return;
+  const path = new URL(event.request.url).pathname;
+  if (event.request.method !== 'GET' || path.startsWith('/api/') || path.startsWith('/oauth/') ||
+      path === '/mcp' || path.startsWith('/mcp/') || path.startsWith('/.well-known/')) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

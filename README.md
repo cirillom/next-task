@@ -394,6 +394,19 @@ Existing sessions for that user are revoked. Both CLI commands accept
 arguments. After signing in, create tasks and tags directly. Each account has one
 task queue and one scoring formula.
 
+## Assistant connections (experimental)
+
+Set `NEXT_TASK_PUBLIC_APP_URL` to the application's public HTTPS origin (localhost HTTP is
+accepted for local development), apply the database migrations, and restart the application.
+Settings shows the MCP endpoint and authorized connections. Add that endpoint as a custom
+connector or server using OAuth; sign in to Next Task, review the displayed account and
+permissions, and explicitly allow or deny the request. The current milestone exposes only
+read-only `list_tasks`. Disconnect in Settings revokes the connection immediately; changing or
+resetting the account password also revokes its connections.
+
+The CIMD public-client OAuth flow and the actual Claude and ChatGPT surfaces still need to be
+verified against the deployed endpoint before this integration can be considered validated.
+
 ## Local development
 
 Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Node.js 22+ are expected.

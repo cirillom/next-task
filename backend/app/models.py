@@ -123,6 +123,66 @@ class AuthLoginAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class MCPAuthorization(Base):
+    __tablename__ = "mcp_authorizations_v2"
+
+    request_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    session_hash: Mapped[str | None] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MCPGrant(Base):
+    __tablename__ = "mcp_grants_v2"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str] = mapped_column(Text, nullable=False)
+    client_name: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    resource: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MCPCode(Base):
+    __tablename__ = "mcp_codes_v2"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    grant_id: Mapped[int] = mapped_column(ForeignKey("mcp_grants_v2.id", ondelete="CASCADE"))
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    code_challenge_method: Mapped[str] = mapped_column(String(16), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grant: Mapped[MCPGrant] = relationship()
+
+    def get_redirect_uri(self):
+        return self.grant.redirect_uri
+
+    def get_scope(self):
+        return self.grant.scope
+
+
+class MCPCredential(Base):
+    __tablename__ = "mcp_credentials_v2"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    grant_id: Mapped[int] = mapped_column(ForeignKey("mcp_grants_v2.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grant: Mapped[MCPGrant] = relationship()
+
+    def check_client(self, client):
+        return self.grant.client_id == client.get_client_id()
+
+    def get_scope(self):
+        return self.scope
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (

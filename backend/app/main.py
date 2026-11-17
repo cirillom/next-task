@@ -1,9 +1,12 @@
 import json
+from contextlib import asynccontextmanager
+from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.routing import Route
 
 from app.config import get_settings
 from app.i18n import LocalizedText, localized, parameters
@@ -12,6 +15,7 @@ from app.routes import (
     drafts,
     gemini,
     invitations,
+    mcp_oauth,
     password_recovery,
     pomodoro,
     references,
@@ -19,8 +23,52 @@ from app.routes import (
     tags,
     tasks,
 )
+from app.services.mail import MailConfigurationError, public_app_url
 
-app = FastAPI(title="Next Task", docs_url="/api/docs", openapi_url="/api/openapi.json")
+try:
+    mcp_origin = public_app_url()
+except MailConfigurationError:
+    mcp_origin = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not mcp_origin:
+        yield
+    else:
+        from app.mcp_server import create_server
+
+        server, app.state.mcp_app = create_server(mcp_origin)
+        async with server.session_manager.run():
+            yield
+
+
+class MCPTransport:
+    async def __call__(self, scope, receive, send):
+        if any(
+            key in {"access_token", "refresh_token", "token"}
+            for key, _ in parse_qsl(scope.get("query_string", b"").decode("latin-1"))
+        ):
+            scope["query_string"] = b""
+            await JSONResponse({"error": "invalid_request"}, status_code=400)(scope, receive, send)
+            return
+        mcp_oauth.rate_limit(Request(scope, receive))
+
+        async def no_cache(message):
+            if message["type"] == "http.response.start" and scope["path"] == "/mcp":
+                message["headers"] = [
+                    (key, value)
+                    for key, value in message.get("headers", [])
+                    if key.lower() != b"cache-control"
+                ] + [(b"cache-control", b"no-store")]
+            await send(message)
+
+        await scope["app"].state.mcp_app(scope, receive, no_cache)
+
+
+app = FastAPI(
+    title="Next Task", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan
+)
 
 
 @app.exception_handler(HTTPException)
@@ -73,6 +121,31 @@ app.include_router(settings.router)
 app.include_router(tags.router)
 app.include_router(tasks.router)
 app.include_router(drafts.router)
+app.include_router(mcp_oauth.router)
+
+if mcp_origin:
+    app.router.routes.append(Route("/mcp", MCPTransport()))
+    app.router.routes.append(Route("/.well-known/oauth-protected-resource/mcp", MCPTransport()))
+
+
+@app.get("/.well-known/oauth-protected-resource")
+def protected_resource_metadata(request: Request):
+    if not mcp_origin:
+        raise HTTPException(status_code=503, detail="MCP is not configured")
+    mcp_oauth.rate_limit(request)
+    return {
+        "resource": mcp_origin + "/mcp",
+        "authorization_servers": [mcp_origin],
+        "bearer_methods_supported": ["header"],
+    }
+
+
+if not mcp_origin:
+
+    @app.api_route("/mcp", methods=["GET", "POST", "DELETE"])
+    @app.get("/.well-known/oauth-protected-resource/mcp")
+    def mcp_unavailable():
+        raise HTTPException(status_code=503, detail="MCP is not configured")
 
 
 @app.get("/api/health")
