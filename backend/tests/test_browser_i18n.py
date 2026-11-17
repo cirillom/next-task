@@ -51,7 +51,7 @@ def test_i18n_in_chrome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
             expiry = datetime.now(UTC) + timedelta(hours=24)
             db.add(
                 Invitation(
-                    email=f"guest-{language}@example.com",
+                    email=f"guest-{language.lower()}@example.com",
                     language=language,
                     token_hash=hash_token(f"invite-{language}-" + "x" * 32),
                     expires_at=expiry,

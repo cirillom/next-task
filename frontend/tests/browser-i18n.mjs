@@ -747,6 +747,7 @@ try {
     assert.match(await evaluate('document.body.innerText'), selectedLanguage === 'en' ? /Account created/ : /Conta criada/);
     const onboarding = await evaluate(`(async () => {
       const user = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:'guest-${language}@example.com', password:'correct horse'})}).then(r=>r.json());
+      if (!user.id) throw new Error(JSON.stringify(user));
       const tags = await fetch('/api/tags').then(r=>r.json());
       const tasks = await fetch('/api/tasks').then(r=>r.json());
       await fetch('/api/auth/logout', {method:'POST'});
