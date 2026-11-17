@@ -15,7 +15,20 @@
   type ReviewSource = 'expand' | 'gemini';
 
   let form: TaskForm;
-  function close() { confirmClose(!!captureText.trim() || !!form?.isDirty(), () => dispatch('close'), busy); }
+  let dismissing = false;
+  function cancel() { confirmClose(!!captureText.trim() || !!form?.isDirty(), () => dispatch('close'), busy || dismissing); }
+  async function close(next: () => void = () => dispatch('close')) {
+    if (busy || dismissing) return;
+    dismissing = true;
+    try {
+      if (stage === 'capture') {
+        next();
+      } else {
+        const input = await form?.dismissalInput();
+        if (input && await saveDraft(input)) next();
+      }
+    } finally { dismissing = false; }
+  }
   function primaryAction() { if (!busy) { if (stage === 'capture') expand(); else form?.requestSubmit(); } }
   function saveShortcut() { if (!busy) { if (stage === 'capture') void createDraft(); else form?.requestSubmit(); } }
   let stage: Stage = 'capture';
@@ -68,8 +81,10 @@
         description: parsed.description
       });
       dispatch('saved', saved);
+      return true;
     } catch (reason) {
       error = errorMessage(reason, 'ui.quickCapture.couldNotCreateDraft');
+      return false;
     } finally {
       busy = false;
     }
@@ -118,8 +133,10 @@
       const { priority: _priority, ...draftInput } = input;
       const saved = await api.createDraft(draftInput);
       dispatch('saved', saved);
+      return true;
     } catch (reason) {
       error = errorMessage(reason, 'ui.quickCapture.couldNotCreateDraft');
+      return false;
     } finally {
       busy = false;
     }
@@ -131,14 +148,14 @@
   }
 </script>
 
-<div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <div use:dialog={{close, submit: primaryAction, save: saveShortcut, busy, navigate: (next) => confirmClose(!!captureText.trim() || !!form?.isDirty(), next, busy)}} class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
+<div class="modal-backdrop" role="presentation" on:click|self={() => close()}>
+  <div use:dialog={{close: () => {void close();}, submit: primaryAction, save: saveShortcut, busy: busy || dismissing, navigate: (next) => {void close(next);}}} class:expanded={stage === 'review'} class="task-editor quick-capture-modal" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
     <header class="editor-header">
       <div>
         <p class="eyebrow">{stage === 'capture' ? $t('ui.quickCapture.quickCapture') : reviewSource === 'gemini' ? $t('ui.quickCapture.reviewGeminiSuggestion') : $t('ui.quickCapture.taskDetails')}</p>
         <h1 id="quick-capture-title">{$t('ui.app.newTask')}</h1>
       </div>
-      <button class="icon-button" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={close}>×</button>
+      <button class="icon-button" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => close()}>×</button>
     </header>
 
     {#if stage === 'capture'}
@@ -156,6 +173,7 @@
         <p class="capture-hint">{$t('ui.quickCapture.theFirstNonEmptyLineBecomesTheTitle')}</p>
         {#if error}<p class="error" role="alert">{$text(error)}</p>{/if}
         <footer class="capture-actions">
+          <AppButton disabled={busy || dismissing} on:click={cancel}>{$t('ui.blockTaskModal.cancel')}</AppButton>
           <AppButton disabled={busy || !captureText.trim()} on:click={createDraft}>
             <span aria-hidden="true">✎</span> {busy ? $t('ui.geminiSettings.saving') : $t('ui.quickCapture.draftTask')}
           </AppButton>

@@ -99,16 +99,24 @@
     } finally { loading = false; }
   }
 
-  function readHash() {
+  async function readHash() {
     const [requested, query = ''] = location.hash.replace('#/', '').split('?', 2);
     accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' || requested === 'accept-invite' ? requested : null;
     accountToken = new URLSearchParams(query).get('token');
     if (accountView) return;
     const candidate = requested as View;
-    view = views.includes(candidate) ? candidate : 'next';
-    targetTagId = view === 'tags' ? Number(new URLSearchParams(query).get('tag')) || 0 : 0;
+    const nextView = views.includes(candidate) ? candidate : 'next';
+    const nextTagId = nextView === 'tags' ? Number(new URLSearchParams(query).get('tag')) || 0 : 0;
+    const next = () => {view = nextView; targetTagId = nextTagId;};
+    if (view === 'tags' && tagsPage && (nextView !== view || nextTagId !== targetTagId)) {
+      if (!await tagsPage.requestReferenceNavigation(next)) history.replaceState(null, '', `#/tags${targetTagId ? `?tag=${targetTagId}` : ''}`);
+    } else next();
   }
-  function navigate(nextView: View) { location.hash = `/${nextView}`; view = nextView; }
+  function navigate(nextView: View) {
+    const next = () => { location.hash = `/${nextView}`; view = nextView; };
+    if (view === 'tags' && tagsPage) void tagsPage.requestReferenceNavigation(next);
+    else next();
+  }
   async function logout() { await api.logout(); focusDescriptionSaves.clear(); cardDescriptionSaves.clear(); clearReferenceResolver(); user = null; draftCount = 0; }
 
   setContext(referenceNavigation, (target: ReferenceKey) => navigateFromDialogs(() => {
@@ -124,7 +132,7 @@
 
   function taskEditorChanged() {
     if (view === 'focus') focusTaskVersion += 1;
-    else refreshKey += 1;
+    else if (view !== 'tags') refreshKey += 1;
     void loadDraftCount();
   }
 

@@ -62,10 +62,17 @@
   let createdParentId = 0;
   let localError: Message = '';
   let formElement: HTMLFormElement;
+  let tagPicker: TagPicker;
   const initialState = signature();
   function signature() { return JSON.stringify({...taskInput(), tag_ids: [...tagIds].sort((a,b) => a-b)}); }
-  export function isDirty() { return signature() !== initialState || Array.from(formElement?.querySelectorAll<HTMLInputElement>('input:invalid') || []).some(input => !!input.value); }
+  export function isDirty() { return !!tagPicker?.hasPendingCreation() || signature() !== initialState || Array.from(formElement?.querySelectorAll<HTMLInputElement>('input:invalid') || []).some(input => !!input.value); }
   export function requestSubmit() { if (!busy && !creatingTag) submitEditor(formElement); }
+  export function hasContent() { return !!title.trim() || !!description || !!tagIds.length || !!dueDate || !!lastWorked || !!parentTaskId || !!tagPicker?.hasPendingCreation(); }
+  export async function dismissalInput(): Promise<TaskInput | null> {
+    if (loading || busy || creatingTag || !formElement?.reportValidity()) return null;
+    if (!await tagPicker.savePendingCreation()) return null;
+    return taskInput();
+  }
 
   $: completedSubtasks = taskDetails?.subtasks.filter((subtask) => !!subtask.finished_at).length || 0;
   $: selectedParent = parentTasks.find((item) => item.id === parentTaskId)
@@ -117,7 +124,7 @@
     asParent?: boolean;
   }) {
     const name = input.name.trim();
-    if (!name || creatingTag) return;
+    if (!name || creatingTag) return false;
     creatingTag = true;
     localError = '';
     try {
@@ -145,8 +152,10 @@
       if (input.asParent) createdParentId = created.id;
       else if (!tagIds.includes(created.id)) tagIds = [...tagIds, created.id];
       suggestedNewTags = suggestedNewTags.filter((suggestion) => suggestion.toLowerCase() !== name.toLowerCase());
+      return true;
     } catch (reason) {
       localError = errorMessage(reason, 'ui.taskForm.couldNotCreateTag');
+      return false;
     } finally {
       creatingTag = false;
     }
@@ -164,14 +173,16 @@
     };
   }
 
-  function submit() {
+  async function submit() {
     localError = '';
-    dispatch('submit', taskInput());
+    const input = await dismissalInput();
+    if (input) dispatch('submit', input);
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     localError = '';
-    dispatch('draft', taskInput());
+    const input = await dismissalInput();
+    if (input) dispatch('draft', input);
   }
 </script>
 
@@ -195,13 +206,14 @@
     <section class="tags-section">
       <span class="field-label">{$t('ui.taskForm.directTags')}</span>
       <TagPicker
+        bind:this={tagPicker}
         {tags}
         selectedIds={tagIds}
         suggestedNames={suggestedNewTags}
         creating={creatingTag}
         bind:createdParentId
         on:change={(event) => (tagIds = event.detail)}
-        on:create={(event) => void createAndSelectTag(event.detail)}
+        createTag={createAndSelectTag}
       />
       {#if taskDetails?.inherited_tags.length}
         <details class="inherited-tags" open>

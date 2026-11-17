@@ -31,7 +31,27 @@
   let completionTarget: TaskSummary | null = null;
   let error: Message = '';
   let form: TaskForm;
-  function close() { confirmClose(!!form?.isDirty(), () => dispatch('close'), busy); }
+  let dismissing = false;
+  function cancel() { confirmClose(!!form?.isDirty(), () => dispatch('close'), busy || dismissing); }
+  async function close(next: () => void = () => dispatch('close')) {
+    if (loading || busy || dismissing) return;
+    dismissing = true;
+    try {
+      if (!form?.isDirty() && (taskId || !form?.hasContent())) { next(); return; }
+      const input = await form?.dismissalInput();
+      if (!input) return;
+      busy = true;
+      error = '';
+      const {priority: _priority, ...draftInput} = input;
+      const saved = taskId
+        ? await api.updateTask(taskId, {...(isDraft ? draftInput : input), expected_description: originalDescription})
+        : await api.createDraft(draftInput);
+      dispatch('changed', saved);
+      next();
+    } catch (reason) {
+      error = errorMessage(reason, 'ui.taskEditor.couldNotSaveTask');
+    } finally { busy = false; dismissing = false; }
+  }
   let nestedIntent: 'parent' | 'child' | 'blocks' | 'blocker' | null = null;
   let nestedTitle = '';
 
@@ -294,8 +314,8 @@
   }
 </script>
 
-<div class="modal-backdrop" role="presentation" on:click|self={close}>
-  <div use:dialog={{close, submit: () => form?.requestSubmit(), busy, navigate: (next) => confirmClose(!!form?.isDirty(), next, busy)}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
+<div class="modal-backdrop" role="presentation" on:click|self={() => close()}>
+  <div use:dialog={{close: () => {void close();}, submit: () => form?.requestSubmit(), busy: busy || dismissing, navigate: (next) => {void close(next);}}} class="task-editor" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
     <header class="editor-header">
       <div class="editor-heading-copy">
         <p class="eyebrow">{isDraft ? $t('ui.drafts.editDraft') : taskId ? $t('ui.quickCapture.taskDetails') : $t('ui.quickCapture.createTask')}</p>
@@ -322,7 +342,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></svg>
           </button>
         {/if}
-        <button class="header-icon close-icon" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={close}>×</button>
+        <button class="header-icon close-icon" aria-label={$t('ui.blockTaskModal.close')} title={$t('ui.blockTaskModal.close')} on:click={() => close()}>×</button>
       </div>
     </header>
 
@@ -353,7 +373,7 @@
         submitLabel={isDraft ? $t('ui.taskEditor.saveAsTask') : taskId ? $t('ui.taskForm.saveTask') : $t('ui.quickCapture.createTask')}
         busyLabel={isDraft ? $t('ui.geminiSettings.saving') : taskId ? $t('ui.geminiSettings.saving') : $t('ui.quickCapture.creating')}
         draftSubmitLabel={isDraft ? $t('ui.quickCapture.saveDraft') : ''}
-        on:cancel={close}
+        on:cancel={cancel}
         on:openTask={(event) => dispatch('openTask', event.detail)}
         on:toggleSubtask={(event) => void toggleSubtask(event.detail)}
         on:createRelated={(event) => { nestedIntent = event.detail.kind; nestedTitle = event.detail.title; }}
