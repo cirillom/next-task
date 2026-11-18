@@ -16,10 +16,10 @@ from app.gemini_schemas import (
     TextToTaskRequest,
 )
 from app.i18n import error_detail, localized
-from app.models import Tag, User
+from app.models import Tag, TagRelationship, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
-from app.services.tags import tag_display_names
+from app.services.tags import ancestor_ids, tag_display_names
 
 router = APIRouter(tags=["gemini"])
 
@@ -116,9 +116,24 @@ def text_to_task(
         db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name, Tag.id)).all()
     )
     display_names = tag_display_names(db, user.id)
+    tag_ids = {item.id for item in tags}
+    parents_by_child: dict[int, list[str]] = {}
+    if tag_ids:
+        for child_id, parent_id in db.execute(
+            select(TagRelationship.child_tag_id, TagRelationship.parent_tag_id).where(
+                TagRelationship.child_tag_id.in_(tag_ids),
+                TagRelationship.parent_tag_id.in_(tag_ids),
+            )
+        ):
+            parents_by_child.setdefault(child_id, []).append(display_names[parent_id])
     context = {
         "today": date.today().isoformat(),
         "existing_tags": [display_names[item.id] for item in tags],
+        "tag_parents": {
+            display_names[item.id]: sorted(parents_by_child[item.id])
+            for item in tags
+            if item.id in parents_by_child
+        },
     }
     try:
         api_key = decrypt_credential(user.gemini_api_key_encrypted)
@@ -145,9 +160,13 @@ def text_to_task(
         if existing is None and len(tags_by_name.get(name.casefold(), [])) == 1:
             existing = tags_by_name[name.casefold()][0]
         if existing:
-            existing_tag_ids.append(existing.id)
+            if existing.id not in existing_tag_ids:
+                existing_tag_ids.append(existing.id)
         elif name.casefold() not in tags_by_name:
             new_tag_names.append(name[:120])
+
+    ancestors = ancestor_ids(db, existing_tag_ids)
+    existing_tag_ids = [tag_id for tag_id in existing_tag_ids if tag_id not in ancestors]
 
     return TextToTaskDraft(
         title=generated.title.strip(),

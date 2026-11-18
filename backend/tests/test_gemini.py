@@ -226,6 +226,45 @@ def test_text_to_task_does_not_guess_between_duplicate_tag_names(
     assert "Review (Personal)" in captured["context"]["existing_tags"]
 
 
+def test_text_to_task_includes_tag_parents_and_drops_ancestor_tags(
+    logged_in_client: Callable[[str], TestClient],
+    monkeypatch,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    work = client.post("/api/tags", json={"name": "Work"}).json()
+    backend = client.post(
+        "/api/tags", json={"name": "Backend", "parent_tag_id": work["id"]}
+    ).json()
+    fastapi = client.post(
+        "/api/tags", json={"name": "FastAPI", "parent_tag_id": backend["id"]}
+    ).json()
+    urgent = client.post("/api/tags", json={"name": "Urgent"}).json()
+    save_key(client)
+    captured: dict = {}
+
+    def fake_generate(api_key: str, context: dict, text: str, *, model: str) -> GeneratedTask:
+        captured.update(context=context)
+        return GeneratedTask(
+            title="Fix FastAPI endpoint",
+            description=None,
+            priority=2,
+            due_date=None,
+            tag_names=["Work", "Backend", "FastAPI", "Urgent"],
+        )
+
+    monkeypatch.setattr(gemini_routes, "generate_task_draft", fake_generate)
+    response = client.post(
+        "/api/task-drafts/from-text", json={"text": "Fix urgent FastAPI endpoint"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["existing_tag_ids"] == [fastapi["id"], urgent["id"]]
+    assert response.json()["new_tag_names"] == []
+    assert captured["context"]["tag_parents"] == {
+        "Backend": ["Work"],
+        "FastAPI": ["Backend"],
+    }
+
+
 def test_text_to_task_requires_own_key(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],
@@ -268,6 +307,13 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
         assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
         assert "status_name" not in body["response_format"]["schema"]["properties"]
+        assert "tag_parents" in body["system_instruction"]
+        assert "most specific" in body["system_instruction"]
+        assert "parent or ancestor" in body["system_instruction"]
+        assert (
+            "omit their parent or ancestor tags"
+            in body["response_format"]["schema"]["properties"]["tag_names"]["description"]
+        )
         generated = {
             "title": "Buy groceries",
             "description": None,
