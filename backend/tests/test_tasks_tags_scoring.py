@@ -417,6 +417,23 @@ def test_score_calculation_and_safe_formula(
     assert invalid.status_code == 422
 
 
+def test_scoring_settings_accept_complex_formula(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    formula = (
+        "(priority * 25 + ageDays * (0.15 + priority * 0.07) + "
+        "idleDays * (0.1 + priority * 0.03) + (((80 + priority * 20) * "
+        "exp(dueOffsetDays / 7) if dueOffsetDays < 0 else 80 + priority * 20 + "
+        "15 * (1 - exp(-dueOffsetDays / 7)) + dueOffsetDays * (0.15 + priority * 0.05)) "
+        "if hasDueDate > 0 else 0)) * (1 + tagValue / (10 + "
+        "(tagValue if tagValue >= 0 else -tagValue)))"
+    )
+    client = logged_in_client("owner@example.com")
+    response = client.put("/api/settings/scoring", json={"scoring_formula": formula})
+    assert response.status_code == 200, response.text
+    assert client.get("/api/settings/scoring").json()["scoring_formula"] == formula
+
+
 def test_scoring_formula_rejects_common_and_existing_task_failures(
     logged_in_client: Callable[[str], TestClient],
 ) -> None:
