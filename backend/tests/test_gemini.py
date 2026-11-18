@@ -183,6 +183,7 @@ def test_text_to_task_maps_only_user_tags(
         "description": "Add a reviewed **AI draft**.",
         "priority": 3,
         "due_date": "2026-09-08",
+        "parent_task_id": None,
         "existing_tag_ids": [existing["id"]],
         "new_tag_names": ["ai"],
         "model": "gemini-3.1-flash-lite",
@@ -265,6 +266,51 @@ def test_text_to_task_includes_tag_parents_and_drops_ancestor_tags(
     }
 
 
+def test_text_to_task_fills_valid_active_parent_task_and_ignores_ineligible_ids(
+    logged_in_client: Callable[[str], TestClient],
+    monkeypatch,
+) -> None:
+    client = logged_in_client("owner@example.com")
+    other = logged_in_client("other@example.com")
+    active = client.post("/api/tasks", json={"title": "Launch v2"}).json()
+    finished = client.post("/api/tasks", json={"title": "Old task"}).json()
+    assert client.post(f"/api/tasks/{finished['id']}/finish").status_code == 200
+    draft = client.post("/api/drafts", json={"title": "Rough idea"}).json()
+    abandoned = client.post("/api/tasks", json={"title": "Dropped task"}).json()
+    assert client.post(f"/api/tasks/{abandoned['id']}/abandon").status_code == 200
+    foreign = other.post("/api/tasks", json={"title": "Other user task"}).json()
+    save_key(client)
+    captured: dict = {}
+    returned_parent_id: int | None = active["id"]
+
+    def fake_generate(api_key: str, context: dict, text: str, *, model: str) -> GeneratedTask:
+        captured.update(context=context)
+        return GeneratedTask(
+            title="Write release notes",
+            description=None,
+            priority=2,
+            due_date=None,
+            parent_task_id=returned_parent_id,
+            tag_names=[],
+        )
+
+    monkeypatch.setattr(gemini_routes, "generate_task_draft", fake_generate)
+    response = client.post(
+        "/api/task-drafts/from-text", json={"text": "Write release notes for Launch v2"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["parent_task_id"] == active["id"]
+    assert captured["context"]["existing_tasks"] == [{"id": active["id"], "title": "Launch v2"}]
+
+    for ineligible_id in (finished["id"], draft["id"], abandoned["id"], foreign["id"], 999999):
+        returned_parent_id = ineligible_id
+        invalid = client.post(
+            "/api/task-drafts/from-text", json={"text": "Write release notes"}
+        )
+        assert invalid.status_code == 200, invalid.text
+        assert invalid.json()["parent_task_id"] is None
+
+
 def test_text_to_task_requires_own_key(
     logged_in_client: Callable[[str], TestClient],
     create_user: Callable[[str, str, str], User],
@@ -307,6 +353,10 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
         assert body["generation_config"] == {"max_output_tokens": 2_048}
         assert body["response_format"]["mime_type"] == "application/json"
         assert "status_name" not in body["response_format"]["schema"]["properties"]
+        assert "parent_task_id" in body["response_format"]["schema"]["properties"]
+        assert "parent_task_id" in body["response_format"]["schema"]["required"]
+        assert "existing_tasks" in body["system_instruction"]
+        assert "parent_task_id" in body["system_instruction"]
         assert "tag_parents" in body["system_instruction"]
         assert "most specific" in body["system_instruction"]
         assert "parent or ancestor" in body["system_instruction"]
@@ -319,6 +369,7 @@ def test_gemini_interactions_request_uses_structured_output() -> None:
             "description": None,
             "priority": 1,
             "due_date": None,
+            "parent_task_id": None,
             "tag_names": ["errands"],
         }
         return httpx.Response(

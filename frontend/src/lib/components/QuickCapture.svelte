@@ -64,6 +64,7 @@
       description: parsed.description,
       priority: 1,
       due_date: null,
+      parent_task_id: null,
       existing_tag_ids: [],
       new_tag_names: [],
       model: ''
@@ -197,6 +198,7 @@
         initialDescription={proposal.description || ''}
         initialPriority={proposal.priority}
         initialDueDate={proposal.due_date || ''}
+        initialParentTaskId={proposal.parent_task_id || 0}
         initialTagIds={proposal.existing_tag_ids}
         initialNewTags={proposal.new_tag_names.join(', ')}
         {busy}

@@ -16,7 +16,7 @@ from app.gemini_schemas import (
     TextToTaskRequest,
 )
 from app.i18n import error_detail, localized
-from app.models import Tag, TagRelationship, User
+from app.models import Tag, TagRelationship, Task, User
 from app.services.credentials import CredentialError, decrypt_credential, encrypt_credential
 from app.services.gemini import GeminiServiceError, generate_task_draft, list_gemini_models
 from app.services.tags import ancestor_ids, tag_display_names
@@ -115,6 +115,21 @@ def text_to_task(
     tags = list(
         db.scalars(select(Tag).where(Tag.user_id == user.id).order_by(Tag.name, Tag.id)).all()
     )
+    tasks = [
+        task
+        for task in db.scalars(
+            select(Task)
+            .where(
+                Task.user_id == user.id,
+                Task.priority > 0,
+                Task.finished_at.is_(None),
+            )
+            .order_by(Task.created_at.desc(), Task.id.desc())
+        )
+        .unique()
+        .all()
+        if task.abandoned_by_task_id is None
+    ]
     display_names = tag_display_names(db, user.id)
     tag_ids = {item.id for item in tags}
     parents_by_child: dict[int, list[str]] = {}
@@ -134,6 +149,7 @@ def text_to_task(
             for item in tags
             if item.id in parents_by_child
         },
+        "existing_tasks": [{"id": item.id, "title": item.title} for item in tasks],
     }
     try:
         api_key = decrypt_credential(user.gemini_api_key_encrypted)
@@ -167,12 +183,17 @@ def text_to_task(
 
     ancestors = ancestor_ids(db, existing_tag_ids)
     existing_tag_ids = [tag_id for tag_id in existing_tag_ids if tag_id not in ancestors]
+    valid_parent_ids = {item.id for item in tasks}
+    parent_task_id = (
+        generated.parent_task_id if generated.parent_task_id in valid_parent_ids else None
+    )
 
     return TextToTaskDraft(
         title=generated.title.strip(),
         description=generated.description.strip() if generated.description else None,
         priority=generated.priority,
         due_date=generated.due_date,
+        parent_task_id=parent_task_id,
         existing_tag_ids=existing_tag_ids,
         new_tag_names=new_tag_names,
         model=model,
