@@ -107,7 +107,7 @@ def evaluate_formula(formula: str, values: dict[str, float]) -> float:
         tree = ast.parse(formula, mode="eval")
     except SyntaxError as error:
         raise FormulaError(localized("api.formulaSyntaxIsInvalid")) from error
-    if sum(1 for _node in ast.walk(tree)) > 100:
+    if sum(1 for _node in ast.walk(tree)) > 200:
         raise FormulaError(localized("api.formulaIsTooComplex"))
     result = float(_evaluate(tree, values))
     if not math.isfinite(result):
