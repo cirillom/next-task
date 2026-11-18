@@ -16,6 +16,7 @@ export interface TextToTaskDraft {
   description: string | null;
   priority: number;
   due_date: string | null;
+  parent_task_id: number | null;
   existing_tag_ids: number[];
   new_tag_names: string[];
   model: string;
