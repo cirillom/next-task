@@ -2,7 +2,7 @@ import argparse
 import getpass
 import sys
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.auth.security import hash_password, normalize_email, replace_password
@@ -17,6 +17,7 @@ from app.services.mail import (
     send_email,
 )
 from app.services.onboarding import add_onboarding_data
+from app.services.scoring import DEFAULT_SCORING_FORMULA, validate_formula
 
 
 def read_password(prompt: str, from_stdin: bool) -> str:
@@ -102,6 +103,14 @@ def revoke_invite(args: argparse.Namespace) -> None:
     print("Invitation revoked. Previously sent links can no longer create an account.")
 
 
+def apply_default_scoring_formula(_args: argparse.Namespace) -> None:
+    validate_formula(DEFAULT_SCORING_FORMULA)
+    with SessionLocal() as db:
+        result = db.execute(update(User).values(scoring_formula=DEFAULT_SCORING_FORMULA))
+        db.commit()
+    print(f"Applied the default scoring formula to {result.rowcount} users.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(required=True)
@@ -127,6 +136,11 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = subparsers.add_parser("revoke-invite", help="Revoke an outstanding invitation")
     revoke.add_argument("email")
     revoke.set_defaults(handler=revoke_invite)
+    apply_formula = subparsers.add_parser(
+        "apply-default-scoring-formula",
+        help="Replace every user's saved scoring formula with the current default",
+    )
+    apply_formula.set_defaults(handler=apply_default_scoring_formula)
     for command in (create, invite, test_mail):
         command.add_argument(
             "--language",

@@ -22,9 +22,12 @@ VARIABLES = {
     "tagValue",
 }
 DEFAULT_SCORING_FORMULA = (
-    "priority * 25 + ageDays * 0.25 + idleDays * 1.0 + tagValue * 20 + "
-    "((50 * exp(dueOffsetDays / 7) if dueOffsetDays < 0 else "
-    "50 + dueOffsetDays * 20) if hasDueDate > 0 else 0)"
+    "(priority * 25 + ageDays * (0.15 + priority * 0.07) + "
+    "idleDays * (0.1 + priority * 0.03) + "
+    "(((80 + priority * 20) * exp(dueOffsetDays / 7) if dueOffsetDays < 0 else "
+    "80 + priority * 20 + 15 * (1 - exp(-dueOffsetDays / 7)) + "
+    "dueOffsetDays * (0.15 + priority * 0.05)) if hasDueDate > 0 else 0)) * "
+    "(1 + tagValue / (10 + (tagValue if tagValue >= 0 else -tagValue)))"
 )
 
 BIN_OPS = {

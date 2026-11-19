@@ -102,7 +102,8 @@ unaffected; no migration or shared demo account is needed.
 The root tags are Personal/Pessoal (green, value 0), Work/Trabalho (blue, value 0),
 and Urgent/Urgente (red, value 5). Personal contains Routine/Rotina (0) and
 Learning/Aprendizado (1); Work contains Projects/Projetos (1) and
-Administrative/Administrativo (0). With the default formula, Urgent adds 100 points.
+Administrative/Administrativo (0). With the default formula, Urgent raises the
+whole score by one third.
 Each tag has a short explanation.
 
 The four tasks introduce ranking and the full default formula, hierarchical tags
@@ -506,20 +507,22 @@ operations, the `exp()` function, and Python-style conditional expressions.
 The default formula is:
 
 ```text
-priority * 25
-+ ageDays * 0.25
-+ idleDays * 1.00
-+ tagValue * 20
-+ (
-    (
-        50 * exp(dueOffsetDays / 7)
-        if dueOffsetDays < 0
-        else 50 + dueOffsetDays * 20
-    )
-    if hasDueDate > 0
-    else 0
-)
+(priority * 25 + ageDays * (0.15 + priority * 0.07) + idleDays * (0.1 + priority * 0.03) + (((80 + priority * 20) * exp(dueOffsetDays / 7) if dueOffsetDays < 0 else 80 + priority * 20 + 15 * (1 - exp(-dueOffsetDays / 7)) + dueOffsetDays * (0.15 + priority * 0.05)) if hasDueDate > 0 else 0)) * (1 + tagValue / (10 + (tagValue if tagValue >= 0 else -tagValue)))
 ```
+
+Priority sets the base score and the rates for age, idle time, and overdue days.
+The due-date contribution rises as the date approaches. Tag values scale the
+whole score; a value of 5 increases it by one third, while a value of -5 reduces
+it by one third.
+
+After deploying a release with a changed default, apply it to every existing
+account while the app is running with:
+
+```bash
+docker compose --env-file ../.env exec next-task uv run python -m app.cli apply-default-scoring-formula
+```
+
+This replaces saved custom formulas too. A database backup is recommended first.
 
 Only the explicitly supported `exp()` function can be called. Other function calls,
 attribute access, imports, and arbitrary Python are rejected by the limited expression
