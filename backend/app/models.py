@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,6 +39,7 @@ class User(Base):
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(Text)
     gemini_model: Mapped[str | None] = mapped_column(String(100))
     scoring_formula: Mapped[str | None] = mapped_column(Text)
+    notification_timezone: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -201,6 +204,9 @@ class TaskBlock(Base):
         DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
     )
     unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_unblock: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
 
     task: Mapped[Task] = relationship(back_populates="blocks", foreign_keys=[task_id])
     blocking_task: Mapped[Task | None] = relationship(foreign_keys=[blocking_task_id])
@@ -240,3 +246,47 @@ class TagRelationship(Base):
 
     child: Mapped[Tag] = relationship(foreign_keys=[child_tag_id])
     parent: Mapped[Tag] = relationship(foreign_keys=[parent_tag_id])
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    endpoint: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False)
+    p256dh: Mapped[str] = mapped_column(String(256), nullable=False)
+    auth: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedup_key", name="uq_notifications_user_dedup"),
+        CheckConstraint(
+            "kind IN ('due', 'unblocked', 'unblocked_due', 'unblocked_overdue')",
+            name="notification_kind",
+        ),
+        CheckConstraint("extra_count >= 0", name="notification_extra_count_non_negative"),
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    extra_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=text("CURRENT_TIMESTAMP")
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

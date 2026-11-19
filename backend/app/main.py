@@ -12,6 +12,7 @@ from app.routes import (
     drafts,
     gemini,
     invitations,
+    notifications,
     password_recovery,
     pomodoro,
     references,
@@ -68,6 +69,7 @@ app.include_router(invitations.router)
 app.include_router(password_recovery.router)
 app.include_router(gemini.router)
 app.include_router(pomodoro.router)
+app.include_router(notifications.router)
 app.include_router(references.router)
 app.include_router(settings.router)
 app.include_router(tags.router)

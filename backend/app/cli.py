@@ -18,6 +18,7 @@ from app.services.mail import (
 )
 from app.services.onboarding import add_onboarding_data
 from app.services.scoring import DEFAULT_SCORING_FORMULA, validate_formula
+from app.services.webpush import generate_vapid_keypair
 
 
 def read_password(prompt: str, from_stdin: bool) -> str:
@@ -111,6 +112,12 @@ def apply_default_scoring_formula(_args: argparse.Namespace) -> None:
     print(f"Applied the default scoring formula to {result.rowcount} users.")
 
 
+def generate_vapid_keys(_args: argparse.Namespace) -> None:
+    private_key, public_key = generate_vapid_keypair()
+    print(f"NEXT_TASK_VAPID_PRIVATE_KEY={private_key}")
+    print(f"# Public VAPID key: {public_key}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(required=True)
@@ -141,6 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Replace every user's saved scoring formula with the current default",
     )
     apply_formula.set_defaults(handler=apply_default_scoring_formula)
+    vapid_keys = subparsers.add_parser(
+        "generate-vapid-keys",
+        help="Generate a P-256 VAPID keypair for Web Push notifications",
+    )
+    vapid_keys.set_defaults(handler=generate_vapid_keys)
     for command in (create, invite, test_mail):
         command.add_argument(
             "--language",
