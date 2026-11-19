@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_from_email: str = ""
+    vapid_private_key: SecretStr = SecretStr("")
+    vapid_subject: str = ""
+    notifier_interval_seconds: int = 60
 
 
 @lru_cache

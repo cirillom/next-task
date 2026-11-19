@@ -12,7 +12,7 @@ from app.auth.rate_limit import account_key, clear_attempts, password_change_key
 from app.config import get_settings
 from app.database import get_db
 from app.i18n import localized
-from app.models import EmailVerification, PasswordReset, User, UserSession
+from app.models import EmailVerification, PasswordReset, PushSubscription, User, UserSession
 
 password_hasher = PasswordHasher()
 
@@ -47,6 +47,8 @@ def replace_password(
     db.execute(sessions)
     db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
     db.execute(delete(EmailVerification).where(EmailVerification.user_id == user.id))
+    if keep_session is None:
+        db.execute(delete(PushSubscription).where(PushSubscription.user_id == user.id))
     clear_attempts(db, account_key(user.id))
     clear_attempts(db, password_change_key(user.id))
 

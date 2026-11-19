@@ -2,7 +2,7 @@ import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -41,12 +41,13 @@ from app.auth.security import (
 from app.config import get_settings
 from app.database import get_db
 from app.i18n import error_detail, localized, translate
-from app.models import EmailVerification, PasswordReset, User, UserSession
+from app.models import EmailVerification, PasswordReset, PushSubscription, User, UserSession
 from app.schemas import (
     EmailRequest,
     EmailStatus,
     LanguageUpdate,
     LoginRequest,
+    LogoutRequest,
     Message,
     PasswordChange,
     TokenRequest,
@@ -160,11 +161,25 @@ def login(
 
 
 @router.post("/logout", response_model=Message)
-def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> Message:
+def logout(
+    request: Request,
+    response: Response,
+    payload: LogoutRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
+) -> Message:
     token = request.cookies.get(get_settings().session_cookie_name)
     if token:
-        db.execute(delete(UserSession).where(UserSession.token_hash == hash_token(token)))
-        db.commit()
+        session = db.scalar(select(UserSession).where(UserSession.token_hash == hash_token(token)))
+        if session is not None:
+            if payload is not None and payload.push_endpoint:
+                db.execute(
+                    delete(PushSubscription).where(
+                        PushSubscription.user_id == session.user_id,
+                        PushSubscription.endpoint == payload.push_endpoint.strip(),
+                    )
+                )
+            db.delete(session)
+            db.commit()
     response.delete_cookie(get_settings().session_cookie_name, path="/")
     return Message(message=localized("api.loggedOut"))
 

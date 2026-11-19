@@ -1,10 +1,11 @@
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.i18n import Language, LocalizedText, localized, parameters
 from app.services.mail import normalize_email_address
+from app.services.notifications import validate_timezone
 
 
 def clean_required(value: str, tag: bool = False) -> str:
@@ -270,3 +271,67 @@ class TagMergePreview(ApiModel):
     task_assignments: int
     parent_relationships: int
     child_relationships: int
+
+
+class LogoutRequest(ApiModel):
+    push_endpoint: str | None = Field(default=None, max_length=2048)
+
+
+class NotificationPreferencesUpdate(ApiModel):
+    timezone: str = Field(min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        return validate_timezone(value)
+
+
+class PushSubscriptionCreate(ApiModel):
+    endpoint: str = Field(min_length=1, max_length=2048)
+    p256dh: str = Field(min_length=1, max_length=256)
+    auth: str = Field(min_length=1, max_length=128)
+    timezone: str = Field(min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        return validate_timezone(value)
+
+
+class PushUnsubscribeRequest(ApiModel):
+    endpoint: str = Field(min_length=1, max_length=2048)
+
+
+class NotificationTestRequest(ApiModel):
+    endpoint: str | None = Field(default=None, max_length=2048)
+
+
+class NotificationSettingsRead(ApiModel):
+    push_configured: bool
+    vapid_public_key: str | None
+    timezone: str | None
+    subscription_count: int
+    endpoint_hashes: list[str]
+
+
+class NotificationRead(ApiModel):
+    id: int
+    kind: Literal["due", "unblocked", "unblocked_due", "unblocked_overdue"]
+    task_id: int | None
+    task_title: str
+    extra_count: int
+    created_at: UtcDateTime
+    read_at: UtcDateTime | None
+
+
+class NotificationListRead(ApiModel):
+    unread_count: int
+    items: list[NotificationRead]
+
+
+class NotificationsReadRequest(ApiModel):
+    ids: list[int] | None = None
+
+
+class UnreadCountRead(ApiModel):
+    unread_count: int

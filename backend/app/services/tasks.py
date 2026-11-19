@@ -1,9 +1,45 @@
+from datetime import UTC, datetime
+
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.i18n import localized
-from app.models import Tag, Task, User
+from app.models import Tag, Task, TaskBlock, User
+
+
+def normalize_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def block_is_active(block: TaskBlock, now: datetime | None = None) -> bool:
+    if block.unblocked_at is None:
+        return True
+    current = now or datetime.now(UTC)
+    return normalize_utc(block.unblocked_at) > current
+
+
+def active_block_condition(now: datetime):
+    return or_(TaskBlock.unblocked_at.is_(None), TaskBlock.unblocked_at > now)
+
+
+def descendant_tasks(task: Task) -> list[Task]:
+    descendants: list[Task] = []
+    pending = list(task.subtasks)
+    while pending:
+        child = pending.pop()
+        descendants.append(child)
+        pending.extend(child.subtasks)
+    return descendants
+
+
+def unfinished_descendant_count(task: Task) -> int:
+    return sum(
+        descendant.finished_at is None and descendant.abandoned_by_task_id is None
+        for descendant in descendant_tasks(task)
+    )
 
 
 def get_task_for_user(db: Session, task_id: int, user: User) -> Task:

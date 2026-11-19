@@ -20,6 +20,7 @@ from app.schemas import (
     TaskSummary,
     TaskUpdate,
 )
+from app.services.notifications import record_dependency_unblock_notification
 from app.services.scoring import ScoringPlan, plan_scoring, score_task
 from app.services.tags import (
     ancestor_ids,
@@ -29,46 +30,16 @@ from app.services.tags import (
     tags_by_ids,
 )
 from app.services.tasks import (
+    active_block_condition,
+    block_is_active,
+    descendant_tasks,
     get_task_for_user,
+    unfinished_descendant_count,
     validate_parent,
     validate_tags,
 )
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
-
-
-def normalize_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
-def block_is_active(block: TaskBlock, now: datetime | None = None) -> bool:
-    if block.unblocked_at is None:
-        return True
-    current = now or datetime.now(UTC)
-    return normalize_utc(block.unblocked_at) > current
-
-
-def active_block_condition(now: datetime):
-    return or_(TaskBlock.unblocked_at.is_(None), TaskBlock.unblocked_at > now)
-
-
-def descendant_tasks(task: Task) -> list[Task]:
-    descendants: list[Task] = []
-    pending = list(task.subtasks)
-    while pending:
-        child = pending.pop()
-        descendants.append(child)
-        pending.extend(child.subtasks)
-    return descendants
-
-
-def unfinished_descendant_count(task: Task) -> int:
-    return sum(
-        descendant.finished_at is None and descendant.abandoned_by_task_id is None
-        for descendant in descendant_tasks(task)
-    )
 
 
 def task_summary(task: Task) -> TaskSummary:
@@ -382,13 +353,24 @@ def delete_task(
 ) -> Response:
     task = get_task_for_user(db, task_id, user)
     now = datetime.now(UTC)
+    dependent_ids = list(
+        db.scalars(
+            select(TaskBlock.task_id).where(
+                TaskBlock.blocking_task_id == task.id, TaskBlock.unblocked_at.is_(None)
+            )
+        ).all()
+    )
     for block in db.scalars(select(TaskBlock).where(TaskBlock.blocking_task_id == task.id)):
         block.reason = translate("system.deletedTask", user.language, title=task.title)
         block.blocking_task_id = None
         if block.unblocked_at is None:
             block.unblocked_at = now
+    deleted_task_id = task.id
     db.flush()
     db.delete(task)
+    record_dependency_unblock_notification(
+        db, user.id, "delete", deleted_task_id, dependent_ids, now
+    )
     db.commit()
     return Response(status_code=204)
 
@@ -411,6 +393,7 @@ def finish_task(
         )
     now = datetime.now(UTC)
     changed = False
+    dependent_ids: list[int] = []
     for candidate in [task, *descendant_tasks(task)]:
         if candidate.finished_at is None and candidate.abandoned_by_task_id is None:
             candidate.finished_at = now
@@ -424,9 +407,13 @@ def finish_task(
                 )
             ).all()
             for block in active_blocks:
+                if block.blocking_task_id == candidate.id:
+                    dependent_ids.append(block.task_id)
                 block.unblocked_at = now
+                block.auto_unblock = False
             changed = True
     if changed:
+        record_dependency_unblock_notification(db, user.id, "finish", task.id, dependent_ids, now)
         db.commit()
         db.refresh(task)
     return task_read(db, task)
@@ -434,6 +421,13 @@ def finish_task(
 
 def deactivate_abandoned_branch(db: Session, task: Task, now: datetime) -> None:
     affected = [task.id, *(child.id for child in descendant_tasks(task))]
+    dependent_ids = list(
+        db.scalars(
+            select(TaskBlock.task_id).where(
+                TaskBlock.blocking_task_id.in_(affected), TaskBlock.unblocked_at.is_(None)
+            )
+        ).all()
+    )
     db.execute(
         update(PomodoroSession)
         .where(PomodoroSession.user_id == task.user_id, PomodoroSession.task_id.in_(affected))
@@ -444,6 +438,7 @@ def deactivate_abandoned_branch(db: Session, task: Task, now: datetime) -> None:
         .where(TaskBlock.blocking_task_id.in_(affected), TaskBlock.unblocked_at.is_(None))
         .values(unblocked_at=now)
     )
+    record_dependency_unblock_notification(db, task.user_id, "abandon", task.id, dependent_ids, now)
 
 
 @router.post("/{task_id}/abandon", response_model=TaskRead)
@@ -565,6 +560,7 @@ def block_task(
             reason=payload.reason,
             blocking_task_id=payload.blocking_task_id,
             unblocked_at=payload.unblocked_at,
+            auto_unblock=payload.unblocked_at is not None,
         )
     )
     try:
@@ -595,6 +591,7 @@ def unblock_task(
     if len(active) > 1:
         raise HTTPException(status_code=409, detail=localized("api.chooseWhichBlockerToRemove"))
     active[0].unblocked_at = now
+    active[0].auto_unblock = False
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -616,6 +613,7 @@ def unblock_one(
     if not block_is_active(block):
         raise HTTPException(status_code=409, detail=localized("api.blockIsAlreadyResolved"))
     block.unblocked_at = datetime.now(UTC)
+    block.auto_unblock = False
     db.commit()
     db.refresh(task)
     return task_read(db, task)
@@ -662,6 +660,7 @@ def reblock_task(
         )
 
     previous.unblocked_at = unblocked_at
+    previous.auto_unblock = unblocked_at is not None
     task.last_worked_at = now
     try:
         db.commit()
