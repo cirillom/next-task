@@ -4,6 +4,7 @@
   import { api } from '../lib/api/client';
   import AccountSettings from '../lib/components/AccountSettings.svelte';
   import GeminiSettings from '../lib/components/GeminiSettings.svelte';
+  import McpSettings from '../lib/components/McpSettings.svelte';
   import PomodoroSettings from '../lib/components/PomodoroSettings.svelte';
   import type { User } from '../lib/api/types';
   import packageInfo from '../../package.json';
@@ -70,6 +71,7 @@
   <section class="panel"><h2>{$t('ui.settings.scoring')}</h2><form on:submit|preventDefault={saveFormula}><label>{$t('ui.settings.scoringFormula')}<TextArea className="code-input" bind:value={formula} rows="4" /></label><p class="help">{$t('ui.settings.variablesPriorityAgedaysIdledaysDueoffsetdaysHasduedateTagvalueSupports')}</p><AppButton type="submit" variant="primary">{$t('ui.settings.saveScoringFormula')}</AppButton></form>{#if workflowError}<p class="error" role="alert">{$text(workflowError)}</p>{/if}{#if workflowNotice}<p class="notice">{$text(workflowNotice)}</p>{/if}</section>
   <PomodoroSettings />
   <GeminiSettings />
+  <McpSettings />
   <section class="panel">
     <h2>{$t('ui.settings.changePassword')}</h2>
     <form on:submit|preventDefault={changePassword}>

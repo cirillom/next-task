@@ -5,14 +5,14 @@ from datetime import UTC, datetime, timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.rate_limit import account_key, clear_attempts, password_change_key
 from app.config import get_settings
 from app.database import get_db
 from app.i18n import localized
-from app.models import EmailVerification, PasswordReset, User, UserSession
+from app.models import EmailVerification, MCPGrant, PasswordReset, User, UserSession
 
 password_hasher = PasswordHasher()
 
@@ -47,6 +47,11 @@ def replace_password(
     db.execute(sessions)
     db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
     db.execute(delete(EmailVerification).where(EmailVerification.user_id == user.id))
+    db.execute(
+        update(MCPGrant)
+        .where(MCPGrant.user_id == user.id, MCPGrant.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
     clear_attempts(db, account_key(user.id))
     clear_attempts(db, password_change_key(user.id))
 
