@@ -30,3 +30,11 @@ Take the first option that fully works:
 Never cut: validation at trust boundaries, error handling that prevents data loss, security, accessibility, the calibration real hardware needs, anything the user asked for.
 
 (Yes, this file also applies to agents working on the ponytail repo itself. Especially to them.)
+
+## Environment & Operations
+
+- **OS & Shell**: Windows; preferred user shell is Nushell (`nu`). Keep user-facing commands Nushell-compatible, and run `nu -c "..."` when executing Nushell syntax from PowerShell.
+- **Builds & Containers**: Use Docker (`docker build`, `docker compose`) to build and verify the application.
+- **Version Control**: Jujutsu (`jj`) with Git as the backend (colocated repo). Prefer `jj` workflows (`jj st`, `jj diff`, `jj log`, `jj bookmark`, `jj git push`) and keep Git metadata compatible with `jj`.
+- **Skills**: Always activate and follow the globally installed Ponytail skills (`ponytail`, `ponytail-review`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`, `ponytail-help`).
+- **Production**: `next-task` production lives on SSH host `vmstudas` (`ssh vmstudas`).
