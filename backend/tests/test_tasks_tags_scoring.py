@@ -10,6 +10,7 @@ from app.services.scoring import (
     evaluate_formula,
     score_task,
     score_variables,
+    validate_formula,
 )
 from fastapi.testclient import TestClient
 
@@ -385,14 +386,23 @@ def test_score_calculation_and_safe_formula(
         "hasDueDate": 0.0,
         "tagValue": 0.0,
     }
+    validate_formula(DEFAULT_SCORING_FORMULA)
     assert evaluate_formula(DEFAULT_SCORING_FORMULA, no_due_date) == 25
 
     due_today = {**no_due_date, "hasDueDate": 1.0}
-    assert evaluate_formula(DEFAULT_SCORING_FORMULA, due_today) == 75
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, due_today) == 125
 
     due_in_seven_days = {**due_today, "dueOffsetDays": -7.0}
     assert evaluate_formula(DEFAULT_SCORING_FORMULA, due_in_seven_days) == pytest.approx(
-        25 + 50 / 2.718281828459045
+        25 + 100 / 2.718281828459045
+    )
+    urgent = {**due_today, "tagValue": 5.0}
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, urgent) == pytest.approx(125 * 4 / 3)
+    negative_tag = {**due_today, "tagValue": -5.0}
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, negative_tag) == pytest.approx(125 * 2 / 3)
+    overdue = {**due_today, "dueOffsetDays": 7.0}
+    assert evaluate_formula(DEFAULT_SCORING_FORMULA, overdue) == pytest.approx(
+        125 + 15 * (1 - 1 / 2.718281828459045) + 7 * 0.2
     )
 
     client = logged_in_client("owner@example.com")
@@ -404,7 +414,7 @@ def test_score_calculation_and_safe_formula(
         task.last_worked_at = datetime.now(UTC) - timedelta(days=4)
         task.due_date = date.today() - timedelta(days=2)
         db.commit()
-        assert score_task(task, datetime.now(UTC)) == pytest.approx(171.5, abs=0.1)
+        assert score_task(task, datetime.now(UTC)) == pytest.approx(223.69, abs=0.1)
         values = score_variables(task, datetime.now(UTC))
         assert values["ageDays"] == pytest.approx(10, abs=0.1)
         assert values["idleDays"] == pytest.approx(4, abs=0.1)

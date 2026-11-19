@@ -117,13 +117,18 @@ def test_new_account_gets_hierarchical_tags_urgent_and_relative_dates(
     first = next_tasks(client)[0]
     assert first["title"] == TITLES[0]
     assert scoring.DEFAULT_SCORING_FORMULA in first["description"]
-    assert "Urgente" in first["description"] and "100 pontos" in first["description"]
+    assert "Urgente" in first["description"] and "um terço" in first["description"]
+    assert client.get("/api/settings/scoring").json()["scoring_formula"] == (
+        scoring.DEFAULT_SCORING_FORMULA
+    )
     assert {tag["name"] for tag in first["inherited_tags"]} == {"Pessoal"}
     updated = client.patch(
         f"/api/tasks/{first['id']}",
         json={"tag_ids": [tags["Aprendizado"]["id"], tags["Urgente"]["id"]]},
     ).json()
-    assert updated["score"] - first["score"] == pytest.approx(100, abs=0.02)
+    assert updated["score"] == pytest.approx(
+        first["score"] * (1 + 6 / 16) / (1 + 1 / 11), abs=0.02
+    )
 
 
 @pytest.mark.parametrize("days_later", [0, 365])
@@ -153,6 +158,31 @@ def test_next_presents_all_four_steps_in_order_even_when_deadline_is_overdue(
         blocks = db.scalars(select(TaskBlock)).all()
         assert len(blocks) == 3
         assert all(block.unblocked_at is not None for block in blocks)
+
+
+def test_apply_default_formula_updates_existing_accounts_live(
+    logged_in_client: Callable[[str], TestClient],
+) -> None:
+    first = logged_in_client("first@example.com")
+    second = logged_in_client("second@example.com")
+    first_task = first.post("/api/tasks", json={"title": "First"}).json()
+    second_task = second.post("/api/tasks", json={"title": "Second"}).json()
+    assert second.put(
+        "/api/settings/scoring", json={"scoring_formula": "priority * 2"}
+    ).status_code == 200
+    assert second.get(f"/api/tasks/{second_task['id']}").json()["score"] == 2
+
+    args = cli.build_parser().parse_args(["apply-default-scoring-formula"])
+    args.handler(args)
+    args.handler(args)
+
+    for client, task in ((first, first_task), (second, second_task)):
+        assert client.get("/api/settings/scoring").json()["scoring_formula"] == (
+            scoring.DEFAULT_SCORING_FORMULA
+        )
+        assert client.get(f"/api/tasks/{task['id']}").json()["score"] == pytest.approx(
+            25, abs=0.1
+        )
 
 
 def test_sign_in_never_reseeds_and_existing_and_other_accounts_stay_isolated(
