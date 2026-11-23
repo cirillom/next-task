@@ -19,7 +19,9 @@
   import PasswordRecovery from './pages/PasswordRecovery.svelte';
   import AcceptInvitation from './pages/AcceptInvitation.svelte';
   import LanguageSelector from './lib/components/LanguageSelector.svelte';
+  import NotificationsBell from './lib/components/NotificationsBell.svelte';
   import { setLanguage } from './lib/i18n';
+  import { parseTaskHashTarget, unsubscribeCurrentDevice } from './lib/notifications';
   import { focusDescriptionSaves } from './lib/focusDescriptionSaves';
   import { cardDescriptionSaves } from './lib/cardDescriptionSaves';
   import { clearReferenceResolver, referenceNavigation, type ReferenceKey } from './lib/referenceResolver';
@@ -71,6 +73,7 @@
   let focusScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
   let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | 'accept-invite' | null = null;
   let accountToken: string | null = null;
+  let pendingNotificationTaskId: number | null = null;
 
   async function loadDraftCount() {
     try {
@@ -78,6 +81,29 @@
     } catch {
       draftCount = 0;
     }
+  }
+
+  async function openNotificationTask(taskId: number | null) {
+    quickCaptureOpen = false;
+    editorTaskId = null;
+    if (taskId === null) {
+      navigate('tasks');
+      return;
+    }
+    try {
+      await api.task(taskId);
+      openTask(taskId);
+    } catch {
+      navigate('tasks');
+    }
+  }
+
+  async function flushPendingNotificationTask() {
+    if (pendingNotificationTaskId === null) return;
+    const taskId = pendingNotificationTaskId;
+    pendingNotificationTaskId = null;
+    history.replaceState(null, '', '#/tasks');
+    await openNotificationTask(taskId);
   }
 
   async function initialize() {
@@ -91,6 +117,7 @@
         }
       }
       await loadDraftCount();
+      await flushPendingNotificationTask();
     } catch (reason) {
       if (!(reason instanceof ApiError) || reason.status !== 401) error = errorMessage(reason, 'ui.app.couldNotStartNextTask');
       clearReferenceResolver();
@@ -107,17 +134,42 @@
     const candidate = requested as View;
     const nextView = views.includes(candidate) ? candidate : 'next';
     const nextTagId = nextView === 'tags' ? Number(new URLSearchParams(query).get('tag')) || 0 : 0;
+    const hashTaskId = parseTaskHashTarget(location.hash);
     const next = () => {view = nextView; targetTagId = nextTagId;};
     if (view === 'tags' && tagsPage && (nextView !== view || nextTagId !== targetTagId)) {
-      if (!await tagsPage.requestReferenceNavigation(next)) history.replaceState(null, '', `#/tags${targetTagId ? `?tag=${targetTagId}` : ''}`);
+      if (!await tagsPage.requestReferenceNavigation(next)) {
+        history.replaceState(null, '', `#/tags${targetTagId ? `?tag=${targetTagId}` : ''}`);
+        return;
+      }
     } else next();
+    if (hashTaskId !== null) {
+      if (user) {
+        history.replaceState(null, '', '#/tasks');
+        void openNotificationTask(hashTaskId);
+      } else {
+        pendingNotificationTaskId = hashTaskId;
+      }
+    }
   }
   function navigate(nextView: View) {
     const next = () => { location.hash = `/${nextView}`; view = nextView; };
     if (view === 'tags' && tagsPage) void tagsPage.requestReferenceNavigation(next);
     else next();
   }
-  async function logout() { await api.logout(); focusDescriptionSaves.clear(); cardDescriptionSaves.clear(); clearReferenceResolver(); user = null; draftCount = 0; }
+  async function logout() {
+    let pushEndpoint: string | null = null;
+    try {
+      pushEndpoint = await unsubscribeCurrentDevice();
+    } catch {
+      // Logout must still succeed if browser push state is unavailable.
+    }
+    await api.logout(pushEndpoint);
+    focusDescriptionSaves.clear();
+    cardDescriptionSaves.clear();
+    clearReferenceResolver();
+    user = null;
+    draftCount = 0;
+  }
 
   setContext(referenceNavigation, (target: ReferenceKey) => navigateFromDialogs(() => {
     const next = () => {
@@ -187,8 +239,32 @@
   }
 
   onMount(() => {
-    readHash(); window.addEventListener('hashchange', readHash); document.addEventListener('keydown', keydown); void initialize();
-    return () => {window.removeEventListener('hashchange', readHash); document.removeEventListener('keydown', keydown);};
+    const onSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'notification-click' || typeof event.data.url !== 'string') return;
+      const taskId = parseTaskHashTarget(event.data.url);
+      if (taskId !== null) {
+        if (user) {
+          view = 'tasks';
+          history.replaceState(null, '', '#/tasks');
+          void openNotificationTask(taskId);
+        } else {
+          pendingNotificationTaskId = taskId;
+          location.hash = `/tasks?task=${taskId}`;
+        }
+      } else if (event.data.url.includes('#/settings')) {
+        navigate('settings');
+      }
+    };
+    readHash();
+    window.addEventListener('hashchange', readHash);
+    document.addEventListener('keydown', keydown);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', onSwMessage);
+    void initialize();
+    return () => {
+      window.removeEventListener('hashchange', readHash);
+      document.removeEventListener('keydown', keydown);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.removeEventListener('message', onSwMessage);
+    };
   });
 </script>
 
@@ -206,7 +282,7 @@
     {/if}
   {/key}
 {:else if !user}
-  <Login on:authenticated={async (event) => { user = event.detail; setLanguage(user.language, false); await loadDraftCount(); }} />
+  <Login on:authenticated={async (event) => { user = event.detail; setLanguage(user.language, false); await loadDraftCount(); await flushPendingNotificationTask(); }} />
 {:else if view === 'focus'}
   <Focus
     taskVersion={focusTaskVersion}
@@ -220,7 +296,11 @@
     <header class="topbar">
       <button class="brand" on:click={() => navigate('next')}><span class="brand-mark small">✓</span><strong>{$t('ui.app.nextTask')}</strong></button>
       <AppButton variant="primary" className="new-task-button" on:click={() => (quickCaptureOpen = true)}>+ <span>{$t('ui.app.newTask')}</span></AppButton>
-      <div class="account"><span>{user.display_name}</span><AppButton on:click={logout}>{$t('ui.app.signOut')}</AppButton></div>
+      <div class="account">
+        <NotificationsBell on:openNotification={(event) => void openNotificationTask(event.detail.taskId)} />
+        <span>{user.display_name}</span>
+        <AppButton on:click={logout}>{$t('ui.app.signOut')}</AppButton>
+      </div>
     </header>
     <aside class="sidebar" id="desktop-sidebar">
       <AppButton className="sidebar-toggle" aria-label={$t(sidebarHidden ? 'ui.app.showSidebar' : 'ui.app.hideSidebar')} title={$t(sidebarHidden ? 'ui.app.showSidebar' : 'ui.app.hideSidebar')} aria-expanded={!sidebarHidden} aria-controls="sidebar-navigation" on:click={() => (sidebarHidden = !sidebarHidden)}>

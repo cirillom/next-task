@@ -15,5 +15,25 @@ services:
       NEXT_TASK_SMTP_USERNAME: "${NEXT_TASK_SMTP_USERNAME:-}"
       NEXT_TASK_SMTP_PASSWORD: "${NEXT_TASK_SMTP_PASSWORD:-}"
       NEXT_TASK_SMTP_FROM_EMAIL: "${NEXT_TASK_SMTP_FROM_EMAIL:-}"
+      NEXT_TASK_VAPID_PRIVATE_KEY: "${NEXT_TASK_VAPID_PRIVATE_KEY:-}"
+      NEXT_TASK_VAPID_SUBJECT: "${NEXT_TASK_VAPID_SUBJECT:-}"
+    volumes:
+      - ./data-dev:/data
+
+  next-task-notifier:
+    build: .
+    container_name: next-task-notifier-dev
+    command: ["uv", "run", "python", "-m", "app.notifier"]
+    depends_on:
+      next-task:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    environment:
+      TZ: America/Sao_Paulo
+      NEXT_TASK_PUBLIC_APP_URL: "${NEXT_TASK_PUBLIC_APP_URL:-}"
+      NEXT_TASK_VAPID_PRIVATE_KEY: "${NEXT_TASK_VAPID_PRIVATE_KEY:-}"
+      NEXT_TASK_VAPID_SUBJECT: "${NEXT_TASK_VAPID_SUBJECT:-}"
+      NEXT_TASK_NOTIFIER_INTERVAL_SECONDS: "${NEXT_TASK_NOTIFIER_INTERVAL_SECONDS:-60}"
     volumes:
       - ./data-dev:/data

@@ -2,6 +2,8 @@ import type {
   EmailStatus,
   MarkdownReference,
   NextScope,
+  NotificationList,
+  NotificationSettings,
   PomodoroSession,
   PomodoroSettings,
   Tag,
@@ -12,6 +14,7 @@ import type {
 } from './types';
 import { get } from 'svelte/store';
 import { locale, LocalizedError, message, type Language, type Message, type Values } from '../i18n';
+import { emitNotificationsChanged } from '../notifications';
 
 export class ApiError extends LocalizedError {
   constructor(
@@ -72,7 +75,8 @@ export const api = {
     request<User>('/api/auth/login', json('POST', { email, password })),
   acceptInvitation: (token: string, display_name: string, password: string) =>
     request<{ message: Message }>('/api/auth/invitations/accept', json('POST', { token, display_name, password, language: get(locale) })),
-  logout: () => request('/api/auth/logout', json('POST')),
+  logout: (push_endpoint?: string | null) =>
+    request('/api/auth/logout', json('POST', push_endpoint ? { push_endpoint } : undefined)),
   changePassword: (current_password: string, new_password: string) =>
     request('/api/auth/change-password', json('POST', { current_password, new_password })),
   emailStatus: () => request<EmailStatus>('/api/auth/email'),
@@ -109,6 +113,19 @@ export const api = {
   scoringSettings: () => request<{ scoring_formula: string }>('/api/settings/scoring'),
   updateScoringSettings: (scoring_formula: string) =>
     request<{ scoring_formula: string }>('/api/settings/scoring', json('PUT', { scoring_formula })),
+
+  notificationSettings: () => request<NotificationSettings>('/api/notifications/settings'),
+  updateNotificationSettings: (timezone: string) =>
+    request<NotificationSettings>('/api/notifications/settings', json('PUT', { timezone })),
+  subscribePush: (body: { endpoint: string; p256dh: string; auth: string; timezone: string }) =>
+    request<NotificationSettings>('/api/notifications/subscriptions', json('POST', body)),
+  unsubscribePush: (endpoint: string) =>
+    request<NotificationSettings>('/api/notifications/unsubscribe', json('POST', { endpoint })),
+  sendTestNotification: (endpoint?: string | null) =>
+    request<{ message: Message }>('/api/notifications/test', json('POST', endpoint ? { endpoint } : {})),
+  notifications: () => request<NotificationList>('/api/notifications'),
+  markNotificationsRead: (ids?: number[] | null) =>
+    request<{ unread_count: number }>('/api/notifications/read', json('POST', ids ? { ids } : {})),
 
   tags: () => request<Tag[]>('/api/tags'),
   references: (query: string) => request<MarkdownReference[]>(`/api/references?query=${encodeURIComponent(query)}`),
@@ -171,9 +188,20 @@ export const api = {
     request<Task>('/api/tasks', json('POST', body)),
   updateTask: (id: number, body: Partial<TaskInput> & { expected_description?: string | null }) =>
     request<Task>(`/api/tasks/${id}`, json('PATCH', body)),
-  deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, json('DELETE')),
-  finishTask: (id: number) => request<Task>(`/api/tasks/${id}/finish`, json('POST')),
-  abandonTask: (id: number) => request<Task>(`/api/tasks/${id}/abandon`, json('POST')),
+  deleteTask: async (id: number) => {
+    await request<void>(`/api/tasks/${id}`, json('DELETE'));
+    emitNotificationsChanged();
+  },
+  finishTask: async (id: number) => {
+    const task = await request<Task>(`/api/tasks/${id}/finish`, json('POST'));
+    emitNotificationsChanged();
+    return task;
+  },
+  abandonTask: async (id: number) => {
+    const task = await request<Task>(`/api/tasks/${id}/abandon`, json('POST'));
+    emitNotificationsChanged();
+    return task;
+  },
   restoreTask: (id: number) => request<Task>(`/api/tasks/${id}/restore`, json('POST')),
   reopenTask: (id: number) => request<Task>(`/api/tasks/${id}/reopen`, json('POST')),
   blockTask: (id: number, body: { reason?: string | null; blocking_task_id?: number | null; unblocked_at?: string | null }) =>

@@ -18,6 +18,30 @@ or ending a period on one signed-in device is reflected on the others. The timer
 a shared UTC deadline rather than per-second writes. In Settings, period-end audio can
 be a one-time notification or a repeating alarm that must be dismissed on any device.
 
+## Task notifications
+
+Users can opt in per device in **Settings -> Task reminders** to receive Web Push
+reminders at **09:00** in their saved IANA time zone on task due dates and when a timed
+auto-unblock expires. Finishing, abandoning, or deleting a blocking task also records a
+grouped notification in the top-bar **Notifications** bell, which serves as the
+in-app fallback for denied permissions, unsupported browsers, and offline devices.
+Browser push delivery is best effort, keeps Pomodoro period-end sounds unchanged, and
+requires HTTPS (on iPhone and iPad, install the app via **Add to Home Screen** first).
+Subscriptions only store the browser push endpoint and keys per device and are removed
+on sign-out.
+
+Generate a VAPID keypair and configure both `next-task` and the separate
+`next-task-notifier` Compose service (`NEXT_TASK_NOTIFIER_INTERVAL_SECONDS`, default
+`60`):
+
+```bash
+docker compose exec next-task uv run python -m app.cli generate-vapid-keys
+```
+
+Set `NEXT_TASK_VAPID_PRIVATE_KEY` and `NEXT_TASK_VAPID_SUBJECT` (a `mailto:` address or
+`https://` origin; defaults to `NEXT_TASK_PUBLIC_APP_URL` when HTTPS) in your deployment
+environment file. Keep the private key outside Git.
+
 ## Desktop keyboard shortcuts
 
 Shortcuts are always enabled. **N** opens New task, **/** focuses Tasks/Tags search, and **?** opens keyboard help. These

@@ -31,6 +31,7 @@ def configure_sqlite(dbapi_connection: object, _connection_record: object) -> No
     cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA journal_mode = WAL")
+    cursor.execute("PRAGMA busy_timeout = 5000")
     cursor.close()
 
 

@@ -129,3 +129,28 @@ export interface PomodoroSession {
   ends_at: string | null;
   server_now: string;
 }
+
+export interface NotificationSettings {
+  push_configured: boolean;
+  vapid_public_key: string | null;
+  timezone: string | null;
+  subscription_count: number;
+  endpoint_hashes: string[];
+}
+
+export type NotificationKind = 'due' | 'unblocked' | 'unblocked_due' | 'unblocked_overdue';
+
+export interface NotificationItem {
+  id: number;
+  kind: NotificationKind;
+  task_id: number | null;
+  task_title: string;
+  extra_count: number;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationList {
+  unread_count: number;
+  items: NotificationItem[];
+}
