@@ -178,6 +178,13 @@ docker compose exec next-task uv run python -m app.cli create-user
 
 ## Releases and homeserver deployment
 
+After the VM Compose file uses the published GHCR image for all Next Task services,
+`uv run --frozen python deployment/ship.py <pr-number> minor` merges a CI-green PR, runs and waits for the
+release workflow, then calls the VM update command. Use `patch` for a patch release.
+It requires authenticated `gh` and SSH access to `vmstudas`; it stops on failure.
+GitHub access stays in `gh`'s credential store, SSH access stays in your SSH
+configuration, and app secrets stay in the VM's protected `.env`.
+
 CI runs backend lint/tests, release tooling tests, Svelte checks/build, and a
 production image build on pushes to `main` and pull requests. It also checks that
 Python and npm release versions agree, including both lockfiles.
