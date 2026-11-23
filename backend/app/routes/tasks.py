@@ -267,6 +267,34 @@ def list_tasks(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TaskRead]:
+    return list_tasks_for_user(
+        db,
+        user,
+        finished,
+        abandoned,
+        tag_id,
+        include_tag_id,
+        exclude_tag_id,
+        tag_match,
+        blocked,
+        actionable,
+        search,
+    )
+
+
+def list_tasks_for_user(
+    db: Session,
+    user: User,
+    finished: bool | None = False,
+    abandoned: Literal["exclude", "only", "include"] = "exclude",
+    tag_id: int | None = None,
+    include_tag_id: list[int] | None = None,
+    exclude_tag_id: list[int] | None = None,
+    tag_match: Literal["all", "any"] = "all",
+    blocked: bool | None = None,
+    actionable: bool = False,
+    search: str | None = None,
+) -> list[TaskRead]:
     query = select(Task).where(Task.user_id == user.id, Task.priority > 0)
     if finished is True:
         query = query.where(Task.finished_at.is_not(None))

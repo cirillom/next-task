@@ -18,6 +18,7 @@
   import VerifyEmail from './pages/VerifyEmail.svelte';
   import PasswordRecovery from './pages/PasswordRecovery.svelte';
   import AcceptInvitation from './pages/AcceptInvitation.svelte';
+  import McpConsent from './pages/McpConsent.svelte';
   import LanguageSelector from './lib/components/LanguageSelector.svelte';
   import { setLanguage } from './lib/i18n';
   import { focusDescriptionSaves } from './lib/focusDescriptionSaves';
@@ -69,7 +70,7 @@
   let refreshKey = 0;
   let focusTaskVersion = 0;
   let focusScope: NextScope = { include_tag_ids: [], exclude_tag_ids: [], tag_match: 'all' };
-  let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | 'accept-invite' | null = null;
+  let accountView: 'verify-email' | 'forgot-password' | 'reset-password' | 'accept-invite' | 'mcp-consent' | null = null;
   let accountToken: string | null = null;
 
   async function loadDraftCount() {
@@ -101,8 +102,8 @@
 
   async function readHash() {
     const [requested, query = ''] = location.hash.replace('#/', '').split('?', 2);
-    accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' || requested === 'accept-invite' ? requested : null;
-    accountToken = new URLSearchParams(query).get('token');
+    accountView = requested === 'verify-email' || requested === 'forgot-password' || requested === 'reset-password' || requested === 'accept-invite' || requested === 'mcp-consent' ? requested : null;
+    accountToken = new URLSearchParams(query).get(accountView === 'mcp-consent' ? 'request' : 'token');
     if (accountView) return;
     const candidate = requested as View;
     const nextView = views.includes(candidate) ? candidate : 'next';
@@ -197,7 +198,11 @@
   <main class="splash"><div class="brand-mark">✓</div><h1>{$t('ui.app.nextTask')}</h1><p>{$t('ui.app.openingYourTasks')}</p></main>
 {:else if accountView}
   {#key `${accountView}:${accountToken}`}
-    {#if accountView === 'verify-email'}
+    {#if accountView === 'mcp-consent' && !user}
+      <Login on:authenticated={async (event) => { user = event.detail; setLanguage(user.language, false); await loadDraftCount(); }} />
+    {:else if accountView === 'mcp-consent'}
+      <McpConsent requestId={accountToken} />
+    {:else if accountView === 'verify-email'}
       <VerifyEmail token={accountToken} signedIn={user !== null} />
     {:else if accountView === 'accept-invite'}
       <AcceptInvitation token={accountToken} signedIn={user !== null} />
